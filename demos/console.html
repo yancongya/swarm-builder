@@ -1,0 +1,312 @@
+<!doctype html>
+<html lang="zh">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Swarm Builder · 密集控制台</title>
+  <link rel="stylesheet" href="./demo.css" />
+</head>
+<body data-demo="console">
+  <div class="bar">
+    <b>Swarm Builder</b>
+    <button class="primary" data-replay>重建</button>
+    <button data-destroy>销毁</button>
+    <button data-pause>暂停</button>
+    <button data-skip>跳过</button>
+    <label>光标
+      <select data-agents>
+        <option value="4">4</option>
+        <option value="6" selected>6</option>
+        <option value="10">10</option>
+        <option value="16">16</option>
+      </select>
+    </label>
+    <label>速度
+      <select data-speed>
+        <option value="0.5">0.5x</option>
+        <option value="1" selected>1x</option>
+        <option value="2">2x</option>
+        <option value="4">4x</option>
+      </select>
+    </label>
+    <label>时长
+      <select data-pace>
+        <option value="0" selected>自然</option>
+        <option value="6">6 秒</option>
+        <option value="10">10 秒</option>
+        <option value="20">20 秒</option>
+      </select>
+    </label>
+    <label>上限
+      <select data-max>
+        <option value="200">200</option>
+        <option value="400" selected>400</option>
+        <option value="800">800</option>
+        <option value="2000">2000</option>
+      </select>
+    </label>
+    <label>跟随 <input type="checkbox" data-tour /></label>
+    <label>群聚 <input type="checkbox" data-flock checked /></label>
+    <label>音效 <input type="checkbox" data-sound /></label>
+    <span class="status" data-status>待触发</span>
+  </div>
+
+  <div id="app">
+    <div class="page-console">
+      <header class="appbar">
+        <span class="brand">Orbit 运营台</span>
+        <nav class="topnav">
+          <a href="#">概览</a><a href="#">构建</a><a href="#">发布</a><a href="#">成本</a><a href="#">审计</a>
+        </nav>
+        <span class="search">搜索项目、服务或成员…</span>
+        <span class="icon-btn" title="通知">12</span>
+        <span class="avatar">TY</span>
+        <span class="btn primary sm">新建部署</span>
+      </header>
+
+      <div class="layout">
+        <aside class="side">
+          <div class="ws">
+            <span class="ws-name">acme-prod</span>
+            <span class="ws-tag">cn-east-2</span>
+          </div>
+          <div class="nav-group">
+            <h5>工作区</h5>
+            <div class="nav on">概览<span class="n">8</span></div>
+            <div class="nav">流水线<span class="n">24</span></div>
+            <div class="nav">环境<span class="n">5</span></div>
+            <div class="nav">密钥与令牌<span class="n">31</span></div>
+            <div class="nav">成员<span class="n">17</span></div>
+          </div>
+          <div class="nav-group">
+            <h5>运行时</h5>
+            <div class="nav">服务<span class="n">42</span></div>
+            <div class="nav">任务队列<span class="n">6</span></div>
+            <div class="nav">定时作业<span class="n">11</span></div>
+            <div class="nav">边缘函数<span class="n">9</span></div>
+            <div class="nav">存储桶<span class="n">3</span></div>
+          </div>
+          <div class="nav-group">
+            <h5>观测</h5>
+            <div class="nav">指标</div>
+            <div class="nav">日志</div>
+            <div class="nav">追踪</div>
+            <div class="nav">告警<span class="n">2</span></div>
+          </div>
+          <div class="quota">
+            <div class="q-top"><span>构建分钟数</span><b>73%</b></div>
+            <div class="q-bar"><span></span></div>
+            <div class="q-sub">本月已用 3 650 / 5 000 分钟</div>
+          </div>
+        </aside>
+
+        <main class="main">
+          <div class="crumb">acme-prod / 构建 / 主流水线</div>
+          <div class="h-row">
+            <div>
+              <h1>主流水线</h1>
+              <p class="sub">最近 24 小时共 128 次构建，失败 3 次；平均耗时从 4 分 12 秒降到 3 分 40 秒。</p>
+            </div>
+            <div class="h-act">
+              <span class="btn ghost sm">触发一次</span>
+              <span class="btn ghost sm">回滚</span>
+              <span class="btn primary sm">编辑配置</span>
+            </div>
+          </div>
+          <div class="tabs">
+            <span class="t on">运行记录</span><span class="t">耗时</span><span class="t">缓存命中</span><span class="t">成本</span><span class="t">设置</span>
+          </div>
+
+          <section class="kpis">
+            <div class="kpi">
+              <span class="k-label">构建成功率</span>
+              <b class="k-num">97.7%</b>
+              <span class="k-delta up">+1.2%</span>
+              <svg class="spark" width="120" height="28" viewBox="0 0 120 28" role="img" aria-label="成功率趋势">
+                <polyline points="0,22 15,18 30,20 45,12 60,14 75,8 90,10 105,5 120,7"
+                  fill="none" stroke="#4c7ef4" stroke-width="2" />
+              </svg>
+            </div>
+            <div class="kpi">
+              <span class="k-label">平均耗时</span>
+              <b class="k-num">3m 40s</b>
+              <span class="k-delta down">-32s</span>
+              <svg class="spark" width="120" height="28" viewBox="0 0 120 28" role="img" aria-label="耗时趋势">
+                <polyline points="0,8 15,10 30,7 45,14 60,12 75,18 90,16 105,21 120,20"
+                  fill="none" stroke="#f4b942" stroke-width="2" />
+              </svg>
+            </div>
+            <div class="kpi">
+              <span class="k-label">缓存命中率</span>
+              <b class="k-num">86%</b>
+              <span class="k-delta up">+5%</span>
+              <img class="k-img" width="120" height="28" alt="命中率热力条"
+                src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='28'%3E%3Crect width='120' height='28' fill='%23eef1f7'/%3E%3Crect x='4' y='6' width='18' height='16' fill='%234c7ef4'/%3E%3Crect x='26' y='6' width='18' height='16' fill='%237ba0f7'/%3E%3Crect x='48' y='6' width='18' height='16' fill='%234c7ef4'/%3E%3Crect x='70' y='6' width='18' height='16' fill='%23c3d3fb'/%3E%3Crect x='92' y='6' width='18' height='16' fill='%237ba0f7'/%3E%3C/svg%3E" />
+            </div>
+            <div class="kpi">
+              <span class="k-label">本月成本</span>
+              <b class="k-num">¥ 4 218</b>
+              <span class="k-delta flat">持平</span>
+              <svg class="spark" width="120" height="28" viewBox="0 0 120 28" role="img" aria-label="成本趋势">
+                <polyline points="0,14 20,14 40,13 60,15 80,14 100,14 120,13"
+                  fill="none" stroke="#94a3b8" stroke-width="2" />
+              </svg>
+            </div>
+          </section>
+
+          <section class="panel">
+            <div class="p-head">
+              <h3>每日构建量</h3>
+              <div class="legend">
+                <span><i class="dot a"></i>成功</span>
+                <span><i class="dot b"></i>失败</span>
+                <span><i class="dot c"></i>取消</span>
+              </div>
+            </div>
+            <div class="chart">
+              <div class="col"><span class="bar a" style="height:52%"></span><em>11-01</em></div>
+              <div class="col"><span class="bar a" style="height:64%"></span><em>11-02</em></div>
+              <div class="col"><span class="bar a" style="height:47%"></span><em>11-03</em></div>
+              <div class="col"><span class="bar b" style="height:22%"></span><em>11-04</em></div>
+              <div class="col"><span class="bar a" style="height:71%"></span><em>11-05</em></div>
+              <div class="col"><span class="bar a" style="height:83%"></span><em>11-06</em></div>
+              <div class="col"><span class="bar c" style="height:15%"></span><em>11-07</em></div>
+              <div class="col"><span class="bar a" style="height:68%"></span><em>11-08</em></div>
+              <div class="col"><span class="bar a" style="height:90%"></span><em>11-09</em></div>
+              <div class="col"><span class="bar b" style="height:31%"></span><em>11-10</em></div>
+            </div>
+          </section>
+
+          <section class="panel">
+            <div class="p-head">
+              <h3>构建记录</h3>
+              <div class="chips">
+                <span class="chip on">全部</span><span class="chip">成功</span><span class="chip">失败</span>
+                <span class="chip">main</span><span class="chip">release/2.14</span>
+              </div>
+            </div>
+            <table class="grid">
+              <thead>
+                <tr><th>提交</th><th>分支</th><th>触发者</th><th>阶段</th><th>耗时</th><th>状态</th></tr>
+              </thead>
+              <tbody>
+                <tr><td>a41f9c2</td><td>main</td><td>tycon</td><td>build → test → deploy</td><td>3m 41s</td><td><span class="st ok">成功</span></td></tr>
+                <tr><td>7d02e5b</td><td>main</td><td>ci-bot</td><td>build → test</td><td>2m 58s</td><td><span class="st ok">成功</span></td></tr>
+                <tr><td>e8b1c30</td><td>release/2.14</td><td>lina</td><td>build → test → deploy</td><td>4m 22s</td><td><span class="st bad">失败</span></td></tr>
+                <tr><td>19ac7fd</td><td>main</td><td>tycon</td><td>build</td><td>1m 07s</td><td><span class="st mute">取消</span></td></tr>
+                <tr><td>f3d88a1</td><td>feat/cache</td><td>mora</td><td>build → test</td><td>3m 12s</td><td><span class="st ok">成功</span></td></tr>
+                <tr><td>0c5be94</td><td>main</td><td>ci-bot</td><td>build → test → deploy</td><td>5m 03s</td><td><span class="st run">运行中</span></td></tr>
+                <tr><td>b2147de</td><td>fix/tls</td><td>lina</td><td>build → test</td><td>2m 41s</td><td><span class="st ok">成功</span></td></tr>
+                <tr><td>5fa0c88</td><td>main</td><td>mora</td><td>build → test → deploy</td><td>3m 55s</td><td><span class="st ok">成功</span></td></tr>
+                <tr><td>cc391e0</td><td>release/2.13</td><td>tycon</td><td>build</td><td>1m 39s</td><td><span class="st bad">失败</span></td></tr>
+                <tr><td>82ef6a7</td><td>main</td><td>ci-bot</td><td>build → test</td><td>3m 02s</td><td><span class="st ok">成功</span></td></tr>
+              </tbody>
+            </table>
+            <div class="pager">
+              <span class="pg-info">显示 1–10 / 共 128 条</span>
+              <span class="pg">上一页</span><span class="pg on">1</span><span class="pg">2</span>
+              <span class="pg">3</span><span class="pg">…</span><span class="pg">13</span><span class="pg">下一页</span>
+            </div>
+          </section>
+
+          <div class="split">
+            <section class="panel">
+              <div class="p-head"><h3>最近活动</h3></div>
+              <ul class="feed">
+                <li><span class="avatar xs">LN</span><p><b>lina</b> 把 release/2.14 推送到 staging 集群。</p><time>4 分钟前</time></li>
+                <li><span class="avatar xs">CI</span><p><b>ci-bot</b> 更新构建缓存，命中率提升 5%。</p><time>18 分钟前</time></li>
+                <li><span class="avatar xs">MO</span><p><b>mora</b> 将边缘函数的超时从 30s 调整为 15s。</p><time>1 小时前</time></li>
+                <li><span class="avatar xs">TY</span><p><b>tycon</b> 新建告警规则：构建失败率 &gt; 3%。</p><time>2 小时前</time></li>
+                <li><span class="avatar xs">LN</span><p><b>lina</b> 轮换 3 个部署令牌，旧令牌 24 小时后失效。</p><time>5 小时前</time></li>
+                <li><span class="avatar xs">CI</span><p><b>ci-bot</b> 归档 12 条超过 90 天的构建记录。</p><time>昨天</time></li>
+              </ul>
+            </section>
+
+            <section class="panel">
+              <div class="p-head"><h3>发布检查单</h3><span class="p-sub">3 / 7</span></div>
+              <div class="check"><span class="box on"></span>回归测试全部通过</div>
+              <div class="check"><span class="box on"></span>数据库迁移已演练</div>
+              <div class="check"><span class="box on"></span>回滚方案已确认</div>
+              <div class="check"><span class="box"></span>错误预算未击穿</div>
+              <div class="check"><span class="box"></span>法务已过隐私说明</div>
+              <div class="check"><span class="box"></span>文档与变更日志已更新</div>
+              <div class="check"><span class="box"></span>值班已排到人</div>
+            </section>
+          </div>
+
+          <section class="panel">
+            <div class="p-head"><h3>流水线参数</h3><span class="p-sub">修改后下一次构建生效</span></div>
+            <div class="form">
+              <label>并发构建上限<input value="6" /></label>
+              <label>缓存策略
+                <select><option>内容寻址</option><option>分层快照</option><option>关闭</option></select>
+              </label>
+              <label>失败重试次数<input value="2" /></label>
+              <label>镜像基础层<input value="node:24-slim" /></label>
+              <label>超时（分钟）<input value="15" /></label>
+              <label>部署区域
+                <select><option>cn-east-2</option><option>cn-north-1</option><option>ap-southeast-1</option></select>
+              </label>
+              <label class="wide">构建后置命令<input value="pnpm run verify:smoke && pnpm run docs:publish" /></label>
+              <label class="wide">通知渠道
+                <div class="chips">
+                  <span class="chip on">邮件</span><span class="chip on">Slack</span>
+                  <span class="chip">Webhook</span><span class="chip">PagerDuty</span>
+                </div>
+              </label>
+            </div>
+          </section>
+        </main>
+
+        <aside class="rail">
+          <section class="panel">
+            <div class="p-head"><h3>本次构建</h3></div>
+            <div class="field"><span>提交</span><b>a41f9c2</b></div>
+            <div class="field"><span>分支</span><b>main</b></div>
+            <div class="field"><span>触发</span><b>push</b></div>
+            <div class="field"><span>节点</span><b>runner-cn-07</b></div>
+            <div class="field"><span>制品</span><b>182 MB</b></div>
+            <div class="meters">
+              <div class="meter"><span class="m-label">CPU</span><div class="m-bar"><i style="width:61%"></i></div><b>61%</b></div>
+              <div class="meter"><span class="m-label">内存</span><div class="m-bar"><i style="width:38%"></i></div><b>38%</b></div>
+              <div class="meter"><span class="m-label">网络</span><div class="m-bar"><i style="width:74%"></i></div><b>74%</b></div>
+              <div class="meter"><span class="m-label">磁盘</span><div class="m-bar"><i style="width:22%"></i></div><b>22%</b></div>
+            </div>
+          </section>
+          <section class="panel notice">
+            <h3>缓存已失效</h3>
+            <p>基础镜像升到 24.10 后，依赖层全部重建；预计本周构建耗时下降 20%。</p>
+            <span class="btn ghost sm">查看差异</span>
+          </section>
+          <section class="panel">
+            <div class="p-head"><h3>标签</h3></div>
+            <div class="chips">
+              <span class="chip">release</span><span class="chip">hotfix</span><span class="chip">canary</span>
+              <span class="chip">perf</span><span class="chip">security</span><span class="chip">db-migration</span>
+              <span class="chip">frontend</span><span class="chip">edge</span>
+            </div>
+          </section>
+        </aside>
+      </div>
+
+      <footer class="foot">
+        <div>
+          <h6>产品</h6>
+          <div>流水线</div><div>边缘函数</div><div>对象存储</div><div>指标与告警</div>
+        </div>
+        <div>
+          <h6>文档</h6>
+          <div>快速开始</div><div>CLI 参考</div><div>迁移指南</div><div>常见问题</div>
+        </div>
+        <div>
+          <h6>合规</h6>
+          <div>服务状态</div><div>数据处理</div><div>子处理者</div><div>安全白皮书</div>
+        </div>
+        <div class="fine">Orbit 运营台 · 演示数据 · 与真实服务无关</div>
+      </footer>
+    </div>
+  </div>
+
+  <script type="module" src="./main.ts"></script>
+</body>
+</html>

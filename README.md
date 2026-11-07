@@ -103,10 +103,12 @@ new SwarmBuilder({ root: document.querySelector('#app'), tour: true });
 ## 开发
 
 ```bash
-npm run dev      # http://localhost:5199/demos/simple.html
+npm run dev      # http://localhost:5199/demos/index.html
 npm run build    # es + iife + 声明文件
-npm run verify   # Playwright 跑 16 个验收场景，截图落在 .shots/
+npm run verify   # Playwright 跑 17 个验收场景，截图落在 .shots/
 ```
+
+`demos/index.html` 是壳页：工具栏只有一份，案例从各演示页的 `#app` 片段抽出来现场替换，所以标记内容仍只有单一来源，验收脚本也照样能直接访问 `simple.html` / `console.html` / `landing.html` / `dark-ui.html`。案例里 `console.html`（密集控制台）是真实规模的那一个：415 个可重建项、页高 2018px、68 次复制、10 个 `fixed` 元素，自然速度约 28 秒——这种页面上建议同时打开「跟随」。
 
 `swarm-builder-plan.md` 是交接文档：能力分级、每一批的实测数据、踩过的坑和还没做完的事都在里面。
 

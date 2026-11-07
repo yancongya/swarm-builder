@@ -1,7 +1,7 @@
 import { defineConfig } from 'vite';
 
 export default defineConfig({
-  server: { port: 5199, open: '/demos/simple.html' },
+  server: { port: 5199, open: '/demos/index.html' },
   build: {
     lib: {
       entry: 'src/index.ts',

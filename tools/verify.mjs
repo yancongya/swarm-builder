@@ -714,6 +714,85 @@ for (const width of WIDTHS) {
   await ctx.close();
 }
 
+// ---------------------------------------------------------------------------
+// 场景 17：壳页切换案例 + 密集控制台（真实规模页面）
+// ---------------------------------------------------------------------------
+{
+  const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+  const page = await ctx.newPage();
+  const errors = [];
+  page.on('console', (msg) => msg.type() === 'error' && errors.push(msg.text()));
+  page.on('pageerror', (err) => errors.push(String(err)));
+
+  const shape = () => page.evaluate(() => ({
+    demo: document.body.dataset.demo,
+    case: new URLSearchParams(location.search).get('case'),
+    page: ['simple', 'console', 'landing', 'blender'].find((k) => document.querySelector('.page-' + k)) ?? 'none',
+    overlay: !!document.querySelector('.sb-overlay'),
+    status: document.querySelector('[data-status]').textContent.trim(),
+  }));
+  const waitDone = (ms) => page.waitForFunction(
+    () => document.querySelector('[data-status]').textContent.trim().startsWith('完成'),
+    { timeout: ms, polling: 200 },
+  );
+
+  await page.goto(`${BASE}/demos/index.html`, { waitUntil: 'load' });
+  await page.waitForTimeout(400);
+
+  const problems = [];
+  const first = await shape();
+  if (first.page !== 'simple' || first.case !== 'simple') problems.push(`初始案例不对: ${JSON.stringify(first)}`);
+  await page.click('[data-replay]');
+  await waitDone(30000);
+
+  const t0 = Date.now();
+  await page.selectOption('[data-case]', 'console');
+  await page.waitForTimeout(400);
+  const switched = await shape();
+  if (switched.page !== 'console') problems.push(`切到 console 后内容不对: ${JSON.stringify(switched)}`);
+  if (switched.case !== 'console') problems.push(`URL 没有跟上案例: ${switched.case}`);
+  await page.screenshot({ path: `${OUT}shell-console-mid.png` });
+  await waitDone(120000);
+  const naturalMs = Date.now() - t0;
+  const natural = await shape();
+  const built = Number((natural.status.match(/完成 (\d+) 项/) ?? [])[1] ?? 0);
+  if (built < 350) problems.push(`密集页面只建成 ${built} 项`);
+  // 工具栏规则串味会让柱条变成 fixed 块并挡住点击，这里直接查计算样式。
+  const leaked = await page.evaluate(() => {
+    const el = document.querySelector('.page-console .chart .bar');
+    return el ? getComputedStyle(el).position : 'absent';
+  });
+  if (leaked !== 'static') problems.push(`案例里的 .bar 被工具栏规则命中：position=${leaked}`);
+
+  await page.selectOption('[data-max]', '2000');
+  await page.selectOption('[data-pace]', '10');
+  const t1 = Date.now();
+  await page.click('[data-replay]');
+  await waitDone(90000);
+  const pacedMs = (Date.now() - t1) / 1000;
+  const paced = await shape();
+  const pacedBuilt = Number((paced.status.match(/完成 (\d+) 项/) ?? [])[1] ?? 0);
+  if (pacedBuilt <= built) problems.push(`抬到上限 2000 后建成数没有增加：${pacedBuilt} <= ${built}`);
+  if (Math.abs(pacedMs - 10) / 10 > 0.35) problems.push(`定速 10s 实测 ${pacedMs.toFixed(1)}s，超出 35%`);
+
+  await page.selectOption('[data-case]', 'landing');
+  await page.waitForTimeout(400);
+  const back = await shape();
+  if (back.page !== 'landing') problems.push(`切回 landing 后内容不对: ${JSON.stringify(back)}`);
+  await waitDone(60000);
+  if (errors.length) problems.push(`控制台报错 ${errors.length} 条: ${errors[0]}`);
+
+  const after = await shape();
+  report('shell-case @1280', problems, [
+    `初始: ${first.page} · URL case=${first.case}`,
+    `密集案例: ${built} 项 · 自然速度 ${(naturalMs / 1000).toFixed(1)}s · ${natural.status}`,
+    `抬上限+定速: ${pacedBuilt} 项 · 目标 10s 实测 ${pacedMs.toFixed(1)}s`,
+    `案例内 .bar 定位: ${leaked}（应为 static，否则会被工具栏规则变成 fixed 块）`,
+    `切回: ${back.page} · ${after.status}`,
+  ]);
+  await ctx.close();
+}
+
 await browser.close();
 console.log(`\n${failures === 0 ? '全部通过' : failures + ' 个场景有问题'} · 截图在 .shots/`);
 process.exit(failures === 0 ? 0 : 1);
