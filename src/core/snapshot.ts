@@ -1,5 +1,6 @@
 import type { Blueprint, BlueprintItem, Box, DupPayload, MediaPayload, RectStyle, TextStyle } from './blueprint';
 import type { NormalizedOptions } from './config';
+import { applyGuides } from './guides';
 
 const SKIP_TAGS = new Set(['SCRIPT', 'STYLE', 'LINK', 'META', 'NOSCRIPT', 'TEMPLATE', 'SOURCE', 'TRACK', 'AUDIO', 'BR', 'SLOT']);
 const MEDIA_TAGS = new Set(['IMG', 'SVG', 'CANVAS', 'VIDEO', 'IFRAME']);
@@ -41,17 +42,22 @@ export function snapshot(root: HTMLElement, options: NormalizedOptions): Bluepri
   }
 
   const backdrop = takeBackdrop(state.items, rootRect.width * rootRect.height);
-  const byId = new Map(state.items.map((item) => [item.id, item]));
-  if (options.duplicate) applyDuplicates(state.candidates, byId, options.maxCopies);
-
-  return {
+  const blueprint: Blueprint = {
     items: state.items,
-    byId,
+    byId: new Map(),
     width: Math.max(root.scrollWidth, Math.round(rootRect.width)),
     height: Math.max(root.scrollHeight, Math.round(rootRect.height)),
     dropped: state.dropped,
+    guides: 0,
     ...(backdrop ? { backdrop } : {}),
   };
+  for (const item of state.items) blueprint.byId.set(item.id, item);
+
+  if (options.duplicate) applyDuplicates(state.candidates, blueprint.byId, options.maxCopies);
+  if (options.guides) blueprint.guides = applyGuides(blueprint, options.maxGuides);
+  for (const item of state.items) if (!blueprint.byId.has(item.id)) blueprint.byId.set(item.id, item);
+
+  return blueprint;
 }
 
 /**
@@ -207,6 +213,7 @@ function walk(
       height: round(measured.bottom - measured.top),
       text,
       textStyle: textStyleOf(computed),
+      grow: shouldGrow(computed, round(measured.bottom - measured.top)),
     });
     created.push(id);
   }
@@ -242,8 +249,13 @@ function recordCandidate(el: Element, state: WalkState, from: number, depth: num
   });
 }
 
-function contentBox(rect: DOMRect, cs: CSSStyleDeclaration, rootRect: DOMRect): { x: number; y: number; width: number; height: number } {
-  const left = (parseFloat(cs.borderLeftWidth) || 0) + (parseFloat(cs.paddingLeft) || 0);
+/** Large headings are the ones worth growing into place while they are typed. */
+function shouldGrow(cs: CSSStyleDeclaration, height: number): boolean {
+  const size = parseFloat(cs.fontSize);
+  return Number.isFinite(size) && size >= 28 && height < 400;
+}
+
+function contentBox(rect: DOMRect, cs: CSSStyleDeclaration, rootRect: DOMRect): { x: number; y: number; width: number; height: number } {  const left = (parseFloat(cs.borderLeftWidth) || 0) + (parseFloat(cs.paddingLeft) || 0);
   const top = (parseFloat(cs.borderTopWidth) || 0) + (parseFloat(cs.paddingTop) || 0);
   const right = (parseFloat(cs.borderRightWidth) || 0) + (parseFloat(cs.paddingRight) || 0);
   const bottom = (parseFloat(cs.borderBottomWidth) || 0) + (parseFloat(cs.paddingBottom) || 0);

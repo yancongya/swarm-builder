@@ -29,8 +29,10 @@ const report = await p.evaluate(async (selector) => {
     backdrop: !!bp.backdrop,
     byKind,
     groups: new Set(bp.items.map((i) => i.group)).size,
-    masters: bp.items.filter((i) => i.dup && !i.consumed).length,
-    nested: bp.items.filter((i) => i.dup && i.consumed).length,
+    snapped: bp.items.filter((i) => i.snapFrom).map((i) => `${i.id} dx=${Math.round(i.snapFrom)} @${i.x},${i.y} ${i.text?.slice(0, 12)}`),
+    growing: bp.items.filter((i) => i.grow).length,
+    guides: bp.items.filter((i) => i.kind === 'guide').map((i) => `${i.guide?.axis}=${i.guide?.pos} span ${Math.round(i.guide?.from)}..${Math.round(i.guide?.to)}`),
+    masters: bp.items.filter((i) => i.dup && !i.consumed).length,    nested: bp.items.filter((i) => i.dup && i.consumed).length,
     consumed: bp.items.filter((i) => i.consumed).length,
     dups: bp.items
       .filter((i) => i.dup)
@@ -45,6 +47,9 @@ const report = await p.evaluate(async (selector) => {
 console.log(`${report.root} ${report.size} total=${report.total} dropped=${report.dropped} backdrop=${report.backdrop} groups=${report.groups}`);
 console.log('kinds', JSON.stringify(report.byKind));
 console.log(`duplicates: stamped=${report.masters} nestedInsideCopies=${report.nested} consumed=${report.consumed}`);
+console.log(`guides=${report.guides.length} growing=${report.growing} snapped=${report.snapped.length}`);
+if (report.guides.length) console.log(' lines', JSON.stringify(report.guides));
+if (report.snapped.length) console.log(' snaps', JSON.stringify(report.snapped));
 if (report.dups.length) console.log(report.dups.join('\n'));
 console.log('media', JSON.stringify(report.media, null, 1));
 if (process.argv[3] === '--items') console.log(report.items.join('\n'));

@@ -1,4 +1,4 @@
-export type ItemKind = 'rect' | 'text' | 'media';
+export type ItemKind = 'rect' | 'text' | 'media' | 'guide';
 
 /**
  * Media is captured at snapshot time because the source element can change or
@@ -60,6 +60,16 @@ export interface DupPayload {
   items: string[];
 }
 
+/** A layout line three or more elements agree on. */
+export interface GuidePayload {
+  axis: 'x' | 'y';
+  /** Fixed coordinate of the line. */
+  pos: number;
+  /** Line extent along the other axis. */
+  from: number;
+  to: number;
+}
+
 /** All coordinates are relative to the snapshot root's border box. */
 export interface BlueprintItem {
   id: string;
@@ -82,6 +92,12 @@ export interface BlueprintItem {
   dup?: DupPayload;
   /** Never scheduled on its own: a stamp action materialises it. */
   consumed?: boolean;
+  /** Guide line geometry. */
+  guide?: GuidePayload;
+  /** Horizontal offset the item starts at, then settles onto its real x. */
+  snapFrom?: number;
+  /** Headings grow to their real size while they are typed. */
+  grow?: boolean;
 }
 
 export interface Blueprint {
@@ -90,6 +106,8 @@ export interface Blueprint {
   width: number;
   height: number;
   dropped: number;
+  /** Layout lines added by the guide pass. */
+  guides: number;
   /**
    * Painted box covering most of the root, treated as the page backdrop: it is
    * painted on the overlay immediately instead of being animated, so the page

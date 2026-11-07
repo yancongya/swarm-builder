@@ -1,7 +1,7 @@
 # Swarm Builder 成熟库改造计划（Agent 交接文档）
 
 > 最后更新：2026-11-07  
-> 状态：**完整版批次 2（Duplicate）已完成**（见 §13.2），下一步 Guide + 吸附 + gate 传播  
+> 状态：**完整版批次 3（Guide + 吸附 + 字号步进）已完成**（见 §13.3），下一步控制方法与坐标系健壮性  
 > 目标：让其他 Agent 可直接接手推进
 
 ---
@@ -140,7 +140,7 @@
 
 - Media 支持（已完成，见 §13.1）
 - Duplicate（master + 复制）（已完成，见 §13.2）
-- Guide 辅助线与吸附
+- Guide 辅助线与吸附（已完成，见 §13.3）
 - 尺寸徽章、灰盒占位、内容淡入
 - 动态光标数量（可选跟随滚动）
 - 速度细分（typingSpeed / drawSpeed）
@@ -385,11 +385,33 @@
 
 `tools/probe.mjs` 现在直接输出 `stamped / nestedInsideCopies / consumed`，批次 3 的辅助线验证继续用它。
 
+### 13.3 完整版批次 3：Guide + 吸附 + 标题字号步进（2026-11-07）
+
+新增 `src/core/guides.ts`：`applyGuides()` 在 Duplicate 之后跑，把文本项（字号 ≥13、宽度 >30）按 900px 纵向分带，带内按取整后的左边缘 x / 顶边 y 分桶，≥3 个成员共用同一条边即成为辅助线；线段范围取成员在该轴上的最小起点到最大终点。全局上限 16 条，按 `轴 + 位置` 排序后插入到「第一个成员」的 item 位置之前，因此和成员同组、同光标，天然排在前面。
+
+- **gate 传播**：不做全量 gate。最初给每条线的所有成员都 push 了 guide blocker，落地页从 5.7s 涨到 8.7s——一个组的头几项被卡住会连带整条子树等待。改成只 gate「该线上字号最大的 2 个成员」+ 吸附成员，其余成员照常并行。
+- **吸附**：竖向线额外找 6–32px 的近邻（排除已在线上的），按字号取最大的 2 个，记 `snapFrom = 线 x − 成员 x`；成员的 action 列表末尾追加 `SnapSettleAction`，元素先画在线的位置、再滑回真实位置。为此给 overlay 创建的每个元素打上 `data-item`，后续动作按 id 反查（`Overlay.elementOf`）。
+- **辅助线任务** = 移动到线头 → `DrawGuideAction`（160ms 画线，徽章 `x=48` / `y=228`）→ `DropGuideAction`（170ms 淡出并移除）。踩过的坑：`.sb-guide` 默认 `opacity:0`，而淡入只在 drop 阶段设置，导致画线全程不可见；改为 draw 的 `begin()` 就置为 `GUIDE_OPACITY`（0.55）。
+- **标题字号步进**：快照阶段对字号 ≥28 且高度 <400 的文本项打 `grow`，打字时从 62% 字号随进度升到实际字号，`end()` 写回原值保证终态一致。
+
+| 页面 | 项数（含线） | 辅助线 | 吸附成员 | grow 标题 | 1x 耗时 |
+| --- | --- | --- | --- | --- | --- |
+| simple | 22 | 3 | 2 | 1 | 3.8s |
+| landing | 55 | 5 | 2 | 5 | 8.7s（无 guide 5.7s） |
+| dark-ui | 100 | 0 | 0 | — | 3.8s |
+| cdn | 11 | 0 | 0 | — | 2.2s |
+
+两档宽度 8/8 PASS。构建产物 es 35.89 kB（gzip 10.87）/ iife 29.16 kB（gzip 9.72）。
+
+dark-ui 一条线都没生成是符合规则的：面板内文本左边缘各不相同，没有 3 个以上共用同一条边。
+
+A/B 脚本 `tools/ab.mjs <page>` 固定跑三档（关复制 / 只开复制 / 复制+辅助线）来隔离每一项观感特性的时间成本。落地页的结论：Duplicate 省 3.2s，Guide 花 1.6s。**这 1.6s 是「5 条线各自 330ms + 移动」的串行代价，不是调度退化**；真正把总时长压到目标值要靠高级版的 `targetDuration`（反推 speed），已排入 §4.3。
+
 下一步优先级：
 
-1. **Guide + 吸附 + gate 传播**（§13 规则已拆好）——同时解决「辅助线出现时机」和「大标题字号步进」。
-2. `pause/resume/setSpeed/skip`、子树级 `ignore`、fixed 定位与重建中滚动的坐标修正。
-3. 基础音效（默认关闭）。
+1. `pause/resume/setSpeed/skip`、子树级 `ignore`、fixed 定位与重建中滚动的坐标修正。
+2. 基础音效（默认关闭）。
+3. 高级版：Flocking、Tour、performanceMode、`targetDuration`、主题适配、README/API 文档。
 
 
 ---

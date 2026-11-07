@@ -7,6 +7,9 @@ const HIDDEN_CLASS = 'sb-hidden';
  * root-relative, so a non-scrolling container works the same as the document.
  */
 export class Overlay {
+  /** Guides are construction lines: visible, but never as strong as content. */
+  static readonly GUIDE_OPACITY = 0.55;
+
   private constructor(
     readonly el: HTMLElement,
     private readonly root: HTMLElement,
@@ -74,6 +77,16 @@ export class Overlay {
     el.remove();
   }
 
+  /** Planners create elements as they go; later actions find them by item id. */
+  elementOf(id: string): HTMLElement | null {
+    return this.el.querySelector<HTMLElement>(`[data-item="${id}"]`);
+  }
+
+  private tag(el: HTMLElement, item: BlueprintItem): HTMLElement {
+    el.dataset.item = item.id;
+    return el;
+  }
+
   createRectElement(item: BlueprintItem): HTMLElement {
     const el = document.createElement('div');
     el.className = 'sb-item sb-item--building';
@@ -82,7 +95,7 @@ export class Overlay {
     el.style.width = '0px';
     el.style.height = '0px';
     this.append(el);
-    return el;
+    return this.tag(el, item);
   }
 
   static applyGeometry(el: HTMLElement, x: number, y: number, width: number, height: number): void {
@@ -129,7 +142,7 @@ export class Overlay {
       el.style.color = style.color;
     }
     this.append(el);
-    return el;
+    return this.tag(el, item);
   }
 
   createMediaElement(item: BlueprintItem): HTMLElement {
@@ -146,7 +159,7 @@ export class Overlay {
       el.style.opacity = media.opacity;
     }
     this.append(el);
-    return el;
+    return this.tag(el, item);
   }
 
   /** Fills a media placeholder with its frozen content once the box is drawn. */
@@ -213,6 +226,19 @@ export class Overlay {
     const raw = item.kind === 'media' ? item.media?.opacity : item.rectStyle?.opacity;
     const value = parseFloat(raw ?? '1');
     return Number.isFinite(value) ? Math.min(1, Math.max(0, value)) : 1;
+  }
+
+  /** A layout line, drawn from one end to the other. */
+  createGuide(item: BlueprintItem): HTMLElement {
+    const axis = item.guide?.axis ?? 'x';
+    const el = document.createElement('div');
+    el.className = 'sb-guide';
+    el.style.left = `${item.x}px`;
+    el.style.top = `${item.y}px`;
+    el.style.width = axis === 'x' ? '1px' : '0px';
+    el.style.height = axis === 'x' ? '0px' : '1px';
+    this.append(el);
+    return el;
   }
 
   createCaret(height: number): HTMLElement {

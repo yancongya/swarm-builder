@@ -1,4 +1,5 @@
 import type { CursorShape } from '../types';
+import type { BlueprintItem } from './blueprint';
 import type { Action, RunContext } from './action';
 import { clamp, easeInOutCubic } from './config';
 
@@ -37,6 +38,33 @@ export class MoveAction implements Action {
 
   end(ctx: RunContext): void {
     ctx.agent.moveTo(this.targetX, this.targetY);
+  }
+}
+
+/** Slides a snapped element from the guide line onto its real position. */
+export class SnapSettleAction implements Action {
+  readonly name = 'snap';
+  readonly duration = 180;
+  private el: HTMLElement | null = null;
+
+  constructor(private readonly item: BlueprintItem) {}
+
+  begin(ctx: RunContext): void {
+    this.el = ctx.overlay.elementOf(this.item.id);
+    if (this.el) this.displace(this.item.snapFrom ?? 0);
+  }
+
+  tick(progress: number): void {
+    if (this.el) this.displace((this.item.snapFrom ?? 0) * (1 - easeInOutCubic(progress)));
+  }
+
+  end(): void {
+    if (this.el) this.displace(0);
+  }
+
+  private displace(offset: number): void {
+    if (!this.el) return;
+    this.el.style.left = `${this.item.x + offset}px`;
   }
 }
 

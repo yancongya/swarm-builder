@@ -7,6 +7,9 @@ export interface NormalizedOptions {
   maxItems: number;
   duplicate: boolean;
   maxCopies: number;
+  guides: boolean;
+  maxGuides: number;
+  grow: boolean;
   moveSpeed: number;
   typeInterval: number;
   fadeDuration: number;
@@ -21,6 +24,9 @@ export function normalizeOptions(options: SwarmBuilderOptions | undefined): Norm
     maxItems: Math.round(clamp(options?.maxItems ?? 400, 1, 5000)),
     duplicate: options?.duplicate ?? true,
     maxCopies: Math.round(clamp(options?.maxCopies ?? 12, 1, 48)),
+    guides: options?.guides ?? true,
+    maxGuides: Math.round(clamp(options?.maxGuides ?? 16, 0, 64)),
+    grow: options?.grow ?? true,
     moveSpeed: 2200,
     typeInterval: 28,
     fadeDuration: 140,

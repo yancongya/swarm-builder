@@ -21,6 +21,12 @@ export interface SwarmBuilderOptions {
   duplicate?: boolean;
   /** Copies per repeated group. 1-48, default 12. */
   maxCopies?: number;
+  /** Draw the alignment lines the layout implies. Default true. */
+  guides?: boolean;
+  /** Layout lines per run. 0-64, default 16. */
+  maxGuides?: number;
+  /** Headings grow to their real size while being typed. Default true. */
+  grow?: boolean;
   /** Start on the next frame instead of waiting for start(). */
   autoStart?: boolean;
   onStart?: (agents: AgentInfo[]) => void;

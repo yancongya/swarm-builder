@@ -5,6 +5,7 @@ const BASE = process.env.BASE ?? 'http://127.0.0.1:5199';
 const PAGES = ['simple', 'landing', 'dark-ui', 'cdn'];
 const EXPECTED_MEDIA = { landing: 5, 'dark-ui': 1 };
 const EXPECTED_COPIES = { simple: 3, landing: 9, 'dark-ui': 29 };
+const EXPECTED_GUIDES = { simple: 3, landing: 5 };
 const WIDTHS = [1280, 800];
 const OUT = new URL('../.shots/', import.meta.url).pathname.replace(/^\/(\w:)/, '$1');
 
@@ -25,10 +26,13 @@ for (const width of WIDTHS) {
     // Ghost boxes are transient, so count them as they appear rather than by sampling.
     await page.evaluate(() => {
       window.__stamps = 0;
+      window.__guides = 0;
       new MutationObserver((records) => {
         for (const record of records) {
           for (const node of record.addedNodes) {
-            if (node.nodeType === 1 && node.classList.contains('sb-copy')) window.__stamps++;
+            if (node.nodeType !== 1) continue;
+            if (node.classList.contains('sb-copy')) window.__stamps++;
+            if (node.classList.contains('sb-guide')) window.__guides++;
           }
         }
       }).observe(document.body, { childList: true, subtree: true });
@@ -107,7 +111,10 @@ for (const width of WIDTHS) {
     if (mid.mediaShown < expectedMedia) problems.push(`媒体只呈现 ${mid.mediaShown}/${expectedMedia}`);
     const expectedCopies = EXPECTED_COPIES[name] ?? 0;
     const stamps = finished ? await page.evaluate(() => window.__stamps) : 0;
+    const guides = finished ? await page.evaluate(() => window.__guides) : 0;
     if (stamps < expectedCopies) problems.push(`复制只发生 ${stamps}/${expectedCopies} 次`);
+    const expectedGuides = EXPECTED_GUIDES[name] ?? 0;
+    if (guides < expectedGuides) problems.push(`辅助线只画了 ${guides}/${expectedGuides} 条`);
     if (errors.length) problems.push(`控制台报错 ${errors.length} 条: ${errors[0]}`);
     if (problems.length) failures++;
 
@@ -115,6 +122,7 @@ for (const width of WIDTHS) {
     console.log(`  过程: rects=${mid.rects} texts=${mid.texts} 已打字=${mid.typedChars} 徽章=${mid.badges} 拖框中=${mid.dragging} 准星=${mid.crosshair} I型=${mid.ibeam} caret=${mid.caret} 遮罩=${mid.hidden}`);
     console.log(`  媒体: 槽位=${mid.media} 已呈现=${mid.mediaShown}/${expectedMedia} 降级=${mid.mediaFallback}`);
     console.log(`  复制: 拖影=${mid.copies} 累计复制=${stamps}/${expectedCopies} ⌥ 徽章峰值=${mid.optionBadges}`);
+    console.log(`  辅助线: 累计=${guides}/${expectedGuides}`);
     console.log(`  结果: ${done.status}${done.overlayGone === false ? ' · overlay 未清除' : ''}${done.originalVisible === false ? ' · 原页面未恢复' : ''}`);
     for (const p of problems) console.log(`  ! ${p}`);
 

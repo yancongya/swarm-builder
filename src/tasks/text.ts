@@ -14,14 +14,18 @@ export function planText(item: BlueprintItem, ctx: RunContext): Action[] {
   caret.style.opacity = '0';
   return [
     new MoveAction(item.x + 2, caretTop(item) + caretHeight(item) / 2, ctx.opts.moveSpeed, 'ibeam'),
-    new TypeAction(item, el, caret, ctx.overlay, ctx.opts.typeInterval),
+    new TypeAction(item, el, caret, ctx.overlay, ctx.opts.typeInterval, ctx.opts.grow),
   ];
 }
+
+/** Headings start small and reach their real size as they are typed. */
+const GROW_START = 0.62;
 
 class TypeAction implements Action {
   readonly name = 'type';
   readonly duration: number;
   private typed = -1;
+  private readonly fullSize: number;
 
   constructor(
     private readonly item: BlueprintItem,
@@ -29,12 +33,15 @@ class TypeAction implements Action {
     private readonly caret: HTMLElement,
     private readonly overlay: Overlay,
     typeInterval: number,
+    grow: boolean,
   ) {
     this.duration = Math.min(MAX_TYPE_MS, Math.max(160, (item.text ?? '').length * typeInterval)) + HOLD_MS;
+    this.fullSize = grow && item.grow ? parseFloat(item.textStyle?.fontSize ?? '0') : 0;
   }
 
   begin(): void {
     this.caret.style.opacity = '1';
+    if (this.fullSize > 0) this.el.style.fontSize = `${this.fullSize * GROW_START}px`;
   }
 
   tick(progress: number, ctx: RunContext): void {
@@ -43,6 +50,10 @@ class TypeAction implements Action {
     if (typed !== this.typed) {
       this.typed = typed;
       this.el.textContent = text.slice(0, typed);
+      if (this.fullSize > 0) {
+        const size = this.fullSize * (GROW_START + (1 - GROW_START) * Math.min(1, typed / Math.max(1, text.length * 0.6)));
+        this.el.style.fontSize = `${Math.round(size * 10) / 10}px`;
+      }
       this.placeCaret(ctx);
     }
     const elapsed = progress * this.duration;
@@ -51,6 +62,7 @@ class TypeAction implements Action {
   }
 
   end(): void {
+    if (this.fullSize > 0 && this.item.textStyle) this.el.style.fontSize = this.item.textStyle.fontSize;
     this.caret.remove();
   }
 
