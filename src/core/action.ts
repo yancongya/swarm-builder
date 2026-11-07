@@ -1,6 +1,7 @@
 import type { BlueprintItem } from './blueprint';
 import type { NormalizedOptions } from './config';
 import type { SoundBus } from './sound';
+import type { Flock } from './flocking';
 import type { Overlay } from '../render/overlay';
 import type { CursorShape } from '../types';
 
@@ -18,6 +19,8 @@ export interface RunContext {
   agent: AgentView;
   /** Null unless the host asked for sound. */
   sound: SoundBus | null;
+  /** Other cursors, so a move can dodge them. */
+  flock: Flock;
   /** Look up an item the action has to materialise but was not scheduled for. */
   get(id: string): BlueprintItem | undefined;
   /** Count items as built without going through the agent that owns them. */

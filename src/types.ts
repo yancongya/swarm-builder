@@ -29,6 +29,8 @@ export interface SwarmBuilderOptions {
   grow?: boolean;
   /** Synthesised typing and drag clicks. Default false: sound needs a user gesture. */
   sound?: boolean;
+  /** Cursors steer around each other mid-flight. Default true. */
+  flocking?: boolean;
   /**
    * Seconds to stretch or squeeze the entrance to; 0 keeps the natural pace.
    * Overrides `speed` for the run, because the pace is now a fixed goal.

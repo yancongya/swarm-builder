@@ -30,10 +30,13 @@ export class MoveAction implements Action {
 
   tick(progress: number, ctx: RunContext): void {
     const eased = easeInOutCubic(progress);
-    ctx.agent.moveTo(
-      this.startX + (this.targetX - this.startX) * eased,
-      this.startY + (this.targetY - this.startY) * eased,
-    );
+    const x = this.startX + (this.targetX - this.startX) * eased;
+    const y = this.startY + (this.targetY - this.startY) * eased;
+    // Held for the transit and eased out over the last fifth, so the cursor
+    // still lands exactly on the coordinate it was sent to.
+    const dodge = ctx.flock.offset({ x, y });
+    const swell = progress < 0.8 ? 1 : (1 - progress) * 5;
+    ctx.agent.moveTo(x + dodge.x * swell, y + dodge.y * swell);
   }
 
   end(ctx: RunContext): void {

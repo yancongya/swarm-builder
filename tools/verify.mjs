@@ -467,6 +467,103 @@ for (const width of WIDTHS) {
   await ctx.close();
 }
 
+// ---------------------------------------------------------------------------
+// 高级版：Flocking 光标避让
+// ---------------------------------------------------------------------------
+{
+  const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+  const page = await ctx.newPage();
+  const errors = [];
+  page.on('console', (msg) => msg.type() === 'error' && errors.push(msg.text()));
+  page.on('pageerror', (err) => errors.push(String(err)));
+  await page.goto(`${BASE}/demos/landing.html`, { waitUntil: 'load' });
+
+  const measure = (flocking) =>
+    page.evaluate((on) => {
+      document.querySelectorAll('.sb-overlay').forEach((el) => el.remove());
+      document.querySelectorAll('.sb-hidden').forEach((el) => el.classList.remove('sb-hidden'));
+      const read = () =>
+        [...document.querySelectorAll('.sb-cursor:not([hidden])')]
+          .map((el) => {
+            const m = /translate3d\(([-\d.]+)px, ([-\d.]+)px/.exec(el.style.transform);
+            return { el, x: m ? Number(m[1]) : NaN, y: m ? Number(m[2]) : NaN };
+          });
+      return new Promise((resolve) => {
+        let frames = 0;
+        let crowded = 0;
+        let near = 0;
+        let minSum = 0;
+        let minSeen = Infinity;
+        let previous = null;
+        let running = true;
+        // Only cursors that are actually travelling can be in each other's way;
+        // two agents finishing on the same coordinate is the layout, not a clash.
+        const sample = () => {
+          const points = read();
+          const moving = previous
+            ? points.filter((p) => {
+                const before = previous.get(p.el);
+                return before && Math.hypot(p.x - before.x, p.y - before.y) > 0.5;
+              })
+            : [];
+          previous = new Map(points.map((p) => [p.el, { x: p.x, y: p.y }]));
+          if (moving.length > 1) {
+            let min = Infinity;
+            for (let i = 0; i < moving.length; i++) {
+              for (let j = i + 1; j < moving.length; j++) {
+                min = Math.min(min, Math.hypot(moving[i].x - moving[j].x, moving[i].y - moving[j].y));
+              }
+            }
+            frames++;
+            minSum += min;
+            minSeen = Math.min(minSeen, min);
+            if (min < 18) crowded++;
+            if (min < 40) near++;
+          }
+          if (running) requestAnimationFrame(sample);
+        };
+        requestAnimationFrame(sample);
+        new window.SwarmBuilder({
+          root: document.querySelector('#app'),
+          agentCount: 8,
+          speed: 2,
+          flocking: on,
+          onComplete: (result) => {
+            running = false;
+            resolve({
+              built: result.built,
+              durationMs: result.durationMs,
+              frames,
+              crowdedFrames: crowded,
+              nearFrames: near,
+              avgMin: Math.round(minSum / Math.max(1, frames)),
+              minSeen: Math.round(minSeen),
+            });
+          },
+        }).start();
+      });
+    }, flocking);
+
+  const off = await measure(false);
+  const on = await measure(true);
+  await page.screenshot({ path: `${OUT}flocking.png` });
+
+  const problems = [];
+  if (off.built !== on.built) problems.push(`开避让后建成 ${on.built}/${off.built} 项`);
+  // Two cursors converging on one coordinate is the layout, not a steering
+  // failure, so the honest target is the near-miss frames, not the overlap.
+  if (on.nearFrames > off.nearFrames) problems.push(`同行擦过帧变多了：${off.nearFrames} → ${on.nearFrames}`);
+  if (Math.abs(on.durationMs - off.durationMs) > off.durationMs * 0.3) problems.push(`避让改变了节奏：${(off.durationMs / 1000).toFixed(1)}s → ${(on.durationMs / 1000).toFixed(1)}s`);
+  if (errors.length) problems.push(`控制台报错 ${errors.length} 条: ${errors[0]}`);
+
+  report('flocking @1280', problems, [
+    `关闭: 同行帧=${off.frames} · <40px 擦过=${off.nearFrames}(${((off.nearFrames / Math.max(1, off.frames)) * 100).toFixed(0)}%) · <18px 重叠=${off.crowdedFrames} · 平均最近 ${off.avgMin}px · ${(off.durationMs / 1000).toFixed(1)}s`,
+    `开启: 同行帧=${on.frames} · <40px 擦过=${on.nearFrames}(${((on.nearFrames / Math.max(1, on.frames)) * 100).toFixed(0)}%) · <18px 重叠=${on.crowdedFrames} · 平均最近 ${on.avgMin}px · ${(on.durationMs / 1000).toFixed(1)}s`,
+    `建成: ${on.built} 项`,
+  ]);
+  await ctx.close();
+}
+
 await browser.close();
 console.log(`\n${failures === 0 ? '全部通过' : failures + ' 个场景有问题'} · 截图在 .shots/`);
 process.exit(failures === 0 ? 0 : 1);

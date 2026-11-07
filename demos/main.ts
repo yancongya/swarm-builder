@@ -18,6 +18,7 @@ const speedEl = document.querySelector<HTMLSelectElement>('[data-speed]');
 const maxEl = document.querySelector<HTMLSelectElement>('[data-max]');
 const paceEl = document.querySelector<HTMLSelectElement>('[data-pace]');
 const soundEl = document.querySelector<HTMLInputElement>('[data-sound]');
+const flockEl = document.querySelector<HTMLInputElement>('[data-flock]');
 
 let swarm: SwarmBuilder | null = null;
 let paused = false;
@@ -44,6 +45,7 @@ function replay(): void {
     maxItems: Number(maxEl?.value ?? 400),
     targetDuration: Number(paceEl?.value ?? 0),
     sound: soundEl?.checked ?? false,
+    flocking: flockEl?.checked ?? true,
     onProgress: (built, total) => say(`重建中 ${built}/${total}`),
     onComplete: (result) => {
       paused = false;

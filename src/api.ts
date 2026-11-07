@@ -8,6 +8,7 @@ import { Agent } from './core/agent';
 import { Scheduler } from './core/scheduler';
 import { snapshot } from './core/snapshot';
 import { SoundBus } from './core/sound';
+import { Flock } from './core/flocking';
 import { planItem } from './tasks/index';
 import { Overlay } from './render/overlay';
 import { CursorLayer } from './render/cursor_layer';
@@ -76,6 +77,7 @@ export class SwarmBuilder {
     const cursors = new CursorLayer(overlay.el);
     const scheduler = new Scheduler(blueprint, this.opts.agentCount);
     const engine = new Engine();
+    const flock = new Flock();
     // A target time replaces the baseline multiplier: the run is timed, not sped.
     engine.speed = this.opts.targetDuration > 0
       ? clamp(estimateRun(blueprint, this.opts, scheduler.agentQueues) / (this.opts.targetDuration * 1000), SPEED_MIN, SPEED_MAX)
@@ -101,13 +103,15 @@ export class SwarmBuilder {
       const head = scheduler.peek(index);
       const startX = head ? head.x + 140 : blueprint.width / 2;
       const startY = head ? head.y + 90 : blueprint.height / 2;
-      engine.add(new Agent(
+      const agent = new Agent(
         index,
         info,
-        { scheduler, overlay, cursors, opts: this.opts, blueprint, sound, planner: planItem, onFinished: (agent) => engine.remove(agent) },
+        { scheduler, overlay, cursors, opts: this.opts, blueprint, sound, flock, planner: planItem, onFinished: (agent) => engine.remove(agent) },
         startX,
         startY,
-      ));
+      );
+      engine.add(agent);
+      if (this.opts.flocking) flock.add(agent);
     }
 
     if (this.options.onProgress) engine.add(new ProgressTicker(engine, scheduler, this.options.onProgress));
