@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="zh">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Swarm Builder · 落地页</title>
+  <link rel="stylesheet" href="./demo.css" />
+</head>
+<body data-demo="landing">
+  <div class="bar">
+    <b>Swarm Builder</b>
+    <button class="primary" data-replay>重建</button>
+    <button data-destroy>销毁</button>
+    <label>光标
+      <select data-agents>
+        <option value="4">4</option>
+        <option value="6" selected>6</option>
+        <option value="10">10</option>
+        <option value="16">16</option>
+      </select>
+    </label>
+    <label>速度
+      <select data-speed>
+        <option value="0.5">0.5x</option>
+        <option value="1" selected>1x</option>
+        <option value="2">2x</option>
+        <option value="4">4x</option>
+      </select>
+    </label>
+    <span class="status" data-status>待触发</span>
+  </div>
+
+  <div id="app">
+    <div class="page-landing">
+      <nav>
+        <span class="logo">Nimbus</span>
+        <a href="#">产品</a>
+        <a href="#">方案</a>
+        <a href="#">定价</a>
+        <a href="#">文档</a>
+        <span class="btn ghost">登录</span>
+      </nav>
+
+      <section class="hero">
+        <h1>把团队的手动流程搬上云端</h1>
+        <p>Nimbus 用一套可编排的工作流引擎替换散落的脚本，交付时间从两周缩短到两天。</p>
+        <div class="row">
+          <span class="btn">免费开始</span>
+          <span class="btn ghost">预约演示</span>
+        </div>
+      </section>
+
+      <section class="features">
+        <div class="feature">
+          <div class="icon"></div>
+          <h3>声明式编排</h3>
+          <p>用 YAML 描述步骤与依赖，引擎负责重试、并发与幂等。</p>
+        </div>
+        <div class="feature">
+          <div class="icon"></div>
+          <h3>可观测执行</h3>
+          <p>每一步的输入输出、耗时与失败原因都可回放定位。</p>
+        </div>
+        <div class="feature">
+          <div class="icon"></div>
+          <h3>本地与云端一致</h3>
+          <p>同一份配置在开发机与集群里表现完全相同。</p>
+        </div>
+      </section>
+
+      <section class="stats">
+        <div class="stat"><b>280x</b><span>构建速度提升</span></div>
+        <div class="stat"><b>99.98%</b><span>执行成功率</span></div>
+        <div class="stat"><b>14 天</b><span>平均接入周期</span></div>
+        <div class="stat"><b>0</b><span>需要维护的脚本</span></div>
+      </section>
+
+      <section class="quote">
+        <blockquote>我们把 40 多个 CI 脚本收敛成 6 条工作流，剩下的时间用来做产品了。</blockquote>
+        <cite>— 李维，某电商平台 平台工程负责人</cite>
+      </section>
+
+      <footer>© 2026 Nimbus Labs · 隐私政策 · 服务条款</footer>
+    </div>
+  </div>
+
+  <script type="module" src="./main.ts"></script>
+</body>
+</html>

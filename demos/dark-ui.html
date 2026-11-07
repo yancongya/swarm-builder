@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="zh">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Swarm Builder · 深色复杂 UI</title>
+  <link rel="stylesheet" href="./demo.css" />
+</head>
+<body data-demo="blender">
+  <div class="bar">
+    <b>Swarm Builder</b>
+    <button class="primary" data-replay>重建</button>
+    <button data-destroy>销毁</button>
+    <label>光标
+      <select data-agents>
+        <option value="6">6</option>
+        <option value="10" selected>10</option>
+        <option value="16">16</option>
+        <option value="24">24</option>
+      </select>
+    </label>
+    <label>速度
+      <select data-speed>
+        <option value="1">1x</option>
+        <option value="2" selected>2x</option>
+        <option value="4">4x</option>
+        <option value="8">8x</option>
+      </select>
+    </label>
+    <label>上限
+      <select data-max>
+        <option value="120">120</option>
+        <option value="260" selected>260</option>
+        <option value="600">600</option>
+      </select>
+    </label>
+    <span class="status" data-status>待触发</span>
+  </div>
+
+  <div id="app">
+    <div class="page-blender">
+      <div class="menubar">
+        <span>文件</span><span>编辑</span><span>渲染</span><span>窗口</span>
+        <span>帮助</span><span>工具</span><span>布局</span>
+      </div>
+
+      <div class="shell">
+        <aside class="panel left">
+          <h4>大纲</h4>
+          <div class="tree">
+            <div class="group">场景集合</div>
+            <div class="group">场景</div>
+            <div>摄像机</div>
+            <div>收集器</div>
+            <div class="group">立方体</div>
+            <div>网格</div>
+            <div>材质</div>
+            <div>着色器节点</div>
+            <div class="group">灯光</div>
+            <div>太阳</div>
+            <div>区域</div>
+            <div class="group">集合</div>
+            <div>地面</div>
+            <div>环境贴图</div>
+          </div>
+        </aside>
+
+        <main class="viewport">
+          <div class="hud">用户透视 · 实体 · 正交</div>
+          <div class="cube"></div>
+        </main>
+
+        <aside class="panel right props">
+          <h4>属性</h4>
+          <div class="section">
+            <div class="title">变换 · 位置</div>
+            <div class="field"><label>X</label><span class="value">0.0</span></div>
+            <div class="field"><label>Y</label><span class="value">0.0</span></div>
+            <div class="field"><label>Z</label><span class="value">1.2</span></div>
+          </div>
+          <div class="section">
+            <div class="title">旋转</div>
+            <div class="field"><label>X</label><span class="value">0.0°</span></div>
+            <div class="field"><label>Y</label><span class="value">32.5°</span></div>
+            <div class="field"><label>Z</label><span class="value">0.0°</span></div>
+          </div>
+          <div class="section">
+            <div class="title">缩放</div>
+            <div class="slider"><div class="fill"></div></div>
+            <div class="field"><label>统一</label><span class="value">1.000</span></div>
+          </div>
+          <div class="section">
+            <div class="title">材质</div>
+            <div class="field"><label>基础色</label><span class="value">#8a90a0</span></div>
+            <div class="field"><label>金属度</label><span class="value">0.10</span></div>
+            <div class="field"><label>粗糙度</label><span class="value">0.45</span></div>
+            <div class="chips">
+              <span class="chip">漫射</span><span class="chip">高光</span>
+              <span class="chip">环境光遮蔽</span><span class="chip">法线</span>
+            </div>
+          </div>
+          <div class="section">
+            <div class="title">渲染</div>
+            <div class="field"><label>引擎</label><span class="value">Cycles</span></div>
+            <div class="field"><label>采样</label><span class="value">128</span></div>
+            <div class="field"><label>分辨率</label><span class="value">1920×1080</span></div>
+          </div>
+        </aside>
+
+        <div class="timeline">
+          <div class="track">
+            <div class="key" style="left:12%"></div>
+            <div class="key" style="left:34%"></div>
+            <div class="key" style="left:71%"></div>
+          </div>
+          <div class="track">
+            <div class="key" style="left:22%"></div>
+            <div class="key" style="left:58%"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script type="module" src="./main.ts"></script>
+</body>
+</html>

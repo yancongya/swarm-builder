@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="zh">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Swarm Builder · 简单页</title>
+  <link rel="stylesheet" href="./demo.css" />
+</head>
+<body data-demo="simple">
+  <div class="bar">
+    <b>Swarm Builder</b>
+    <button class="primary" data-replay>重建</button>
+    <button data-destroy>销毁</button>
+    <label>光标
+      <select data-agents>
+        <option value="2">2</option>
+        <option value="4">4</option>
+        <option value="6" selected>6</option>
+        <option value="10">10</option>
+      </select>
+    </label>
+    <label>速度
+      <select data-speed>
+        <option value="0.5">0.5x</option>
+        <option value="1" selected>1x</option>
+        <option value="2">2x</option>
+        <option value="4">4x</option>
+      </select>
+    </label>
+    <span class="status" data-status>待触发</span>
+  </div>
+
+  <div id="app">
+    <div class="page-simple">
+      <h1>简单页基准</h1>
+      <p class="sub">最小场景：几个块、一段说明、三张卡片。用来确认重建链路是否跑通。</p>
+
+      <div class="cards">
+        <div class="card">
+          <h3>Snapshot</h3>
+          <p>遍历 DOM，产出矩形与文本蓝图。</p>
+        </div>
+        <div class="card">
+          <h3>Scheduler</h3>
+          <p>按文档顺序分给多个光标队列。</p>
+        </div>
+        <div class="card">
+          <h3>Overlay</h3>
+          <p>独立层重建，结束后回到真实页面。</p>
+        </div>
+      </div>
+
+      <ul class="list">
+        <li>第一项：验证尺寸徽章与灰盒占位</li>
+        <li>第二项：验证打字与光标跟随 <span class="tag">含行内标签</span></li>
+        <li>第三项：验证 onComplete 回调</li>
+      </ul>
+    </div>
+  </div>
+
+  <script type="module" src="./main.ts"></script>
+</body>
+</html>
