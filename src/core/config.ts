@@ -1,4 +1,5 @@
 import type { SwarmBuilderOptions } from '../types';
+import type { PageTheme } from '../render/theme';
 
 export const SPEED_MIN = 0.25;
 export const SPEED_MAX = 8;
@@ -16,6 +17,7 @@ export interface NormalizedOptions {
   sound: boolean;
   flocking: boolean;
   tour: boolean;
+  theme: 'auto' | PageTheme;
   targetDuration: number;
   performanceMode: 'auto' | 'high' | 'low';
   moveSpeed: number;
@@ -38,6 +40,7 @@ export function normalizeOptions(options: SwarmBuilderOptions | undefined): Norm
     sound: options?.sound ?? false,
     flocking: options?.flocking ?? true,
     tour: options?.tour ?? false,
+    theme: options?.theme ?? 'auto',
     targetDuration: clamp(options?.targetDuration ?? 0, 0, 120),
     performanceMode: options?.performanceMode ?? 'auto',
     moveSpeed: 2200,

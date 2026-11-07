@@ -14,6 +14,7 @@ import { planItem } from './tasks/index';
 import { Overlay } from './render/overlay';
 import { CursorLayer } from './render/cursor_layer';
 import { injectStyle } from './render/styles';
+import { pageTheme } from './render/theme';
 
 const PALETTE = ['#ff6b6b', '#4dd0e1', '#ffd166', '#a78bfa', '#8bc34a', '#f472b6', '#60a5fa', '#fb923c'];
 const NAMES = ['Ava', 'Bo', 'Cy', 'Dee', 'Echo', 'Fay', 'Gus', 'Hal', 'Ivy', 'Jo', 'Kai', 'Lux'];
@@ -74,7 +75,8 @@ export class SwarmBuilder {
       return;
     }
 
-    const overlay = Overlay.create(this.root, blueprint.width, blueprint.height, blueprint.rootOffset, blueprint.backdrop);
+    const theme = this.opts.theme === 'auto' ? pageTheme(this.root, blueprint.backdrop) : this.opts.theme;
+    const overlay = Overlay.create(this.root, blueprint.width, blueprint.height, blueprint.rootOffset, blueprint.backdrop, theme);
     const cursors = new CursorLayer(overlay.el);
     const scheduler = new Scheduler(blueprint, this.opts.agentCount);
     const engine = new Engine();

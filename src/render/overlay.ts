@@ -1,4 +1,5 @@
 import type { BlueprintItem, Box, RectStyle } from '../core/blueprint';
+import type { PageTheme } from './theme';
 
 const HIDDEN_CLASS = 'sb-hidden';
 
@@ -27,7 +28,8 @@ export class Overlay {
     blueprintWidth: number,
     blueprintHeight: number,
     rootOffset: { x: number; y: number },
-    backdrop?: RectStyle,
+    backdrop: RectStyle | undefined,
+    theme: PageTheme,
   ): Overlay {
     const rootStyle = getComputedStyle(root);
     let restoredPosition: string | null = null;
@@ -38,6 +40,7 @@ export class Overlay {
 
     const el = document.createElement('div');
     el.className = 'sb-overlay';
+    el.dataset.sbTheme = theme;
     el.style.width = `${blueprintWidth}px`;
     el.style.height = `${blueprintHeight}px`;
     if (backdrop) {

@@ -652,6 +652,68 @@ for (const width of WIDTHS) {
   await ctx.close();
 }
 
+// ---------------------------------------------------------------------------
+// 高级版：主题自适应（施工线墨色跟随页面底色）
+// ---------------------------------------------------------------------------
+{
+  const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+  const page = await ctx.newPage();
+  const errors = [];
+  page.on('console', (msg) => msg.type() === 'error' && errors.push(msg.text()));
+  page.on('pageerror', (err) => errors.push(String(err)));
+
+  const probe = (name, options) =>
+    page.evaluate(async ({ pageName, opts }) => {
+      location.hash = '';
+      window.scrollTo(0, 0);
+      document.querySelectorAll('.sb-overlay').forEach((el) => el.remove());
+      document.querySelectorAll('.sb-hidden').forEach((el) => el.classList.remove('sb-hidden'));
+      return await new Promise((resolve) => {
+        const swarm = new window.SwarmBuilder({
+          root: document.querySelector('#app'),
+          agentCount: 6,
+          speed: 2,
+          ...opts,
+          onComplete: (result) => resolve({ built: result.built }),
+        });
+        swarm.start();
+        // Grab the ink of the first ghost box while it is still on screen.
+        const watch = () => {
+          const el = document.querySelector('.sb-item--building');
+          if (el) {
+            const overlay = document.querySelector('.sb-overlay');
+            const [r, g, b] = getComputedStyle(el).outlineColor.match(/[\d.]+/g).map(Number);
+            resolve({ theme: overlay?.dataset.sbTheme ?? 'none', ink: Math.round((r + g + b) / 3), luma: Math.round((0.2126 * r + 0.7152 * g + 0.0722 * b) / 2.55) });
+            return;
+          }
+          requestAnimationFrame(watch);
+        };
+        requestAnimationFrame(watch);
+      });
+    }, { pageName: name, opts: options });
+
+  const problems = [];
+  const results = {};
+  for (const [name, url] of [['simple', 'simple'], ['landing', 'landing'], ['dark-ui', 'dark-ui']]) {
+    await page.goto(`${BASE}/demos/${url}.html`, { waitUntil: 'load' });
+    results[name] = await probe(name, {});
+    if (results[name].theme === 'none') problems.push(`${name} 没有拿到主题`);
+    // 墨色要反向跟随底色：浅页用深墨，深页用浅墨（亮度 0-100）。
+    if (results[name].theme === 'light' && results[name].luma > 40) problems.push(`${name} 判定为浅页但墨色偏亮：${results[name].luma}`);
+    if (results[name].theme === 'dark' && results[name].luma < 60) problems.push(`${name} 判定为深页但墨色偏暗：${results[name].luma}`);
+  }
+  await page.goto(`${BASE}/demos/landing.html`, { waitUntil: 'load' });
+  const forced = await probe('landing', { theme: 'light' });
+
+  report('theme @1280', problems, [
+    `simple（浅）: theme=${results.simple.theme} 墨色亮度=${results.simple.luma}`,
+    `landing（深）: theme=${results.landing.theme} 墨色亮度=${results.landing.luma}`,
+    `dark-ui（深）: theme=${results['dark-ui'].theme} 墨色亮度=${results['dark-ui'].luma}`,
+    `landing + theme:'light' 强制: ${forced.theme} 墨色亮度=${forced.luma}`,
+  ]);
+  await ctx.close();
+}
+
 await browser.close();
 console.log(`\n${failures === 0 ? '全部通过' : failures + ' 个场景有问题'} · 截图在 .shots/`);
 process.exit(failures === 0 ? 0 : 1);
