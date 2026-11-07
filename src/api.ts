@@ -94,7 +94,7 @@ export class SwarmBuilder {
       engine.add(new Agent(
         index,
         info,
-        { scheduler, overlay, cursors, opts: this.opts, planner: planItem, onFinished: (agent) => engine.remove(agent) },
+        { scheduler, overlay, cursors, opts: this.opts, blueprint, planner: planItem, onFinished: (agent) => engine.remove(agent) },
         startX,
         startY,
       ));

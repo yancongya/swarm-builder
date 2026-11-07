@@ -15,6 +15,10 @@ export interface RunContext {
   opts: NormalizedOptions;
   overlay: Overlay;
   agent: AgentView;
+  /** Look up an item the action has to materialise but was not scheduled for. */
+  get(id: string): BlueprintItem | undefined;
+  /** Count items as built without going through the agent that owns them. */
+  markBuilt(ids: string[]): void;
 }
 
 export interface Action {

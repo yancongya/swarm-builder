@@ -5,6 +5,8 @@ export interface NormalizedOptions {
   speed: number;
   ignore: string[];
   maxItems: number;
+  duplicate: boolean;
+  maxCopies: number;
   moveSpeed: number;
   typeInterval: number;
   fadeDuration: number;
@@ -17,6 +19,8 @@ export function normalizeOptions(options: SwarmBuilderOptions | undefined): Norm
     speed: clamp(options?.speed ?? 1, 0.25, 8),
     ignore: options?.ignore ? [options.ignore] : [],
     maxItems: Math.round(clamp(options?.maxItems ?? 400, 1, 5000)),
+    duplicate: options?.duplicate ?? true,
+    maxCopies: Math.round(clamp(options?.maxCopies ?? 12, 1, 48)),
     moveSpeed: 2200,
     typeInterval: 28,
     fadeDuration: 140,

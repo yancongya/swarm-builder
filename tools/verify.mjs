@@ -4,6 +4,7 @@ import { mkdirSync } from 'node:fs';
 const BASE = process.env.BASE ?? 'http://127.0.0.1:5199';
 const PAGES = ['simple', 'landing', 'dark-ui', 'cdn'];
 const EXPECTED_MEDIA = { landing: 5, 'dark-ui': 1 };
+const EXPECTED_COPIES = { simple: 3, landing: 9, 'dark-ui': 29 };
 const WIDTHS = [1280, 800];
 const OUT = new URL('../.shots/', import.meta.url).pathname.replace(/^\/(\w:)/, '$1');
 
@@ -21,12 +22,23 @@ for (const width of WIDTHS) {
     page.on('pageerror', (err) => errors.push(String(err)));
 
     await page.goto(`${BASE}/demos/${name}.html`, { waitUntil: 'load' });
+    // Ghost boxes are transient, so count them as they appear rather than by sampling.
+    await page.evaluate(() => {
+      window.__stamps = 0;
+      new MutationObserver((records) => {
+        for (const record of records) {
+          for (const node of record.addedNodes) {
+            if (node.nodeType === 1 && node.classList.contains('sb-copy')) window.__stamps++;
+          }
+        }
+      }).observe(document.body, { childList: true, subtree: true });
+    });
     await page.click('[data-replay]');
     await page.waitForTimeout(600);
     await page.screenshot({ path: `${OUT}${name}-${width}-mid.png` });
 
     // Sample repeatedly: a badge or a drag only exists for a few frames.
-    const mid = { rects: 0, texts: 0, typedChars: 0, badges: 0, dragging: 0, caret: 0, hidden: 0, crosshair: 0, ibeam: 0, media: 0, mediaShown: 0, mediaFallback: 0 };
+    const mid = { rects: 0, texts: 0, typedChars: 0, badges: 0, dragging: 0, caret: 0, hidden: 0, crosshair: 0, ibeam: 0, media: 0, mediaShown: 0, mediaFallback: 0, copies: 0, optionBadges: 0 };
     const sample = async () => {
       const s = await page.evaluate(() => ({
         rects: document.querySelectorAll('.sb-item').length,
@@ -41,6 +53,8 @@ for (const width of WIDTHS) {
         media: document.querySelectorAll('.sb-media').length,
         mediaShown: [...document.querySelectorAll('.sb-media')].filter((e) => e.querySelector('img,svg') && !e.classList.contains('sb-item--building')).length,
         mediaFallback: document.querySelectorAll('.sb-media--fallback').length,
+        copies: document.querySelectorAll('.sb-copy').length,
+        optionBadges: [...document.querySelectorAll('.sb-badge')].filter((e) => e.textContent.includes('\u2325')).length,
       }));
       mid.rects = Math.max(mid.rects, s.rects);
       mid.texts = Math.max(mid.texts, s.texts);
@@ -54,6 +68,8 @@ for (const width of WIDTHS) {
       mid.media = Math.max(mid.media, s.media);
       mid.mediaShown = Math.max(mid.mediaShown, s.mediaShown);
       mid.mediaFallback = Math.max(mid.mediaFallback, s.mediaFallback);
+      mid.copies = Math.max(mid.copies, s.copies);
+      mid.optionBadges = Math.max(mid.optionBadges, s.optionBadges);
     };
 
     // Sample for a fixed burst first: badges and drags only live a few frames.
@@ -89,12 +105,16 @@ for (const width of WIDTHS) {
     if (mid.mediaFallback > 0) problems.push(`${mid.mediaFallback} 个媒体项降级为占位框`);
     const expectedMedia = EXPECTED_MEDIA[name] ?? 0;
     if (mid.mediaShown < expectedMedia) problems.push(`媒体只呈现 ${mid.mediaShown}/${expectedMedia}`);
+    const expectedCopies = EXPECTED_COPIES[name] ?? 0;
+    const stamps = finished ? await page.evaluate(() => window.__stamps) : 0;
+    if (stamps < expectedCopies) problems.push(`复制只发生 ${stamps}/${expectedCopies} 次`);
     if (errors.length) problems.push(`控制台报错 ${errors.length} 条: ${errors[0]}`);
     if (problems.length) failures++;
 
     console.log(`\n[${name} @${width}] ${problems.length ? 'FAIL' : 'PASS'}`);
     console.log(`  过程: rects=${mid.rects} texts=${mid.texts} 已打字=${mid.typedChars} 徽章=${mid.badges} 拖框中=${mid.dragging} 准星=${mid.crosshair} I型=${mid.ibeam} caret=${mid.caret} 遮罩=${mid.hidden}`);
     console.log(`  媒体: 槽位=${mid.media} 已呈现=${mid.mediaShown}/${expectedMedia} 降级=${mid.mediaFallback}`);
+    console.log(`  复制: 拖影=${mid.copies} 累计复制=${stamps}/${expectedCopies} ⌥ 徽章峰值=${mid.optionBadges}`);
     console.log(`  结果: ${done.status}${done.overlayGone === false ? ' · overlay 未清除' : ''}${done.originalVisible === false ? ' · 原页面未恢复' : ''}`);
     for (const p of problems) console.log(`  ! ${p}`);
 

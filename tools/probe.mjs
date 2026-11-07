@@ -29,6 +29,12 @@ const report = await p.evaluate(async (selector) => {
     backdrop: !!bp.backdrop,
     byKind,
     groups: new Set(bp.items.map((i) => i.group)).size,
+    masters: bp.items.filter((i) => i.dup && !i.consumed).length,
+    nested: bp.items.filter((i) => i.dup && i.consumed).length,
+    consumed: bp.items.filter((i) => i.consumed).length,
+    dups: bp.items
+      .filter((i) => i.dup)
+      .map((i) => `root=${i.dup.master} from ${i.dup.from.x},${i.dup.from.y} -> ${i.dup.to.x},${i.dup.to.y} items=${i.dup.items.length}`),
     media: bp.items
       .filter((i) => i.kind === 'media')
       .map((i) => `${i.media?.mode} @${i.x},${i.y} ${i.width}x${i.height}`),
@@ -38,6 +44,8 @@ const report = await p.evaluate(async (selector) => {
 
 console.log(`${report.root} ${report.size} total=${report.total} dropped=${report.dropped} backdrop=${report.backdrop} groups=${report.groups}`);
 console.log('kinds', JSON.stringify(report.byKind));
+console.log(`duplicates: stamped=${report.masters} nestedInsideCopies=${report.nested} consumed=${report.consumed}`);
+if (report.dups.length) console.log(report.dups.join('\n'));
 console.log('media', JSON.stringify(report.media, null, 1));
 if (process.argv[3] === '--items') console.log(report.items.join('\n'));
 await browser.close();

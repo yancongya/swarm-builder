@@ -1,11 +1,26 @@
-import type { Blueprint, BlueprintItem, MediaPayload, RectStyle, TextStyle } from './blueprint';
+import type { Blueprint, BlueprintItem, Box, DupPayload, MediaPayload, RectStyle, TextStyle } from './blueprint';
 import type { NormalizedOptions } from './config';
 
 const SKIP_TAGS = new Set(['SCRIPT', 'STYLE', 'LINK', 'META', 'NOSCRIPT', 'TEMPLATE', 'SOURCE', 'TRACK', 'AUDIO', 'BR', 'SLOT']);
 const MEDIA_TAGS = new Set(['IMG', 'SVG', 'CANVAS', 'VIDEO', 'IFRAME']);
+/** A node this deep in a subtree is too specific to read as a repeated pattern. */
+const MAX_DUP_ITEMS = 48;
+/** A paragraph longer than this is worth typing, so its node is never copied. */
+const MAX_DUP_TEXT = 40;
+
+/** One element plus every item its subtree produced: a duplicate candidate. */
+interface Candidate {
+  parent: Element;
+  signature: string;
+  box: Box;
+  ids: string[];
+  kinds: string;
+  longText: boolean;
+}
 
 interface WalkState {
   items: BlueprintItem[];
+  candidates: Candidate[];
   idSeq: number;
   groupSeq: number;
   dropped: number;
@@ -18,7 +33,7 @@ interface WalkState {
  */
 export function snapshot(root: HTMLElement, options: NormalizedOptions): Blueprint {
   const rootRect = root.getBoundingClientRect();
-  const state: WalkState = { items: [], idSeq: 0, groupSeq: 0, dropped: 0, limit: options.maxItems };
+  const state: WalkState = { items: [], candidates: [], idSeq: 0, groupSeq: 0, dropped: 0, limit: options.maxItems };
 
   for (const child of Array.from(root.children)) {
     if ((child as HTMLElement).classList?.contains('sb-overlay')) continue;
@@ -26,14 +41,72 @@ export function snapshot(root: HTMLElement, options: NormalizedOptions): Bluepri
   }
 
   const backdrop = takeBackdrop(state.items, rootRect.width * rootRect.height);
+  const byId = new Map(state.items.map((item) => [item.id, item]));
+  if (options.duplicate) applyDuplicates(state.candidates, byId, options.maxCopies);
 
   return {
     items: state.items,
+    byId,
     width: Math.max(root.scrollWidth, Math.round(rootRect.width)),
     height: Math.max(root.scrollHeight, Math.round(rootRect.height)),
     dropped: state.dropped,
     ...(backdrop ? { backdrop } : {}),
   };
+}
+
+/**
+ * Repeated siblings keep only their first instance as a real task; the rest
+ * become stamp tasks that drag out of the master box and reveal their items at
+ * once. Bucketing is per parent, so "same shape" means "same row of cards".
+ */
+function applyDuplicates(candidates: Candidate[], byId: Map<string, BlueprintItem>, maxCopies: number): void {
+  const eligible = candidates.filter((c) => c.ids.length > 0 && c.ids.length <= MAX_DUP_ITEMS && !c.longText);
+
+  for (const [, bucket] of groupByParent(eligible)) {
+    for (const group of bucket.values()) {
+      if (group.length < 2) continue;
+      const master = group[0] as Candidate;
+      const similar = group.slice(1).filter((copy) => isSimilarBox(master.box, copy.box, master.kinds === copy.kinds && master.kinds === 'text'));
+      for (const copy of similar.slice(0, maxCopies)) {
+        const root = byId.get(copy.ids[0] as string);
+        const masterRoot = master.ids[0];
+        if (!root || !masterRoot) continue;
+        const payload: DupPayload = { master: masterRoot, from: master.box, to: copy.box, items: copy.ids.slice() };
+        root.dup = payload;
+        root.blockers = [masterRoot];
+        for (const id of copy.ids.slice(1)) {
+          const item = byId.get(id);
+          if (item) item.consumed = true;
+        }
+      }
+    }
+  }
+}
+
+function groupByParent(candidates: Candidate[]): Map<Element, Map<string, Candidate[]>> {
+  const out = new Map<Element, Map<string, Candidate[]>>();
+  for (const c of candidates) {
+    let bucket = out.get(c.parent);
+    if (!bucket) {
+      bucket = new Map();
+      out.set(c.parent, bucket);
+    }
+    const group = bucket.get(c.signature);
+    if (group) group.push(c);
+    else bucket.set(c.signature, [c]);
+  }
+  return out;
+}
+
+/** Repeated cards keep their size; repeated labels only keep their line height. */
+function isSimilarBox(a: Box, b: Box, textOnly: boolean): boolean {
+  const ratio = (x: number, y: number): number => {
+    const big = Math.max(x, y);
+    return big <= 0 ? 1 : Math.abs(x - y) / big;
+  };
+  if (ratio(a.height, b.height) > 0.15) return false;
+  if (textOnly) return true;
+  return ratio(a.width, b.width) <= 0.15;
 }
 
 /** Removes and returns the first item large enough to read as the page backdrop. */
@@ -69,6 +142,7 @@ function walk(
 
   const computed = getComputedStyle(el);
   const created: string[] = [];
+  const itemStart = state.items.length;
 
   if (MEDIA_TAGS.has(el.tagName.toUpperCase())) {
     if (isPainted(computed)) {
@@ -94,6 +168,7 @@ function walk(
       ...contentBox(rect, computed, rootRect),
       media: captureMedia(el, computed),
     });
+    recordCandidate(el, state, itemStart, depth, box);
     return;
   }
 
@@ -140,6 +215,31 @@ function walk(
   for (const child of Array.from(el.children)) {
     walk(child, rootRect, nextAncestors, depth + 1, state, options, group);
   }
+
+  recordCandidate(el, state, itemStart, depth, box);
+}
+
+function recordCandidate(el: Element, state: WalkState, from: number, depth: number, box: Box): void {
+  const ids: string[] = [];
+  const kinds: string[] = [];
+  let longText = false;
+  for (let index = from; index < state.items.length; index++) {
+    const item = state.items[index] as BlueprintItem;
+    ids.push(item.id);
+    kinds.push(item.kind[0] as string);
+    if (item.kind === 'text' && (item.text?.length ?? 0) > MAX_DUP_TEXT) longText = true;
+  }
+  if (ids.length === 0) return;
+
+  const classes = Array.from(el.classList).sort().join(' ');
+  state.candidates.push({
+    parent: el.parentElement ?? el,
+    signature: `${el.tagName.toUpperCase()}.${classes}.${depth}.${kinds.join('')}`,
+    box,
+    ids,
+    kinds: kinds.join(''),
+    longText,
+  });
 }
 
 function contentBox(rect: DOMRect, cs: CSSStyleDeclaration, rootRect: DOMRect): { x: number; y: number; width: number; height: number } {

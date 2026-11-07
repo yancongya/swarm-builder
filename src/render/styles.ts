@@ -8,6 +8,8 @@ export const CSS = `
 .sb-item--building{background:rgba(148,155,168,.22);outline:1px dashed rgba(255,255,255,.5);
   outline-offset:-1px;opacity:1}
 .sb-item--live{opacity:1}
+.sb-copy{background:rgba(148,155,168,.14);outline:1px dashed rgba(120,200,255,.9);
+  outline-offset:-1px;opacity:1;pointer-events:none}
 .sb-text{position:absolute;box-sizing:border-box;white-space:pre-wrap;opacity:1;margin:0;padding:0}
 .sb-caret{position:absolute;width:2px;background:currentColor;border-radius:1px}
 .sb-cursor{position:absolute;left:0;top:0;will-change:transform;color:#fff}

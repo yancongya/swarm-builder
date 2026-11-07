@@ -13,12 +13,15 @@ export class Scheduler {
 
   constructor(blueprint: Blueprint, agentCount: number) {
     this.total = blueprint.items.length;
-    for (const item of blueprint.items) this.known.add(item.id);
+    // Consumed items are materialised by a stamp action, so they must not be
+    // claimable, and they must not hold a real task waiting on them.
+    const schedulable = blueprint.items.filter((item) => !item.consumed);
+    for (const item of schedulable) this.known.add(item.id);
 
-    const target = Math.max(1, Math.ceil(this.total / agentCount));
+    const target = Math.max(1, Math.ceil(schedulable.length / agentCount));
     const units: BlueprintItem[][] = [];
     const groups = new Map<number, BlueprintItem[]>();
-    for (const item of blueprint.items) {
+    for (const item of schedulable) {
       const group = groups.get(item.group);
       if (group) group.push(item);
       else groups.set(item.group, [item]);

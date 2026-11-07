@@ -17,6 +17,10 @@ export interface SwarmBuilderOptions {
   ignore?: string;
   /** Upper bound on rebuild items, protects long pages. Default 400. */
   maxItems?: number;
+  /** Build repeated siblings once and stamp the rest. Default true. */
+  duplicate?: boolean;
+  /** Copies per repeated group. 1-48, default 12. */
+  maxCopies?: number;
   /** Start on the next frame instead of waiting for start(). */
   autoStart?: boolean;
   onStart?: (agents: AgentInfo[]) => void;

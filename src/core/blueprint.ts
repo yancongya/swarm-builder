@@ -40,6 +40,26 @@ export interface TextStyle {
   color: string;
 }
 
+export interface Box {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+/**
+ * A repeated sibling (card row, list row, gallery) is built once as the master
+ * and then stamped: the copy drags out of the master box and its items appear
+ * in one fade instead of being re-drawn and re-typed.
+ */
+export interface DupPayload {
+  master: string;
+  from: Box;
+  to: Box;
+  /** Ids of every item belonging to this copy, in document order. */
+  items: string[];
+}
+
 /** All coordinates are relative to the snapshot root's border box. */
 export interface BlueprintItem {
   id: string;
@@ -58,10 +78,15 @@ export interface BlueprintItem {
   text?: string;
   textStyle?: TextStyle;
   media?: MediaPayload;
+  /** Set on the first item of a copy; the rest of its group is `consumed`. */
+  dup?: DupPayload;
+  /** Never scheduled on its own: a stamp action materialises it. */
+  consumed?: boolean;
 }
 
 export interface Blueprint {
   items: BlueprintItem[];
+  byId: Map<string, BlueprintItem>;
   width: number;
   height: number;
   dropped: number;

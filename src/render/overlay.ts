@@ -1,4 +1,4 @@
-import type { BlueprintItem, RectStyle } from '../core/blueprint';
+import type { BlueprintItem, Box, RectStyle } from '../core/blueprint';
 
 const HIDDEN_CLASS = 'sb-hidden';
 
@@ -180,6 +180,39 @@ export class Overlay {
       content = img;
     }
     if (content) el.appendChild(content);
+  }
+
+  /** The transient box an Option-drag pulls out of the master before it lands. */
+  createCopyBox(box: Box): HTMLElement {
+    const el = document.createElement('div');
+    el.className = 'sb-item sb-copy';
+    Overlay.applyGeometry(el, box.x, box.y, box.width, box.height);
+    this.append(el);
+    return el;
+  }
+
+  /** Creates an item already finished: this is what a stamped copy is made of. */
+  buildFinal(item: BlueprintItem): HTMLElement {
+    if (item.kind === 'text') {
+      const el = this.createTextElement(item);
+      el.textContent = item.text ?? '';
+      return el;
+    }
+    if (item.kind === 'media') {
+      const el = this.createMediaElement(item);
+      Overlay.applyGeometry(el, item.x, item.y, item.width, item.height);
+      Overlay.applyMedia(el, item);
+      return el;
+    }
+    const el = this.createRectElement(item);
+    Overlay.applyFinalRectStyle(el, item);
+    return el;
+  }
+
+  static finalOpacity(item: BlueprintItem): number {
+    const raw = item.kind === 'media' ? item.media?.opacity : item.rectStyle?.opacity;
+    const value = parseFloat(raw ?? '1');
+    return Number.isFinite(value) ? Math.min(1, Math.max(0, value)) : 1;
   }
 
   createCaret(height: number): HTMLElement {

@@ -1,4 +1,4 @@
-import type { BlueprintItem } from './blueprint';
+import type { Blueprint, BlueprintItem } from './blueprint';
 import type { Tickable } from './engine';
 import type { Action, ActionPlanner, AgentView, RunContext } from './action';
 import type { NormalizedOptions } from './config';
@@ -13,6 +13,7 @@ export interface AgentDeps {
   overlay: Overlay;
   cursors: CursorLayer;
   opts: NormalizedOptions;
+  blueprint: Blueprint;
   planner: ActionPlanner;
   onFinished: (agent: Agent) => void;
 }
@@ -38,7 +39,15 @@ export class Agent implements AgentView, Tickable {
   ) {
     this.x = startX;
     this.y = startY;
-    this.ctx = { opts: deps.opts, overlay: deps.overlay, agent: this };
+    this.ctx = {
+      opts: deps.opts,
+      overlay: deps.overlay,
+      agent: this,
+      get: (id) => deps.blueprint.byId.get(id),
+      markBuilt: (ids) => {
+        for (const id of ids) this.deps.scheduler.markDone(id);
+      },
+    };
     deps.cursors.setPosition(info.id, startX, startY);
   }
 

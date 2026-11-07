@@ -3,6 +3,7 @@ import type { Action, RunContext } from '../core/action';
 import { planRect } from './rect';
 import { planText } from './text';
 import { planMedia } from './media';
+import { planDuplicate } from './duplicate';
 
 const PLANNERS: Record<ItemKind, (item: BlueprintItem, ctx: RunContext) => Action[]> = {
   rect: planRect,
@@ -11,5 +12,5 @@ const PLANNERS: Record<ItemKind, (item: BlueprintItem, ctx: RunContext) => Actio
 };
 
 export function planItem(item: BlueprintItem, ctx: RunContext): Action[] {
-  return PLANNERS[item.kind](item, ctx);
+  return item.dup ? planDuplicate(item, ctx) : PLANNERS[item.kind](item, ctx);
 }
