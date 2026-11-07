@@ -13,12 +13,13 @@ export class Engine {
   private readonly tickables = new Set<Tickable>();
   private frame = 0;
   private last = 0;
+  private paused = false;
   speed = 1;
   private idleCallback: (() => void) | null = null;
 
   add(tickable: Tickable): void {
     this.tickables.add(tickable);
-    this.run();
+    if (!this.paused) this.run();
   }
 
   remove(tickable: Tickable): void {
@@ -27,6 +28,32 @@ export class Engine {
 
   whenIdle(callback: () => void): void {
     this.idleCallback = callback;
+  }
+
+  get isPaused(): boolean {
+    return this.paused;
+  }
+
+  /** Freezes the clock; the run resumes exactly where it stopped. */
+  pause(): void {
+    if (this.paused) return;
+    this.paused = true;
+    if (this.frame !== 0) cancelAnimationFrame(this.frame);
+    this.frame = 0;
+  }
+
+  resume(): void {
+    if (!this.paused) return;
+    this.paused = false;
+    if (this.tickables.size > 0) this.run();
+    else this.finishIdle();
+  }
+
+  private finishIdle(): void {
+    this.frame = 0;
+    const idle = this.idleCallback;
+    this.idleCallback = null;
+    idle?.();
   }
 
   private run(): void {
@@ -38,10 +65,7 @@ export class Engine {
       const scaled = real * this.speed;
       for (const tickable of Array.from(this.tickables)) tickable.tick(scaled);
       if (this.tickables.size === 0) {
-        this.frame = 0;
-        const idle = this.idleCallback;
-        this.idleCallback = null;
-        idle?.();
+        this.finishIdle();
         return;
       }
       this.frame = requestAnimationFrame(step);

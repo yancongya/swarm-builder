@@ -5,19 +5,30 @@ const HIDDEN_CLASS = 'sb-hidden';
 /**
  * The reconstruction surface. It is a child of `root` and coordinates are
  * root-relative, so a non-scrolling container works the same as the document.
+ * Items captured from `position: fixed` sources go to a second layer pinned to
+ * where the root sat, so they stay on screen while the reader scrolls.
  */
 export class Overlay {
   /** Guides are construction lines: visible, but never as strong as content. */
   static readonly GUIDE_OPACITY = 0.55;
 
+  private fixedLayer: HTMLElement | null = null;
+
   private constructor(
     readonly el: HTMLElement,
     private readonly root: HTMLElement,
+    private readonly rootOffset: { x: number; y: number },
     private readonly hidden: HTMLElement[],
     private readonly restoredPosition: string | null,
   ) {}
 
-  static create(root: HTMLElement, blueprintWidth: number, blueprintHeight: number, backdrop?: RectStyle): Overlay {
+  static create(
+    root: HTMLElement,
+    blueprintWidth: number,
+    blueprintHeight: number,
+    rootOffset: { x: number; y: number },
+    backdrop?: RectStyle,
+  ): Overlay {
     const rootStyle = getComputedStyle(root);
     let restoredPosition: string | null = null;
     if (rootStyle.position === 'static') {
@@ -50,7 +61,7 @@ export class Overlay {
       hidden.push(html);
     }
 
-    return new Overlay(el, root, hidden, restoredPosition);
+    return new Overlay(el, root, rootOffset, hidden, restoredPosition);
   }
 
   /** Go live: real page back, reconstruction layer gone. */
@@ -69,8 +80,21 @@ export class Overlay {
     if (this.restoredPosition !== null) this.root.style.position = this.restoredPosition;
   }
 
-  append(el: HTMLElement): void {
-    this.el.appendChild(el);
+  append(el: HTMLElement, item: BlueprintItem): void {
+    this.layerFor(item).appendChild(el);
+  }
+
+  /** Fixed items are built in their own layer so the page can scroll under them. */
+  private layerFor(item: BlueprintItem): HTMLElement {
+    if (!item.fixed) return this.el;
+    if (!this.fixedLayer) {
+      const layer = document.createElement('div');
+      layer.className = 'sb-fixed';
+      layer.style.transform = `translate3d(${this.rootOffset.x}px, ${this.rootOffset.y}px, 0)`;
+      this.el.appendChild(layer);
+      this.fixedLayer = layer;
+    }
+    return this.fixedLayer;
   }
 
   remove(el: HTMLElement): void {
@@ -94,7 +118,7 @@ export class Overlay {
     el.style.top = `${item.y}px`;
     el.style.width = '0px';
     el.style.height = '0px';
-    this.append(el);
+    this.append(el, item);
     return this.tag(el, item);
   }
 
@@ -141,7 +165,7 @@ export class Overlay {
       el.style.letterSpacing = style.letterSpacing;
       el.style.color = style.color;
     }
-    this.append(el);
+    this.append(el, item);
     return this.tag(el, item);
   }
 
@@ -158,7 +182,7 @@ export class Overlay {
       el.style.borderRadius = media.radius;
       el.style.opacity = media.opacity;
     }
-    this.append(el);
+    this.append(el, item);
     return this.tag(el, item);
   }
 
@@ -196,11 +220,11 @@ export class Overlay {
   }
 
   /** The transient box an Option-drag pulls out of the master before it lands. */
-  createCopyBox(box: Box): HTMLElement {
+  createCopyBox(item: BlueprintItem, box: Box): HTMLElement {
     const el = document.createElement('div');
     el.className = 'sb-item sb-copy';
     Overlay.applyGeometry(el, box.x, box.y, box.width, box.height);
-    this.append(el);
+    this.append(el, item);
     return el;
   }
 
@@ -237,15 +261,20 @@ export class Overlay {
     el.style.top = `${item.y}px`;
     el.style.width = axis === 'x' ? '1px' : '0px';
     el.style.height = axis === 'x' ? '0px' : '1px';
-    this.append(el);
+    this.append(el, item);
     return el;
   }
 
-  createCaret(height: number): HTMLElement {
+  createCaret(height: number, item: BlueprintItem): HTMLElement {
     const el = document.createElement('div');
     el.className = 'sb-caret';
     el.style.height = `${Math.round(height)}px`;
-    this.append(el);
+    this.append(el, item);
     return el;
+  }
+
+  /** The box item coordinates are measured from: page layer, or pinned layer. */
+  layerRectOf(item: BlueprintItem): DOMRect {
+    return this.layerFor(item).getBoundingClientRect();
   }
 }

@@ -1,5 +1,8 @@
 import type { SwarmBuilderOptions } from '../types';
 
+export const SPEED_MIN = 0.25;
+export const SPEED_MAX = 8;
+
 export interface NormalizedOptions {
   agentCount: number;
   speed: number;
@@ -19,8 +22,8 @@ export interface NormalizedOptions {
 export function normalizeOptions(options: SwarmBuilderOptions | undefined): NormalizedOptions {
   return {
     agentCount: Math.round(clamp(options?.agentCount ?? 6, 1, 24)),
-    speed: clamp(options?.speed ?? 1, 0.25, 8),
-    ignore: options?.ignore ? [options.ignore] : [],
+    speed: clamp(options?.speed ?? 1, SPEED_MIN, SPEED_MAX),
+    ignore: normalizeIgnore(options?.ignore),
     maxItems: Math.round(clamp(options?.maxItems ?? 400, 1, 5000)),
     duplicate: options?.duplicate ?? true,
     maxCopies: Math.round(clamp(options?.maxCopies ?? 12, 1, 48)),
@@ -35,6 +38,12 @@ export function normalizeOptions(options: SwarmBuilderOptions | undefined): Norm
 
 export function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
+}
+
+function normalizeIgnore(ignore: string | string[] | undefined): string[] {
+  if (!ignore) return [];
+  const list = Array.isArray(ignore) ? ignore : [ignore];
+  return list.filter((selector) => typeof selector === 'string' && selector.trim().length > 0);
 }
 
 export function easeInOutCubic(t: number): number {

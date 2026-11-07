@@ -13,8 +13,8 @@ export interface SwarmBuilderOptions {
   agentCount?: number;
   /** Global time multiplier. 0.25-8, default 1. */
   speed?: number;
-  /** CSS selector; matched elements and their descendants are skipped. */
-  ignore?: string;
+  /** CSS selector(s); matched elements and their descendants are skipped. */
+  ignore?: string | string[];
   /** Upper bound on rebuild items, protects long pages. Default 400. */
   maxItems?: number;
   /** Build repeated siblings once and stamp the rest. Default true. */

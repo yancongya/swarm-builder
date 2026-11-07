@@ -82,6 +82,8 @@ export function applyGuides(blueprint: Blueprint, maxGuides: number): number {
 
 function isCandidate(item: BlueprintItem): boolean {
   if (item.kind !== 'text' || !item.textStyle) return false;
+  // Fixed items live in the viewport layer, so their edges are not page layout.
+  if (item.fixed) return false;
   return fontSizeOf(item) >= MIN_FONT && item.width > MIN_WIDTH;
 }
 

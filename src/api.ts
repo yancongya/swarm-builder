@@ -1,7 +1,7 @@
 import type { SwarmBuilderOptions, SwarmResult, AgentInfo } from './types';
 import type { Blueprint } from './core/blueprint';
 import type { Tickable } from './core/engine';
-import { normalizeOptions } from './core/config';
+import { normalizeOptions, clamp, SPEED_MIN, SPEED_MAX } from './core/config';
 import { Engine } from './core/engine';
 import { Agent } from './core/agent';
 import { Scheduler } from './core/scheduler';
@@ -44,6 +44,7 @@ export class SwarmBuilder {
   private blueprint: Blueprint | null = null;
   private startedAt = 0;
   private started = false;
+  private finished = false;
   private destroyed = false;
 
   constructor(private readonly options: SwarmBuilderOptions = {}) {
@@ -67,7 +68,7 @@ export class SwarmBuilder {
       return;
     }
 
-    const overlay = Overlay.create(this.root, blueprint.width, blueprint.height, blueprint.backdrop);
+    const overlay = Overlay.create(this.root, blueprint.width, blueprint.height, blueprint.rootOffset, blueprint.backdrop);
     const cursors = new CursorLayer(overlay.el);
     const scheduler = new Scheduler(blueprint, this.opts.agentCount);
     const engine = new Engine();
@@ -108,6 +109,7 @@ export class SwarmBuilder {
   }
 
   private complete(): void {
+    this.finished = true;
     const result: SwarmResult = {
       built: this.scheduler?.built ?? 0,
       dropped: this.blueprint?.dropped ?? 0,
@@ -116,6 +118,39 @@ export class SwarmBuilder {
     this.overlay?.reveal();
     this.cursors?.destroy();
     this.options.onComplete?.(result);
+  }
+
+  /** Freezes the clock mid-stroke; `resume()` continues from the same frame. */
+  pause(): void {
+    this.engine?.pause();
+  }
+
+  resume(): void {
+    this.engine?.resume();
+  }
+
+  get isPaused(): boolean {
+    return this.engine?.isPaused ?? false;
+  }
+
+  /** Time multiplier for the rest of the run, 0.25x to 8x. */
+  setSpeed(multiplier: number): void {
+    const speed = clamp(multiplier, SPEED_MIN, SPEED_MAX);
+    this.opts.speed = speed;
+    if (this.engine) this.engine.speed = speed;
+  }
+
+  /**
+   * Ends the run now. The finished state of a rebuild is the real page, so
+   * there is nothing to draw: stop the clock, count everything as built, reveal.
+   */
+  skip(): void {
+    if (!this.engine || this.destroyed || this.finished) return;
+    this.engine.stop();
+    if (this.blueprint) {
+      for (const item of this.blueprint.items) this.scheduler?.markDone(item.id);
+    }
+    this.complete();
   }
 
   destroy(): void {

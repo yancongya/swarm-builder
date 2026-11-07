@@ -38,7 +38,7 @@ export function snapshot(root: HTMLElement, options: NormalizedOptions): Bluepri
 
   for (const child of Array.from(root.children)) {
     if ((child as HTMLElement).classList?.contains('sb-overlay')) continue;
-    walk(child as HTMLElement, rootRect, [], 0, state, options, state.groupSeq++);
+    walk(child as HTMLElement, rootRect, [], 0, state, options, state.groupSeq++, false);
   }
 
   const backdrop = takeBackdrop(state.items, rootRect.width * rootRect.height);
@@ -47,6 +47,7 @@ export function snapshot(root: HTMLElement, options: NormalizedOptions): Bluepri
     byId: new Map(),
     width: Math.max(root.scrollWidth, Math.round(rootRect.width)),
     height: Math.max(root.scrollHeight, Math.round(rootRect.height)),
+    rootOffset: { x: rootRect.left, y: rootRect.top },
     dropped: state.dropped,
     guides: 0,
     ...(backdrop ? { backdrop } : {}),
@@ -133,6 +134,7 @@ function walk(
   state: WalkState,
   options: NormalizedOptions,
   group: number,
+  insideFixed: boolean,
 ): void {
   if (!isVisible(el) || shouldIgnore(el, options.ignore)) return;
 
@@ -147,6 +149,7 @@ function walk(
   };
 
   const computed = getComputedStyle(el);
+  const fixed = insideFixed || computed.position === 'fixed';
   const created: string[] = [];
   const itemStart = state.items.length;
 
@@ -161,6 +164,7 @@ function walk(
         blockers: ancestorIds.slice(-1),
         ...box,
         rectStyle: rectStyleOf(computed),
+        ...(fixed ? { fixed: true } : {}),
       });
       created.push(id);
     }
@@ -173,6 +177,7 @@ function walk(
       blockers: [...ancestorIds, ...created].slice(-1),
       ...contentBox(rect, computed, rootRect),
       media: captureMedia(el, computed),
+      ...(fixed ? { fixed: true } : {}),
     });
     recordCandidate(el, state, itemStart, depth, box);
     return;
@@ -188,6 +193,7 @@ function walk(
       blockers: ancestorIds.slice(-1),
       ...box,
       rectStyle: rectStyleOf(computed),
+      ...(fixed ? { fixed: true } : {}),
     });
     created.push(id);
   }
@@ -214,13 +220,14 @@ function walk(
       text,
       textStyle: textStyleOf(computed),
       grow: shouldGrow(computed, round(measured.bottom - measured.top)),
+      ...(fixed ? { fixed: true } : {}),
     });
     created.push(id);
   }
 
   const nextAncestors = [...ancestorIds, ...created];
   for (const child of Array.from(el.children)) {
-    walk(child, rootRect, nextAncestors, depth + 1, state, options, group);
+    walk(child, rootRect, nextAncestors, depth + 1, state, options, group, fixed);
   }
 
   recordCandidate(el, state, itemStart, depth, box);

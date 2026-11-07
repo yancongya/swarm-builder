@@ -1,7 +1,7 @@
 # Swarm Builder 成熟库改造计划（Agent 交接文档）
 
 > 最后更新：2026-11-07  
-> 状态：**完整版批次 3（Guide + 吸附 + 字号步进）已完成**（见 §13.3），下一步控制方法与坐标系健壮性  
+> 状态：**完整版批次 4（控制方法 + ignore 数组 + fixed/滚动坐标）已完成**（见 §13.4），验收 11 个场景全绿，下一步基础音效  
 > 目标：让其他 Agent 可直接接手推进
 
 ---
@@ -145,8 +145,9 @@
 - 动态光标数量（可选跟随滚动）
 - 速度细分（typingSpeed / drawSpeed）
 - 基础音效
-- `pause` / `resume` / `setSpeed` / `destroy`
-- `ignore` 选择器
+- `pause` / `resume` / `setSpeed` / `skip` / `destroy`（已完成，见 §13.4）
+- `ignore` 选择器，支持 string 与 string[]（已完成，见 §13.4）
+- fixed 定位与重建中滚动的坐标修正（已完成，见 §13.4）
 - `maxItems` 限制
 
 ### 4.3 高级版（第三阶段）
@@ -407,11 +408,49 @@ dark-ui 一条线都没生成是符合规则的：面板内文本左边缘各不
 
 A/B 脚本 `tools/ab.mjs <page>` 固定跑三档（关复制 / 只开复制 / 复制+辅助线）来隔离每一项观感特性的时间成本。落地页的结论：Duplicate 省 3.2s，Guide 花 1.6s。**这 1.6s 是「5 条线各自 330ms + 移动」的串行代价，不是调度退化**；真正把总时长压到目标值要靠高级版的 `targetDuration`（反推 speed），已排入 §4.3。
 
+### 13.4 完整版批次 4：控制方法 + ignore 数组 + fixed/滚动坐标修正（2026-11-07）
+
+**时钟侧**：`Engine` 增加 `pause()/resume()/isPaused`。pause 直接 `cancelAnimationFrame` 并把 `frame` 归零，`add()` 在暂停态不再启动循环；resume 时若已无 tickable 就立刻走 idle 回调，否则重开循环并把 `last` 重置为当前时刻——所以恢复后不会把暂停期间的时间一次性补算。因为库里所有时长都是「墙上时间 × speed」，`setSpeed()` 只改 `engine.speed`，任务层零改动。
+
+**API 侧**：`SwarmBuilder.pause()/resume()/isPaused/setSpeed(mult)/skip()`。
+
+- `skip()` 的最终实现比第一版小很多。第一版是「停表 → 把没建完的项逐个补齐（`Overlay.finish`）→ reveal」，实测发现补齐完全不可见：`complete()` 在同一 tick 里就把 overlay 移除并恢复真实页面，而重建的终态本来就是真实页面。于是删掉 `Overlay.finish()/clearTransient()` 与 `Scheduler.isDone()`，`skip()` 缩成「停表 + 全部计为已建 + complete」。保留的语义是 `onComplete` 的 `built` 等于 `total`（辅助线也算，它本来就没有终态内容）。
+- `demos/main.ts` 加了「暂停/继续」「跳过」两个按钮，速度下拉框改成 `change` 即时 `setSpeed`（原来只在重放时生效）。
+
+**ignore**：`ignore?: string | string[]`，`normalizeIgnore()` 过滤空串；`shouldIgnore()` 本来就是「自身匹配或祖先匹配」，所以子树级跳过自动成立，不需要新逻辑。
+
+**fixed 与重建中滚动**：这是本批次唯一需要改坐标系的部分。
+
+- 快照阶段 `walk()` 多带一个 `insideFixed`，元素自身 `position: fixed` 或位于 fixed 祖先内，则它产出的所有 item 打 `fixed: true`（含文本、媒体、复制项）。
+- Blueprint 新增 `rootOffset`（快照时 root 的视口位置）。`Overlay` 据此懒建一个 `.sb-fixed` 层：`position: fixed; left:0; top:0` + `transform: translate(rootOffset.x, rootOffset.y)`。fixed item 的坐标仍然是「相对 root」的文档坐标，所以这个 translate 恰好把它还原到快照那一刻的视口位置；而 fixed 元素的视口位置在纯滚动下是不变量，**因此不需要每帧做滚动补偿**，普通层照常随 root 滚动，两层各走各的。
+- 文本光标（caret）与复制拖影也按 item 归属进对应的层；`Overlay.layerRectOf(item)` 让 `TypeAction` 在正确的层里测量，否则 fixed 文本的 caret 会偏移一个滚动量。
+- 辅助线候选排除 fixed 项：它们的左边缘是视口边（`right: 26px` 这类），不是版面边，混进桶里会造出假线。
+
+| 页面 | 项数（含线） | fixed 项 | 辅助线 | 1x 耗时 |
+| --- | --- | --- | --- | --- |
+| simple | 22 | 0 | 3 | 3.8s |
+| landing | 58（+3：新增 fixed 客服块） | 3 | 5 | 5.9–8.7s |
+| dark-ui | 100 | 0 | 0 | 3.8s |
+| cdn | 11 | 0 | 0 | 2.2s |
+
+验收从 8 个场景变成 11 个（`node tools/verify.mjs` 全绿）：
+
+- `controls @1280`：暂停后 1s 内光标 transform 与元素数完全不变；继续后恢复推进；中途 `setSpeed(4)` 能跑完；`重建中 5/58` 时点跳过 → `完成 58 项`，overlay 已清除、原页面已恢复。
+- `fixed-scroll @1280`：跑到 fixed 块已重建后把窗口滚 500px，fixed 元素视口 top 818 → 818（纹丝不动），同一时刻普通元素 top 46 → -454（正常跟着滚），滚动后仍然 58/58 建完。截图 `.shots/fixed-scrolled.png`。
+- `ignore[] @1280`：同一页跑两遍，`ignore: ['.cards']` 从 22 项降到 11 项，被忽略子树的文本一次都没出现，`第一项` 等其余内容照常重建。
+
+构建产物 es 37.61 kB（gzip 11.35）/ iife 30.56 kB（gzip 10.17）。
+
+已知边界（都记在这里，避免下个批次误判）：
+
+1. `position: sticky` 未特殊处理——它只在「吸附中」的那段区间表现得像 fixed，快照无法预判，暂时按普通流处理。
+2. fixed 层依赖 `position: fixed` 真的相对视口。若 root 或其后代带 `transform / filter / will-change / contain`，浏览器会把 fixed 后代收进那个盒子，本层会跟着滚；这类页面需要宿主自己调整，尚未做探测补偿。
+3. 重建中滚动时，fixed 项的光标位置仍按文档坐标画（光标是瞬时装饰，不影响终态），没有把光标也搬进 fixed 层。
+
 下一步优先级：
 
-1. `pause/resume/setSpeed/skip`、子树级 `ignore`、fixed 定位与重建中滚动的坐标修正。
-2. 基础音效（默认关闭）。
-3. 高级版：Flocking、Tour、performanceMode、`targetDuration`、主题适配、README/API 文档。
+1. 基础音效（默认关闭）。
+2. 高级版：Flocking、Tour、performanceMode、`targetDuration`、主题适配、README/API 文档。
 
 
 ---

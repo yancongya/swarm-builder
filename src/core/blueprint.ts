@@ -98,6 +98,11 @@ export interface BlueprintItem {
   snapFrom?: number;
   /** Headings grow to their real size while they are typed. */
   grow?: boolean;
+  /**
+   * Source element is (or sits inside) a `position: fixed` box, so its item
+   * coordinates belong to the viewport layer instead of the page layer.
+   */
+  fixed?: boolean;
 }
 
 export interface Blueprint {
@@ -105,6 +110,12 @@ export interface Blueprint {
   byId: Map<string, BlueprintItem>;
   width: number;
   height: number;
+  /**
+   * Where the root sat in the viewport when it was captured. Fixed items are
+   * rebuilt in a layer pinned to this point, so they stay put if the reader
+   * scrolls while the swarm is working.
+   */
+  rootOffset: { x: number; y: number };
   dropped: number;
   /** Layout lines added by the guide pass. */
   guides: number;

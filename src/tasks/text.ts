@@ -9,7 +9,7 @@ const MAX_TYPE_MS = 700;
 
 export function planText(item: BlueprintItem, ctx: RunContext): Action[] {
   const el = ctx.overlay.createTextElement(item);
-  const caret = ctx.overlay.createCaret(caretHeight(item));
+  const caret = ctx.overlay.createCaret(caretHeight(item), item);
   caret.style.color = item.textStyle?.color ?? 'currentColor';
   caret.style.opacity = '0';
   return [
@@ -78,7 +78,7 @@ class TypeAction implements Action {
       const rects = Array.from(range.getClientRects());
       const last = rects[rects.length - 1];
       if (last && last.width > 0) {
-        const origin = this.overlay.el.getBoundingClientRect();
+        const origin = this.overlay.layerRectOf(this.item);
         left = last.right - origin.left;
         top = last.top - origin.top;
       }

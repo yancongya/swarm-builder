@@ -2,12 +2,8 @@ import { chromium } from 'playwright';
 
 const BASE = process.env.BASE ?? 'http://127.0.0.1:5199';
 const page = process.argv[2] ?? 'landing';
-const ROOTS = {
-  simple: '.page-simple',
-  landing: '.page-landing',
-  'dark-ui': '.page-blender',
-  cdn: '.page-cdn',
-};
+// Same root the demo toolbar uses, so totals line up with verify.mjs.
+const ROOT = '#app';
 
 const browser = await chromium.launch();
 const p = await (await browser.newContext({ viewport: { width: 1280, height: 900 } })).newPage();
@@ -31,6 +27,7 @@ const report = await p.evaluate(async (selector) => {
     groups: new Set(bp.items.map((i) => i.group)).size,
     snapped: bp.items.filter((i) => i.snapFrom).map((i) => `${i.id} dx=${Math.round(i.snapFrom)} @${i.x},${i.y} ${i.text?.slice(0, 12)}`),
     growing: bp.items.filter((i) => i.grow).length,
+    fixed: bp.items.filter((i) => i.fixed).length,
     guides: bp.items.filter((i) => i.kind === 'guide').map((i) => `${i.guide?.axis}=${i.guide?.pos} span ${Math.round(i.guide?.from)}..${Math.round(i.guide?.to)}`),
     masters: bp.items.filter((i) => i.dup && !i.consumed).length,    nested: bp.items.filter((i) => i.dup && i.consumed).length,
     consumed: bp.items.filter((i) => i.consumed).length,
@@ -42,12 +39,12 @@ const report = await p.evaluate(async (selector) => {
       .map((i) => `${i.media?.mode} @${i.x},${i.y} ${i.width}x${i.height}`),
     items: bp.items.map((i) => `${i.id} k=${i.kind} g=${i.group} d=${i.depth} @${i.x},${i.y} ${i.width}x${i.height} b=${i.blockers.join('|')}`),
   };
-}, ROOTS[page]);
+}, ROOT);
 
 console.log(`${report.root} ${report.size} total=${report.total} dropped=${report.dropped} backdrop=${report.backdrop} groups=${report.groups}`);
 console.log('kinds', JSON.stringify(report.byKind));
 console.log(`duplicates: stamped=${report.masters} nestedInsideCopies=${report.nested} consumed=${report.consumed}`);
-console.log(`guides=${report.guides.length} growing=${report.growing} snapped=${report.snapped.length}`);
+console.log(`guides=${report.guides.length} growing=${report.growing} snapped=${report.snapped.length} fixed=${report.fixed}`);
 if (report.guides.length) console.log(' lines', JSON.stringify(report.guides));
 if (report.snapped.length) console.log(' snaps', JSON.stringify(report.snapped));
 if (report.dups.length) console.log(report.dups.join('\n'));

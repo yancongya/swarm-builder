@@ -10,7 +10,7 @@ import { Overlay } from '../render/overlay';
  */
 export function planDuplicate(item: BlueprintItem, ctx: RunContext): Action[] {
   const dup = item.dup as DupPayload;
-  const ghost = ctx.overlay.createCopyBox(dup.from);
+  const ghost = ctx.overlay.createCopyBox(item, dup.from);
   return [
     new MoveAction(dup.from.x, dup.from.y, ctx.opts.moveSpeed, 'crosshair'),
     new StampDragAction(dup, ghost),
