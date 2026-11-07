@@ -14,6 +14,8 @@ export interface NormalizedOptions {
   maxGuides: number;
   grow: boolean;
   sound: boolean;
+  targetDuration: number;
+  performanceMode: 'auto' | 'high' | 'low';
   moveSpeed: number;
   typeInterval: number;
   fadeDuration: number;
@@ -32,6 +34,8 @@ export function normalizeOptions(options: SwarmBuilderOptions | undefined): Norm
     maxGuides: Math.round(clamp(options?.maxGuides ?? 16, 0, 64)),
     grow: options?.grow ?? true,
     sound: options?.sound ?? false,
+    targetDuration: clamp(options?.targetDuration ?? 0, 0, 120),
+    performanceMode: options?.performanceMode ?? 'auto',
     moveSpeed: 2200,
     typeInterval: 28,
     fadeDuration: 140,
@@ -40,6 +44,24 @@ export function normalizeOptions(options: SwarmBuilderOptions | undefined): Norm
 
 export function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
+}
+
+/**
+ * Measured at 1280x900: 55 nodes -> 58 items holds every frame for a 6.8s run,
+ * and 355 nodes -> 367 items still holds every frame but runs for 38s. Frame
+ * rate is not what breaks on a crowded page - the choreography drags and turns
+ * into noise - so auto trims the effects that add per-item work and visual
+ * clutter once the page is past that scale.
+ */
+const CROWDED_NODES = 250;
+
+export function applyPerformanceMode(opts: NormalizedOptions, elementCount: number): void {
+  if (opts.performanceMode === 'high') return;
+  if (opts.performanceMode === 'auto' && elementCount < CROWDED_NODES) return;
+  opts.guides = false;
+  opts.grow = false;
+  opts.sound = false;
+  opts.maxCopies = Math.min(opts.maxCopies, 6);
 }
 
 function normalizeIgnore(ignore: string | string[] | undefined): string[] {

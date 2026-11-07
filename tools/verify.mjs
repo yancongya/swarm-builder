@@ -388,6 +388,85 @@ for (const width of WIDTHS) {
   await ctx.close();
 }
 
+// ---------------------------------------------------------------------------
+// 高级版：targetDuration 定速 与 performanceMode 裁剪
+// ---------------------------------------------------------------------------
+{
+  const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+  const page = await ctx.newPage();
+  const errors = [];
+  page.on('console', (msg) => msg.type() === 'error' && errors.push(msg.text()));
+  page.on('pageerror', (err) => errors.push(String(err)));
+  await page.goto(`${BASE}/demos/landing.html`, { waitUntil: 'load' });
+  await page.evaluate(() => {
+    window.__guides = 0;
+    new MutationObserver((records) => {
+      for (const record of records) {
+        for (const node of record.addedNodes) {
+          if (node.nodeType === 1 && node.classList.contains('sb-guide')) window.__guides++;
+        }
+      }
+    }).observe(document.body, { childList: true, subtree: true });
+  });
+
+  const runOnce = (opts) =>
+    page.evaluate((options) => {
+      document.querySelectorAll('.sb-overlay').forEach((el) => el.remove());
+      document.querySelectorAll('.sb-hidden').forEach((el) => el.classList.remove('sb-hidden'));
+      window.__guides = 0;
+      return new Promise((resolve) => {
+        const swarm = new window.SwarmBuilder({
+          root: document.querySelector('#app'),
+          agentCount: 6,
+          ...options,
+          onComplete: (result) => resolve({
+            ...result,
+            guides: window.__guides,
+            dom: document.querySelector('#app').querySelectorAll('*').length,
+          }),
+        });
+        swarm.start();
+      });
+    }, opts);
+
+  const natural = await runOnce({});
+  const quick = await runOnce({ targetDuration: 3 });
+  const slow = await runOnce({ targetDuration: 10 });
+
+  // Past the crowded threshold: 100 boxes is 200 nodes on top of the page.
+  await page.evaluate(() => {
+    const root = document.querySelector('#app');
+    for (let i = 0; i < 100; i++) {
+      const box = document.createElement('div');
+      box.style.cssText = 'width:70px;height:40px;margin:6px;background:rgba(120,140,255,.35);border-radius:6px';
+      const label = document.createElement('span');
+      label.textContent = `cell ${i}`;
+      box.appendChild(label);
+      root.appendChild(box);
+    }
+  });
+  const crowded = await runOnce({ speed: 8 });
+  const forced = await runOnce({ speed: 8, performanceMode: 'high' });
+
+  const problems = [];
+  const within = (label, ms, target, tolerance) => {
+    if (Math.abs(ms - target) > target * tolerance) problems.push(`${label} 实测 ${(ms / 1000).toFixed(1)}s，偏离 ${(target / 1000).toFixed(1)}s 超过 ${tolerance * 100}%`);
+  };
+  within('targetDuration 3', quick.durationMs, 3000, 0.35);
+  within('targetDuration 10', slow.durationMs, 10000, 0.35);
+  if (crowded.guides !== 0) problems.push(`拥挤页面 auto 模式仍画了 ${crowded.guides} 条辅助线`);
+  if (forced.guides < 5) problems.push(`performanceMode 'high' 只画了 ${forced.guides} 条辅助线`);
+  if (errors.length) problems.push(`控制台报错 ${errors.length} 条: ${errors[0]}`);
+
+  report('pace-perf @1280', problems, [
+    `自然速度: ${natural.built} 项 ${(natural.durationMs / 1000).toFixed(1)}s · 辅助线=${natural.guides}`,
+    `targetDuration 3s: ${(quick.durationMs / 1000).toFixed(1)}s（${quick.built} 项）`,
+    `targetDuration 10s: ${(slow.durationMs / 1000).toFixed(1)}s（${slow.built} 项）`,
+    `拥挤页面 dom=${crowded.dom}: auto ${crowded.built} 项/辅助线=${crowded.guides}/${(crowded.durationMs / 1000).toFixed(1)}s · high ${forced.built} 项/辅助线=${forced.guides}/${(forced.durationMs / 1000).toFixed(1)}s`,
+  ]);
+  await ctx.close();
+}
+
 await browser.close();
 console.log(`\n${failures === 0 ? '全部通过' : failures + ' 个场景有问题'} · 截图在 .shots/`);
 process.exit(failures === 0 ? 0 : 1);

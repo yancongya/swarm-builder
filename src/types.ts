@@ -29,6 +29,16 @@ export interface SwarmBuilderOptions {
   grow?: boolean;
   /** Synthesised typing and drag clicks. Default false: sound needs a user gesture. */
   sound?: boolean;
+  /**
+   * Seconds to stretch or squeeze the entrance to; 0 keeps the natural pace.
+   * Overrides `speed` for the run, because the pace is now a fixed goal.
+   */
+  targetDuration?: number;
+  /**
+   * 'auto' (default) drops guides, heading grow, sound and most copies once the
+   * root holds 250+ elements; 'low' always trims; 'high' never does.
+   */
+  performanceMode?: 'auto' | 'high' | 'low';
   /** Start on the next frame instead of waiting for start(). */
   autoStart?: boolean;
   onStart?: (agents: AgentInfo[]) => void;

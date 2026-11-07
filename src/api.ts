@@ -1,7 +1,8 @@
 import type { SwarmBuilderOptions, SwarmResult, AgentInfo } from './types';
 import type { Blueprint } from './core/blueprint';
 import type { Tickable } from './core/engine';
-import { normalizeOptions, clamp, SPEED_MIN, SPEED_MAX } from './core/config';
+import { normalizeOptions, applyPerformanceMode, clamp, SPEED_MIN, SPEED_MAX } from './core/config';
+import { estimateRun } from './core/estimate';
 import { Engine } from './core/engine';
 import { Agent } from './core/agent';
 import { Scheduler } from './core/scheduler';
@@ -60,6 +61,7 @@ export class SwarmBuilder {
     if (this.started || this.destroyed) return;
     this.started = true;
 
+    applyPerformanceMode(this.opts, this.root.querySelectorAll('*').length);
     const blueprint = snapshot(this.root, this.opts);
     this.blueprint = blueprint;
 
@@ -74,7 +76,10 @@ export class SwarmBuilder {
     const cursors = new CursorLayer(overlay.el);
     const scheduler = new Scheduler(blueprint, this.opts.agentCount);
     const engine = new Engine();
-    engine.speed = this.opts.speed;
+    // A target time replaces the baseline multiplier: the run is timed, not sped.
+    engine.speed = this.opts.targetDuration > 0
+      ? clamp(estimateRun(blueprint, this.opts, scheduler.agentQueues) / (this.opts.targetDuration * 1000), SPEED_MIN, SPEED_MAX)
+      : this.opts.speed;
     const sound = this.opts.sound ? new SoundBus() : null;
     this.sound = sound;
 

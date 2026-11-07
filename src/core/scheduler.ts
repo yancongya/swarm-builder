@@ -52,6 +52,11 @@ export class Scheduler {
     return (this.queues[agentIndex]?.length ?? 0) === 0;
   }
 
+  /** The distribution as handed out, so a run length can be predicted from it. */
+  get agentQueues(): readonly (readonly BlueprintItem[])[] {
+    return this.queues;
+  }
+
   /** Where the agent should appear, so cursors start dispersed over the page. */
   peek(agentIndex: number): BlueprintItem | null {
     return this.queues[agentIndex]?.[0] ?? null;
