@@ -6,22 +6,26 @@
   "files": [
     "dist"
   ],
-  "module": "./dist/swarm-builder.js",
-  "types": "./dist/types/src/index.d.ts",
+  "module": "./dist/swarm-builder.es.js",
+  "types": "./dist/types/index.d.ts",
   "exports": {
     ".": {
-      "types": "./dist/types/src/index.d.ts",
-      "import": "./dist/swarm-builder.js"
+      "types": "./dist/types/index.d.ts",
+      "import": "./dist/swarm-builder.es.js"
     }
   },
   "scripts": {
     "dev": "vite",
     "build": "vite build && tsc -p tsconfig.build.json",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "verify": "node tools/verify.mjs"
   },
   "devDependencies": {
     "playwright": "^1.54.1",
     "typescript": "^5.9.3",
     "vite": "^8.3.6"
-  }
+  },
+  "unpkg": "./dist/swarm-builder.iife.js",
+  "jsdelivr": "./dist/swarm-builder.iife.js",
+  "sideEffects": false
 }

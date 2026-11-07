@@ -1,7 +1,7 @@
 # Swarm Builder 成熟库改造计划（Agent 交接文档）
 
 > 最后更新：2026-11-07  
-> 状态：**完整版（批次 1–5）+ 高级版批次 1–4（定速、性能模式、Flocking、Tour、主题适配）已完成**（见 §13.9），验收 15 个场景全绿，只剩 README / API 文档与终验  
+> 状态：**全部批次完成**——完整版（批次 1–5）+ 高级版（定速、性能模式、Flocking、Tour、主题适配、README/API 文档），验收 16 个场景全绿（§13.10）  
 > 目标：让其他 Agent 可直接接手推进
 
 ---
@@ -190,31 +190,17 @@
 
 ---
 
-## 6. 建议配置项（API 形态参考）
+## 6. 配置项（已实现，权威版本见 README）
 
-> 仅定义能力，不给实现代码。
+> 落地时改名或砍掉的项都标在下面，避免下一个 Agent 按旧名字找。
 
-必要配置：
-- `root`
-- `agentCount` / `maxAgents` / `minAgents`
-- `speed` / `typingSpeed` / `drawSpeed`
-- `autoStart`
-- `flocking`
-- `followScroll`
-- `showRulers`
-- `sound`
-- `ignore`
-- `maxItems`
-- `performanceMode`
-- `onStart` / `onProgress` / `onComplete`
+配置：`root`、`agentCount`、`speed`、`targetDuration`、`performanceMode`、`ignore`（string|string[]）、`maxItems`、`duplicate`、`maxCopies`、`guides`、`maxGuides`、`grow`、`sound`、`flocking`、`tour`、`theme`、`autoStart`、`onStart` / `onProgress` / `onComplete`
+方法：`start()`、`pause()` / `resume()` / `isPaused`、`setSpeed()`、`skip()`、`destroy()`，另有 `mount(options)` 一步开局
 
-必要方法：
-- `start()`
-- `pause()`
-- `resume()`
-- `setSpeed()`
-- `skip()`
-- `destroy()`
+- `followScroll` → **`tour`**（`scroll` 太容易被理解成「滚动行为开关」，它实际是镜头跟随 + 结束交还页首）
+- `showRulers` → **`guides`**（与 §3.4 的「拉辅助线并吸附」同名，只有一处拼写）
+- `maxAgents` / `minAgents` → **没做**：滚动加速时动态增减光标需要重排已发出的队列，收益抵不上调度器改造；`agentCount` 固定 + `targetDuration` 已经能覆盖同一个诉求
+- `typingSpeed` / `drawSpeed` → **没做**：所有时长都过同一个 `engine.speed`，单独开两个倍率会让「暂停/跳过/目标时长」三件事互相打架；内部常量 `typeInterval` / `moveSpeed` / `fadeDuration` 留在 `normalizeOptions` 里，需要时再公开
 
 ---
 
@@ -566,9 +552,20 @@ A/B 脚本 `tools/ab.mjs <page>` 固定跑三档（关复制 / 只开复制 / �
 
 构建产物 es 43.89 kB（gzip 13.36）/ iife 35.60 kB（gzip 12.08）。
 
+### 13.10 高级版批次 5：文档、入口修正与终验（2026-11-07）
+
+README 是对外唯一的 API 文档，`swarm-builder-plan.md` 退居交接文档。写文档时顺手抓到两个真问题：
+
+- `package.json` 的 `module` / `exports.import` 指向 `dist/swarm-builder.js`，而 vite 实际产出 `dist/swarm-builder.es.js`；`types` 指向 `dist/types/src/index.d.ts`，而 `tsc -p tsconfig.build.json` 的 `declarationDir` 产出的是 `dist/types/index.d.ts`。**也就是说：装完包 import 会直接找不到文件**。现在改成 es + iife 双入口（`unpkg` / `jsdelivr` 指 iife），补 `sideEffects: false`（样式是 `injectStyle()` 在构造时注入的，import 本身没有副作用），并加了 `npm run verify`。
+- §6 的提案名和落地名不一致（`followScroll` → `tour`、`showRulers` → `guides`），`maxAgents` / `minAgents` / `typingSpeed` / `drawSpeed` 明确记为「不做 + 原因」，否则下一个 Agent 会照着旧名字找代码。
+
+终验：`tsc --noEmit` 干净，`npm run build` 出 es 43.89 kB（gzip 13.36）/ iife 35.60 kB（gzip 12.08），`node tools/verify.mjs` 16 个场景全绿（4 页 × 2 宽度 + controls / fixed-scroll / ignore[] / sound / pace-perf / flocking / tour / theme）。
+
+未决（需要人拍板，不是代码问题）：`package.json` 没有 `license` 字段。§10 锁的五项决策不含许可协议，而参考的 swarm-cursors 仓库本身没有授权，本仓库要公开发布就得先定自己的协议。
+
 下一步优先级：
 
-1. 高级版剩余：README/API 文档与终验（定速与性能模式 §13.6、Flocking §13.7、Tour §13.8、主题 §13.9）。
+1. 全部计划内批次已完成；剩下的只有发布前的许可协议决策（§13.10）与真实页面上的肉眼验收。
 
 
 ---
