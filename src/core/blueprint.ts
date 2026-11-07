@@ -1,4 +1,20 @@
-export type ItemKind = 'rect' | 'text';
+export type ItemKind = 'rect' | 'text' | 'media';
+
+/**
+ * Media is captured at snapshot time because the source element can change or
+ * unload while the rebuild is running. `fallback` keeps the grey placeholder,
+ * which is what happens for cross-origin canvases and iframes.
+ */
+export interface MediaPayload {
+  mode: 'img' | 'svg' | 'still' | 'fallback';
+  src?: string;
+  node?: Node;
+  dataUrl?: string;
+  fit: string;
+  position: string;
+  radius: string;
+  opacity: string;
+}
 
 export interface RectStyle {
   backgroundColor: string;
@@ -41,6 +57,7 @@ export interface BlueprintItem {
   rectStyle?: RectStyle;
   text?: string;
   textStyle?: TextStyle;
+  media?: MediaPayload;
 }
 
 export interface Blueprint {

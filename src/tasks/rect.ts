@@ -14,7 +14,7 @@ export function planRect(item: BlueprintItem, ctx: RunContext): Action[] {
 }
 
 /** Drag from the top-left corner to the bottom-right while the box grows. */
-class DragRectAction implements Action {
+export class DragRectAction implements Action {
   readonly name = 'drag';
   readonly duration: number;
 

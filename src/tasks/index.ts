@@ -1,8 +1,15 @@
-import type { BlueprintItem } from '../core/blueprint';
+import type { BlueprintItem, ItemKind } from '../core/blueprint';
 import type { Action, RunContext } from '../core/action';
 import { planRect } from './rect';
 import { planText } from './text';
+import { planMedia } from './media';
+
+const PLANNERS: Record<ItemKind, (item: BlueprintItem, ctx: RunContext) => Action[]> = {
+  rect: planRect,
+  text: planText,
+  media: planMedia,
+};
 
 export function planItem(item: BlueprintItem, ctx: RunContext): Action[] {
-  return item.kind === 'rect' ? planRect(item, ctx) : planText(item, ctx);
+  return PLANNERS[item.kind](item, ctx);
 }

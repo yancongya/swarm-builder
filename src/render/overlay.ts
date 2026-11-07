@@ -132,6 +132,56 @@ export class Overlay {
     return el;
   }
 
+  createMediaElement(item: BlueprintItem): HTMLElement {
+    const el = document.createElement('div');
+    el.className = 'sb-item sb-item--building sb-media';
+    el.style.left = `${item.x}px`;
+    el.style.top = `${item.y}px`;
+    el.style.width = '0px';
+    el.style.height = '0px';
+    el.style.overflow = 'hidden';
+    const media = item.media;
+    if (media) {
+      el.style.borderRadius = media.radius;
+      el.style.opacity = media.opacity;
+    }
+    this.append(el);
+    return el;
+  }
+
+  /** Fills a media placeholder with its frozen content once the box is drawn. */
+  static applyMedia(el: HTMLElement, item: BlueprintItem): void {
+    const media = item.media;
+    if (!media) return;
+    if (media.mode === 'fallback') {
+      el.classList.add('sb-media--fallback');
+      return;
+    }
+    el.classList.remove('sb-item--building');
+
+    let content: HTMLElement | Node | null = null;
+    if (media.mode === 'svg' && media.node) {
+      content = document.importNode(media.node, true);
+      const svg = content as SVGSVGElement;
+      svg.setAttribute('width', '100%');
+      svg.setAttribute('height', '100%');
+      (svg as unknown as HTMLElement).style.display = 'block';
+    } else {
+      const img = document.createElement('img');
+      img.src = media.mode === 'img' ? (media.src ?? '') : (media.dataUrl ?? '');
+      img.alt = '';
+      img.draggable = false;
+      img.decoding = 'async';
+      img.style.width = '100%';
+      img.style.height = '100%';
+      img.style.objectFit = media.fit === 'none' ? 'fill' : media.fit;
+      img.style.objectPosition = media.position;
+      img.style.display = 'block';
+      content = img;
+    }
+    if (content) el.appendChild(content);
+  }
+
   createCaret(height: number): HTMLElement {
     const el = document.createElement('div');
     el.className = 'sb-caret';

@@ -68,6 +68,7 @@
         <main class="viewport">
           <div class="hud">用户透视 · 实体 · 正交</div>
           <div class="cube"></div>
+          <canvas class="gl-view" width="160" height="110"></canvas>
         </main>
 
         <aside class="panel right props">
@@ -121,6 +122,34 @@
       </div>
     </div>
   </div>
+
+  <script>
+    (function paintGlView() {
+      const c = document.querySelector('.gl-view');
+      const g = c && c.getContext('2d');
+      if (!g) return;
+      g.fillStyle = '#2d3138';
+      g.fillRect(0, 0, c.width, c.height);
+      g.strokeStyle = '#5f6a7a';
+      g.lineWidth = 1;
+      for (let i = 1; i < 4; i++) {
+        g.beginPath();
+        g.moveTo(0, (c.height / 4) * i);
+        g.lineTo(c.width, (c.height / 4) * i);
+        g.stroke();
+      }
+      const grd = g.createLinearGradient(0, 0, c.width, c.height);
+      grd.addColorStop(0, '#7f8cf0');
+      grd.addColorStop(1, '#2bb6a6');
+      g.fillStyle = grd;
+      g.beginPath();
+      g.arc(c.width * 0.5, c.height * 0.45, 34, 0, Math.PI * 2);
+      g.fill();
+      g.fillStyle = '#e6e9ef';
+      g.font = '11px sans-serif';
+      g.fillText('viewport GL', 8, c.height - 8);
+    })();
+  </script>
 
   <script type="module" src="./main.ts"></script>
 </body>
