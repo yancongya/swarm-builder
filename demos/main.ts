@@ -16,6 +16,7 @@ const statusEl = document.querySelector<HTMLElement>('[data-status]');
 const agentsEl = document.querySelector<HTMLSelectElement>('[data-agents]');
 const speedEl = document.querySelector<HTMLSelectElement>('[data-speed]');
 const maxEl = document.querySelector<HTMLSelectElement>('[data-max]');
+const soundEl = document.querySelector<HTMLInputElement>('[data-sound]');
 
 let swarm: SwarmBuilder | null = null;
 let paused = false;
@@ -40,6 +41,7 @@ function replay(): void {
     agentCount: Number(agentsEl?.value ?? 6),
     speed: Number(speedEl?.value ?? 1),
     maxItems: Number(maxEl?.value ?? 400),
+    sound: soundEl?.checked ?? false,
     onProgress: (built, total) => say(`重建中 ${built}/${total}`),
     onComplete: (result) => {
       paused = false;

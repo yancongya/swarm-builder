@@ -55,6 +55,7 @@ class TypeAction implements Action {
         this.el.style.fontSize = `${Math.round(size * 10) / 10}px`;
       }
       this.placeCaret(ctx);
+      if (typed > 0) ctx.sound?.play('type');
     }
     const elapsed = progress * this.duration;
     const blinking = elapsed > this.duration - HOLD_MS;

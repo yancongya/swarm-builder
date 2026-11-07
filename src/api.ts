@@ -6,6 +6,7 @@ import { Engine } from './core/engine';
 import { Agent } from './core/agent';
 import { Scheduler } from './core/scheduler';
 import { snapshot } from './core/snapshot';
+import { SoundBus } from './core/sound';
 import { planItem } from './tasks/index';
 import { Overlay } from './render/overlay';
 import { CursorLayer } from './render/cursor_layer';
@@ -46,6 +47,7 @@ export class SwarmBuilder {
   private started = false;
   private finished = false;
   private destroyed = false;
+  private sound: SoundBus | null = null;
 
   constructor(private readonly options: SwarmBuilderOptions = {}) {
     this.opts = normalizeOptions(options);
@@ -73,6 +75,8 @@ export class SwarmBuilder {
     const scheduler = new Scheduler(blueprint, this.opts.agentCount);
     const engine = new Engine();
     engine.speed = this.opts.speed;
+    const sound = this.opts.sound ? new SoundBus() : null;
+    this.sound = sound;
 
     this.overlay = overlay;
     this.cursors = cursors;
@@ -95,7 +99,7 @@ export class SwarmBuilder {
       engine.add(new Agent(
         index,
         info,
-        { scheduler, overlay, cursors, opts: this.opts, blueprint, planner: planItem, onFinished: (agent) => engine.remove(agent) },
+        { scheduler, overlay, cursors, opts: this.opts, blueprint, sound, planner: planItem, onFinished: (agent) => engine.remove(agent) },
         startX,
         startY,
       ));
@@ -156,6 +160,8 @@ export class SwarmBuilder {
   destroy(): void {
     this.destroyed = true;
     this.engine?.stop();
+    this.sound?.dispose();
+    this.sound = null;
     this.cursors?.destroy();
     this.overlay?.destroy();
     this.engine = null;

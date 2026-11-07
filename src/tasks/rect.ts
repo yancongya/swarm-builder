@@ -25,6 +25,10 @@ export class DragRectAction implements Action {
     this.duration = Math.max(90, Math.min(380, 90 + (item.width + item.height) * 0.22));
   }
 
+  begin(ctx: RunContext): void {
+    ctx.sound?.play('draw');
+  }
+
   tick(progress: number, ctx: RunContext): void {
     const eased = easeInOutCubic(progress);
     const { item } = this;

@@ -1,5 +1,6 @@
 import type { BlueprintItem } from './blueprint';
 import type { NormalizedOptions } from './config';
+import type { SoundBus } from './sound';
 import type { Overlay } from '../render/overlay';
 import type { CursorShape } from '../types';
 
@@ -15,6 +16,8 @@ export interface RunContext {
   opts: NormalizedOptions;
   overlay: Overlay;
   agent: AgentView;
+  /** Null unless the host asked for sound. */
+  sound: SoundBus | null;
   /** Look up an item the action has to materialise but was not scheduled for. */
   get(id: string): BlueprintItem | undefined;
   /** Count items as built without going through the agent that owns them. */

@@ -6,6 +6,7 @@ import type { Scheduler } from './scheduler';
 import type { CursorShape, AgentInfo } from '../types';
 import type { Overlay } from '../render/overlay';
 import type { CursorLayer } from '../render/cursor_layer';
+import type { SoundBus } from './sound';
 import { clamp } from './config';
 
 export interface AgentDeps {
@@ -14,6 +15,7 @@ export interface AgentDeps {
   cursors: CursorLayer;
   opts: NormalizedOptions;
   blueprint: Blueprint;
+  sound: SoundBus | null;
   planner: ActionPlanner;
   onFinished: (agent: Agent) => void;
 }
@@ -43,6 +45,7 @@ export class Agent implements AgentView, Tickable {
       opts: deps.opts,
       overlay: deps.overlay,
       agent: this,
+      sound: deps.sound,
       get: (id) => deps.blueprint.byId.get(id),
       markBuilt: (ids) => {
         for (const id of ids) this.deps.scheduler.markDone(id);

@@ -13,6 +13,7 @@ export interface NormalizedOptions {
   guides: boolean;
   maxGuides: number;
   grow: boolean;
+  sound: boolean;
   moveSpeed: number;
   typeInterval: number;
   fadeDuration: number;
@@ -30,6 +31,7 @@ export function normalizeOptions(options: SwarmBuilderOptions | undefined): Norm
     guides: options?.guides ?? true,
     maxGuides: Math.round(clamp(options?.maxGuides ?? 16, 0, 64)),
     grow: options?.grow ?? true,
+    sound: options?.sound ?? false,
     moveSpeed: 2200,
     typeInterval: 28,
     fadeDuration: 140,

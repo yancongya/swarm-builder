@@ -1,7 +1,7 @@
 # Swarm Builder 成熟库改造计划（Agent 交接文档）
 
 > 最后更新：2026-11-07  
-> 状态：**完整版批次 4（控制方法 + ignore 数组 + fixed/滚动坐标）已完成**（见 §13.4），验收 11 个场景全绿，下一步基础音效  
+> 状态：**完整版（批次 1–5）已完成，含默认关闭的合成音效**（见 §13.5），验收 12 个场景全绿，下一步高级版  
 > 目标：让其他 Agent 可直接接手推进
 
 ---
@@ -144,7 +144,7 @@
 - 尺寸徽章、灰盒占位、内容淡入
 - 动态光标数量（可选跟随滚动）
 - 速度细分（typingSpeed / drawSpeed）
-- 基础音效
+- 基础音效（已完成，见 §13.5）
 - `pause` / `resume` / `setSpeed` / `skip` / `destroy`（已完成，见 §13.4）
 - `ignore` 选择器，支持 string 与 string[]（已完成，见 §13.4）
 - fixed 定位与重建中滚动的坐标修正（已完成，见 §13.4）
@@ -447,10 +447,36 @@ A/B 脚本 `tools/ab.mjs <page>` 固定跑三档（关复制 / 只开复制 / �
 2. fixed 层依赖 `position: fixed` 真的相对视口。若 root 或其后代带 `transform / filter / will-change / contain`，浏览器会把 fixed 后代收进那个盒子，本层会跟着滚；这类页面需要宿主自己调整，尚未做探测补偿。
 3. 重建中滚动时，fixed 项的光标位置仍按文档坐标画（光标是瞬时装饰，不影响终态），没有把光标也搬进 fixed 层。
 
+### 13.5 完整版批次 5：基础音效（2026-11-07）
+
+`src/core/sound.ts` 只有一个 `SoundBus`：四种事件各自一段振荡器包络，不加载任何音频文件。
+
+| 事件 | 波形 | 频率走向 | 时长 | 峰值增益 | 同类最小间隔 |
+| --- | --- | --- | --- | --- | --- |
+| `type`（每敲一个字符） | square | 1500 → 950Hz | 35ms | 0.045 | 30ms |
+| `draw`（开始拖一个盒子） | triangle | 300 → 760Hz | 120ms | 0.08 | 70ms |
+| `stamp`（复制落位） | sine | 680 → 230Hz | 160ms | 0.12 | 60ms |
+| `guide`（画辅助线） | sine | 1180 → 1120Hz | 90ms | 0.06 | 60ms |
+
+- 触发点全部落在 action 的 `begin()` / 打字真正改变字符的那一帧：`DragRectAction.begin` → draw，`TypeAction.tick` → type，`StampRevealAction.begin` → stamp，`DrawGuideAction.begin` → guide。`RunContext` 多了一个 `sound: SoundBus | null`，任务层不需要知道有没有开。
+- **默认关闭**（§10 已锁的决策），并且 `AudioContext` 是第一次发声时才创建、不是构造时——浏览器把 context 数量算进自动播放策略，绝大多数宿主根本不开音效，不该替他们留一个。`destroy()` 里 `close()`。
+- 限流用 `performance.now()` 而不是 `ctx.currentTime`：context 被自动播放策略挂起时 `currentTime` 不走，用它会「只响第一声」。这是写代码时踩到、当场改掉的一个真问题。
+- 每个 `type` 事件带 ±70 音分随机 detune，六个光标同时打字才不会糊成一条平音。
+
+验收新增第 12 个场景 `sound @1280`：headless 里听不见声音，所以改为在页面里替换 `AudioContext` 与 `createOscillator` 来数节点，并读回 context 的真实状态。
+
+| 配置 | AudioContext | 发声次数 | context 状态 | 时钟 |
+| --- | --- | --- | --- | --- |
+| `sound` 未传（默认） | 0 | 0 | — | — |
+| `sound: true`，simple @4x | 1 | 25 | running | 1.06s |
+
+`state === 'running'` 且 `currentTime` 推进到 1.06s，说明图真的在渲染（headless 没有扬声器，这一步能证到的就是「有信号在跑」，音色好不好听仍需人耳）。12/12 场景全绿。
+
+构建产物 es 39.44 kB（gzip 11.97）/ iife 32.01 kB（gzip 10.76）。
+
 下一步优先级：
 
-1. 基础音效（默认关闭）。
-2. 高级版：Flocking、Tour、performanceMode、`targetDuration`、主题适配、README/API 文档。
+1. 高级版：Flocking、Tour、performanceMode、`targetDuration`、主题适配、README/API 文档。
 
 
 ---

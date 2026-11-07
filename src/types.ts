@@ -27,6 +27,8 @@ export interface SwarmBuilderOptions {
   maxGuides?: number;
   /** Headings grow to their real size while being typed. Default true. */
   grow?: boolean;
+  /** Synthesised typing and drag clicks. Default false: sound needs a user gesture. */
+  sound?: boolean;
   /** Start on the next frame instead of waiting for start(). */
   autoStart?: boolean;
   onStart?: (agents: AgentInfo[]) => void;

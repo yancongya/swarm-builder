@@ -56,6 +56,7 @@ class StampRevealAction implements Action {
   ) {}
 
   begin(ctx: RunContext): void {
+    ctx.sound?.play('stamp');
     this.revealed = [];
     for (const id of this.dup.items) {
       const item = ctx.get(id);

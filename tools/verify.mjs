@@ -323,6 +323,71 @@ for (const width of WIDTHS) {
   await ctx.close();
 }
 
+{
+  const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+  const page = await ctx.newPage();
+  const errors = [];
+  page.on('console', (msg) => msg.type() === 'error' && errors.push(msg.text()));
+  page.on('pageerror', (err) => errors.push(String(err)));
+  await page.goto(`${BASE}/demos/simple.html`, { waitUntil: 'load' });
+
+  // Count what the synthesiser creates instead of trying to hear it.
+  await page.evaluate(() => {
+    window.__audio = { contexts: 0, voices: 0 };
+    const Real = window.AudioContext;
+    window.AudioContext = class extends Real {
+      constructor(...args) {
+        super(...args);
+        window.__audio.contexts++;
+        window.__audio.last = this;
+      }
+    };
+    const create = Real.prototype.createOscillator;
+    Real.prototype.createOscillator = function () {
+      window.__audio.voices++;
+      return create.apply(this, arguments);
+    };
+  });
+
+  const runOnce = (sound) =>
+    page.evaluate((on) => {
+      document.querySelectorAll('.sb-overlay').forEach((el) => el.remove());
+      document.querySelectorAll('.sb-hidden').forEach((el) => el.classList.remove('sb-hidden'));
+      window.__audio.contexts = 0;
+      window.__audio.voices = 0;
+      return new Promise((resolve) => {
+        const swarm = new window.SwarmBuilder({
+          root: document.querySelector('#app'),
+          agentCount: 6,
+          speed: 4,
+          sound: on,
+          onComplete: () => resolve({
+            ...window.__audio,
+            state: window.__audio.last?.state ?? 'none',
+            clock: Math.round((window.__audio.last?.currentTime ?? 0) * 100) / 100,
+          }),
+        });
+        swarm.start();
+      });
+    }, sound);
+
+  const off = await runOnce(false);
+  const on = await runOnce(true);
+  const problems = [];
+  if (off.contexts !== 0) problems.push(`默认关闭时仍然建了 ${off.contexts} 个 AudioContext`);
+  if (on.contexts < 1) problems.push('开启音效后没有创建 AudioContext');
+  if (on.voices < 20) problems.push(`开启音效只发声 ${on.voices} 次，少于 20`);
+  if (on.state !== 'running') problems.push(`AudioContext 状态是 ${on.state}，没有真正跑起来`);
+  if (on.clock <= 0) problems.push('AudioContext 时钟没有推进');
+  if (errors.length) problems.push(`控制台报错 ${errors.length} 条: ${errors[0]}`);
+
+  report('sound @1280', problems, [
+    `关闭: AudioContext=${off.contexts} 发声=${off.voices}`,
+    `开启: AudioContext=${on.contexts} 发声=${on.voices} · 状态=${on.state} · 时钟=${on.clock}s`,
+  ]);
+  await ctx.close();
+}
+
 await browser.close();
 console.log(`\n${failures === 0 ? '全部通过' : failures + ' 个场景有问题'} · 截图在 .shots/`);
 process.exit(failures === 0 ? 0 : 1);

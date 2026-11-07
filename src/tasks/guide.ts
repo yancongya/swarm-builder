@@ -23,7 +23,8 @@ class DrawGuideAction implements Action {
     private readonly el: HTMLElement,
   ) {}
 
-  begin(): void {
+  begin(ctx: RunContext): void {
+    ctx.sound?.play('guide');
     this.el.style.opacity = `${Overlay.GUIDE_OPACITY}`;
   }
 
