@@ -9,6 +9,7 @@ import { Scheduler } from './core/scheduler';
 import { snapshot } from './core/snapshot';
 import { SoundBus } from './core/sound';
 import { Flock } from './core/flocking';
+import { TourCam } from './core/tour';
 import { planItem } from './tasks/index';
 import { Overlay } from './render/overlay';
 import { CursorLayer } from './render/cursor_layer';
@@ -91,6 +92,7 @@ export class SwarmBuilder {
     this.engine = engine;
 
     const infos: AgentInfo[] = [];
+    const agents: Agent[] = [];
     for (let index = 0; index < this.opts.agentCount; index++) {
       const info: AgentInfo = {
         id: index,
@@ -106,12 +108,23 @@ export class SwarmBuilder {
       const agent = new Agent(
         index,
         info,
-        { scheduler, overlay, cursors, opts: this.opts, blueprint, sound, flock, planner: planItem, onFinished: (agent) => engine.remove(agent) },
+        { scheduler, overlay, cursors, opts: this.opts, blueprint, sound, flock, planner: planItem, onFinished: (done) => { flock.remove(done); engine.remove(done); } },
         startX,
         startY,
       );
       engine.add(agent);
+      agents.push(agent);
       if (this.opts.flocking) flock.add(agent);
+    }
+
+    // The camera follows the cursors, so it leaves as soon as they do.
+    if (this.opts.tour) {
+      engine.add(new TourCam(
+        () => agents.filter((agent) => !agent.isFinished),
+        this.root,
+        () => scheduler.built >= scheduler.total,
+        (cam) => engine.remove(cam),
+      ));
     }
 
     if (this.options.onProgress) engine.add(new ProgressTicker(engine, scheduler, this.options.onProgress));

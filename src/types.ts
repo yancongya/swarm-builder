@@ -31,6 +31,8 @@ export interface SwarmBuilderOptions {
   sound?: boolean;
   /** Cursors steer around each other mid-flight. Default true. */
   flocking?: boolean;
+  /** Scrolls the page so the work stays in view. Default false: the host owns the scroll. */
+  tour?: boolean;
   /**
    * Seconds to stretch or squeeze the entrance to; 0 keeps the natural pace.
    * Overrides `speed` for the run, because the pace is now a fixed goal.

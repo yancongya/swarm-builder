@@ -57,6 +57,11 @@ export class Agent implements AgentView, Tickable {
     deps.cursors.setPosition(info.id, startX, startY);
   }
 
+  /** A finished cursor is hidden, so neither the camera nor its neighbours should count it. */
+  get isFinished(): boolean {
+    return this.finished;
+  }
+
   tick(dt: number): void {
     if (this.finished) return;
 

@@ -18,6 +18,11 @@ export class Flock {
     this.movers.push(mover);
   }
 
+  remove(mover: Mover): void {
+    const index = this.movers.indexOf(mover);
+    if (index >= 0) this.movers.splice(index, 1);
+  }
+
   offset(from: Mover): { x: number; y: number } {
     let x = 0;
     let y = 0;

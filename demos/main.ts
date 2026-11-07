@@ -19,6 +19,7 @@ const maxEl = document.querySelector<HTMLSelectElement>('[data-max]');
 const paceEl = document.querySelector<HTMLSelectElement>('[data-pace]');
 const soundEl = document.querySelector<HTMLInputElement>('[data-sound]');
 const flockEl = document.querySelector<HTMLInputElement>('[data-flock]');
+const tourEl = document.querySelector<HTMLInputElement>('[data-tour]');
 
 let swarm: SwarmBuilder | null = null;
 let paused = false;
@@ -46,6 +47,7 @@ function replay(): void {
     targetDuration: Number(paceEl?.value ?? 0),
     sound: soundEl?.checked ?? false,
     flocking: flockEl?.checked ?? true,
+    tour: tourEl?.checked ?? false,
     onProgress: (built, total) => say(`重建中 ${built}/${total}`),
     onComplete: (result) => {
       paused = false;

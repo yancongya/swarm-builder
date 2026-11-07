@@ -15,6 +15,7 @@ export interface NormalizedOptions {
   grow: boolean;
   sound: boolean;
   flocking: boolean;
+  tour: boolean;
   targetDuration: number;
   performanceMode: 'auto' | 'high' | 'low';
   moveSpeed: number;
@@ -36,6 +37,7 @@ export function normalizeOptions(options: SwarmBuilderOptions | undefined): Norm
     grow: options?.grow ?? true,
     sound: options?.sound ?? false,
     flocking: options?.flocking ?? true,
+    tour: options?.tour ?? false,
     targetDuration: clamp(options?.targetDuration ?? 0, 0, 120),
     performanceMode: options?.performanceMode ?? 'auto',
     moveSpeed: 2200,

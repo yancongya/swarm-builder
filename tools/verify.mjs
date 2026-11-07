@@ -564,6 +564,94 @@ for (const width of WIDTHS) {
   await ctx.close();
 }
 
+// ---------------------------------------------------------------------------
+// 高级版：Tour 自动滚动跟随
+// ---------------------------------------------------------------------------
+{
+  const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+  const page = await ctx.newPage();
+  const errors = [];
+  page.on('console', (msg) => msg.type() === 'error' && errors.push(msg.text()));
+  page.on('pageerror', (err) => errors.push(String(err)));
+  await page.goto(`${BASE}/demos/landing.html`, { waitUntil: 'load' });
+
+  const start = (tour) =>
+    page.evaluate((on) => {
+      document.querySelectorAll('.sb-overlay').forEach((el) => el.remove());
+      document.querySelectorAll('.sb-hidden').forEach((el) => el.classList.remove('sb-hidden'));
+      window.scrollTo(0, 0);
+      window.__t = { samples: 0, inView: 0, maxScroll: 0, done: null };
+      let running = true;
+      const probe = () => {
+        const overlay = document.querySelector('.sb-overlay');
+        if (overlay) {
+          const top = overlay.getBoundingClientRect().top;
+          const ys = [...document.querySelectorAll('.sb-cursor:not([hidden])')]
+            .map((el) => {
+              const m = /translate3d\(([-\d.]+)px, ([-\d.]+)px/.exec(el.style.transform);
+              return m ? Number(m[2]) : NaN;
+            })
+            .filter(Number.isFinite);
+          if (ys.length > 0) {
+            window.__t.samples++;
+            const mid = ys.reduce((a, b) => a + b, 0) / ys.length;
+            if (top + mid > 0 && top + mid < window.innerHeight) window.__t.inView++;
+          }
+          window.__t.maxScroll = Math.max(window.__t.maxScroll, window.scrollY);
+        }
+        if (running) setTimeout(probe, 120);
+      };
+      setTimeout(probe, 0);
+      new window.SwarmBuilder({
+        root: document.querySelector('#app'),
+        agentCount: 6,
+        speed: 2,
+        tour: on,
+        onComplete: (result) => {
+          // The camera hands the page back with a smooth scroll, so read the
+          // resting position only once it has settled.
+          setTimeout(() => {
+            running = false;
+            window.__t.done = {
+              built: result.built,
+              maxScroll: window.__t.maxScroll,
+              finalScroll: Math.round(window.scrollY),
+            };
+          }, 1200);
+        },
+      }).start();
+    }, tour);
+
+  const read = () => page.evaluate(() => window.__t.samples + '|' + window.__t.inView + '|' + JSON.stringify(window.__t.done));
+
+  await start(false);
+  await page.waitForFunction(() => window.__t.done !== null, null, { timeout: 30000 });
+  const off = JSON.parse((await read()).split('|')[2]);
+  const offRatio = await page.evaluate(() => window.__t.inView / Math.max(1, window.__t.samples));
+
+  await start(true);
+  await page.waitForTimeout(1400);
+  await page.screenshot({ path: `${OUT}tour-mid.png` });
+  await page.waitForFunction(() => window.__t.done !== null, null, { timeout: 30000 });
+  const on = JSON.parse((await read()).split('|')[2]);
+  const onRatio = await page.evaluate(() => window.__t.inView / Math.max(1, window.__t.samples));
+
+  const problems = [];
+  if (off.built !== on.built) problems.push(`跟随滚动改变了建成数：${off.built} → ${on.built}`);
+  if (off.maxScroll !== 0) problems.push(`默认关闭时页面被滚动了 ${off.maxScroll}px`);
+  if (on.maxScroll < 300) problems.push(`跟随滚动只滚到 ${on.maxScroll}px，镜头没跟上`);
+  if (onRatio < 0.8) problems.push(`镜头跟随时光标只有 ${(onRatio * 100).toFixed(0)}% 时间在视口内`);
+  if (onRatio <= offRatio) problems.push(`视口内占比没有提高：${(offRatio * 100).toFixed(0)}% → ${(onRatio * 100).toFixed(0)}%`);
+  if (on.finalScroll > 120) problems.push(`结束后没有回到页首，scrollY=${on.finalScroll}`);
+  if (errors.length) problems.push(`控制台报错 ${errors.length} 条: ${errors[0]}`);
+
+  report('tour @1280', problems, [
+    `关闭: 最大滚动 ${off.maxScroll}px · 光标在视口 ${(offRatio * 100).toFixed(0)}% · 建成 ${off.built}`,
+    `开启: 最大滚动 ${on.maxScroll}px · 光标在视口 ${(onRatio * 100).toFixed(0)}% · 建成 ${on.built} · 结束回到 ${on.finalScroll}px`,
+  ]);
+  await ctx.close();
+}
+
 await browser.close();
 console.log(`\n${failures === 0 ? '全部通过' : failures + ' 个场景有问题'} · 截图在 .shots/`);
 process.exit(failures === 0 ? 0 : 1);
