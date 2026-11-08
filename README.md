@@ -293,7 +293,7 @@ npm run verify:consumer  # 把 tarball 装进独立目录，按真实消费者�
 npm publish --dry-run    # 发布预检：跑完整 prepublishOnly，只打包不上传
 ```
 
-`demos/index.html` 是唯一的预览入口：一个 mockup 浏览器窗口，标签页切案例（简单页 / 密集控制台 / 深色落地页 / 复杂工作台），地址栏、前进后退、重新载入和底部状态栏都按真的浏览器样子画。案例页本身没有工具栏，参数只在案例 iframe 内的创造者模式面板里改——iframe 不是偷懒：镜头跟随读的是 `window.scrollY / innerHeight`，换成内联滚动容器会让相机跟着错误的视口走。`tune.html` 假装成「别人家的站点」，专门用来验证面板隔离。`swarm-builder-plan.md` 是交接文档：能力分级、每批实测数据、踩过的坑都在里面。
+`demos/index.html` 是唯一的预览入口：一个 mockup 浏览器窗口，标签页切案例（简单页 / 密集控制台 / 深色落地页 / 复杂工作台），地址栏、前进后退、重新载入和底部状态栏都按真的浏览器样子画。案例页本身没有工具栏，参数只在案例 iframe 内的创造者模式面板里改——iframe 不是偷懒：镜头跟随读的是 `window.scrollY / innerHeight`，换成内联滚动容器会让相机跟着错误的视口走。`tune.html` 假装成「别人家的站点」（满屏裸选择器 + 故意和面板撞名的类），专门用来验证面板隔离，现在也是窗口里的第五个标签。`swarm-builder-plan.md` 是交接文档：能力分级、每批实测数据、踩过的坑都在里面。
 
 `prepublishOnly` 串起 typecheck → build → verify → verify:consumer，任何一环红了都发不出去。消费端门禁会真的 `npm pack` + 安装，检查 ESM/CJS/两个 IIFE 全局形状、声明文件正例过反例拦、以及装完包之后页面里真跑一场。
 
