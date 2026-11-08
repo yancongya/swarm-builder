@@ -21,6 +21,7 @@ export interface NormalizedOptions {
   targetDuration: number;
   performanceMode: 'auto' | 'high' | 'low';
   order: BuildOrder;
+  balance: boolean;
   seed: number;
   moveSpeed: number;
   typeInterval: number;
@@ -46,6 +47,7 @@ export function normalizeOptions(options: SwarmBuilderOptions | undefined): Norm
     targetDuration: clamp(options?.targetDuration ?? 0, 0, 120),
     performanceMode: options?.performanceMode ?? 'auto',
     order: options?.order ?? 'group',
+    balance: options?.balance ?? false,
     seed: Math.round(clamp(options?.seed ?? 0, 0, 2 ** 31 - 1)),
     moveSpeed: 2200,
     typeInterval: 28,

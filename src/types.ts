@@ -6,7 +6,7 @@ export interface AgentInfo {
   color: string;
 }
 
-export type BuildOrder = 'group' | 'rows' | 'random';
+export type BuildOrder = 'group' | 'rows' | 'cols' | 'snake' | 'depth' | 'radial' | 'random';
 
 export interface SwarmBuilderOptions {
   /** Element whose subtree is rebuilt. Defaults to document.body. */
@@ -54,9 +54,28 @@ export interface SwarmBuilderOptions {
    * size — fastest, and the swarm spreads over the whole page at once.
    * 'rows' splits the page into one horizontal band per cursor and each cursor
    * sweeps downward, so a tall page visibly builds top to bottom (pairs with `tour`).
+   * 'cols' is 'rows' turned on its side: one vertical band per cursor, the page
+   * fills left to right. It needs a page that is actually wider than one column —
+   * a single-column page degenerates to one busy cursor, so bands fall back to
+   * 'rows' when the content does not spread across the viewport.
+   * 'snake' keeps the 'rows' bands and sweeps them alternately left-right,
+   * left-right, so a cursor never walks back across the page it just built.
+   * 'depth' builds by DOM depth: containers and headings first, then the leaves
+   * inside them, which reads as a skeleton getting filled in.
+   * 'radial' works outward from the centre of the page. Ancestors often sit in
+   * the outer band while their children sit in the inner one, so a cursor can
+   * claim a child whose parent is still pending — work stealing covers it, and
+   * the hole gets filled when the parent lands.
    * 'random' shuffles the queue with `seed`.
    */
   order?: BuildOrder;
+  /**
+   * Cut the page into bands/subtrees of equal *estimated work* instead of equal
+   * item counts, so the cursors finish at roughly the same time rather than one
+   * of them still typing while five sit idle. Off by default; it stacks on top of
+   * any order and does not change which direction the page is swept in.
+   */
+  balance?: boolean;
   /**
    * Seed for `order: 'random'`. 0 (default) draws a fresh sequence every run;
    * any other value makes that run reproducible.

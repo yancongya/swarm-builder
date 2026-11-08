@@ -9,6 +9,7 @@ export const DEFAULT_CONFIG: Required<PlainConfig> = {
   targetDuration: 0,
   performanceMode: 'auto',
   order: 'group',
+  balance: false,
   seed: 0,
   ignore: [],
   maxItems: 400,

@@ -1,7 +1,7 @@
 # Swarm Builder 成熟库改造计划（Agent 交接文档）
 
 > 最后更新：2026-11-08  
-> 状态：**全部批次完成**——完整版（批次 1–5）+ 高级版 + 预览壳页与真实规模案例（§13.11）+ 发布护栏（§13.12）+ 调参面板（§13.13）+ 上架准备（§13.14）+ 预览统一进 mockup 浏览器与创造者模式收口（§13.15）+ 构建顺序与种子、密集页音效、长页面镜头（§13.16）+ 入口改名创造者模式与悬浮球（§13.17）+ 悬浮球贴边展开的视口钳制（§13.18），验收 20 个场景全绿、`npm publish --dry-run` 全链路通过；只差本人 npm 登录后正式发 0.1.0  
+> 状态：**全部批次完成**——完整版（批次 1–5）+ 高级版 + 预览壳页与真实规模案例（§13.11）+ 发布护栏（§13.12）+ 调参面板（§13.13）+ 上架准备（§13.14）+ 预览统一进 mockup 浏览器与创造者模式收口（§13.15）+ 构建顺序与种子、密集页音效、长页面镜头（§13.16）+ 入口改名创造者模式与悬浮球（§13.17）+ 悬浮球贴边展开的视口钳制（§13.18）+ 五种分布顺序与等工时切带（§13.19，参数面 18 项），验收 21 个场景全绿、`npm publish --dry-run` 全链路通过；只差本人 npm 登录后正式发 0.1.0  
 > 目标：让其他 Agent 可直接接手推进
 
 ---
@@ -194,7 +194,7 @@
 
 > 落地时改名或砍掉的项都标在下面，避免下一个 Agent 按旧名字找。
 
-配置：`root`、`agentCount`、`speed`、`targetDuration`、`performanceMode`、`ignore`（string|string[]）、`maxItems`、`duplicate`、`maxCopies`、`guides`、`maxGuides`、`grow`、`sound`、`flocking`、`tour`、`theme`、`autoStart`、`onStart` / `onProgress` / `onComplete`
+配置：`root`、`agentCount`、`speed`、`targetDuration`、`order`（§13.4/§13.19，七套认领算法）、`balance`（§13.19，等工时切带）、`seed`（§13.16）、`performanceMode`、`ignore`（string|string[]）、`maxItems`、`duplicate`、`maxCopies`、`guides`、`maxGuides`、`grow`、`sound`、`flocking`、`tour`、`theme`、`autoStart`、`onStart` / `onProgress` / `onComplete`
 方法：`start()`、`pause()` / `resume()` / `isPaused`、`setSpeed()`、`skip()`、`destroy()`，另有 `mount(options)` 一步开局
 创造者模式（独立子入口 `swarm-builder/tune`，§13.13 起、§13.17 换成悬浮球入口）：`tune(options)` / `SwarmTuner`，方法 `apply()` / `reset()` / `restore()` / `snippet()` / `copy()` / `open()` / `close()` / `destroy()`，只读口 `status` / `phase`（`idle|running|paused|done`）/ `expanded`；选项 `root`（元素或选择器）/ `initial` / `position` / `open`。收起态入口是一颗 46px 悬浮球（自绘 SVG 标记 + 球下「创造者模式」一行），轻点展开、按住可拖到视口任意位置
 
@@ -705,7 +705,7 @@ README 是对外唯一的 API 文档，`swarm-builder-plan.md` 退居交接文�
 
 **跑验收期间不要改 `src/`。** 门禁的 dev server 有文件监听，页面中途被整页重载，`[data-apply]` 那一局的进度直接归零，`waitPanelDone` 60s 超时报错——现象长得像功能坏了，实际是测试被自己打断。要么先跑完再改，要么改完重跑。
 
-**更多构建顺序算法：方案已列给用户选，未实现。** 候选是竖带 `cols`（rows 的转置）、蛇形 `snake`（横带来回扫）、逐层 `depth`（按 DOM 深度，骨架先立起来）、径向 `radial` / `spiral`（由中心向外 / 由外向内）、权重配额 `balance`（让所有光标同时收工，可叠加在任意空间顺序上）。用户明确「等下给我方案选择」，所以这里只留决策入口，不预先写代码；选定后另起一节记录取舍与实测。
+**更多构建顺序算法：方案已列给用户选，用户答「这些都进行」，实现见 §13.19。** 候选是竖带 `cols`（rows 的转置）、蛇形 `snake`（横带来回扫）、逐层 `depth`（按 DOM 深度，骨架先立起来）、径向 `radial`（由中心向外）、权重配额 `balance`（让所有光标同时收工，可叠加在任意空间顺序上）。`spiral`（由外向内）没做：它和 `radial` 只是把带子倒过来，同一个开关的一个方向已经够，多一个选项多一次验收。
 
 ### 13.18 悬浮球贴边展开会把按钮顶出视口（2026-11-08）
 
@@ -716,6 +716,25 @@ README 是对外唯一的 API 文档，`swarm-builder-plan.md` 退居交接文�
 **门禁加了一条正向断言**（不是把坐标改回去绕开它）：拖到贴近下沿 → 轻点展开 → `[data-copy]` 的 `bottom ≤ innerHeight` 且 `right ≤ innerWidth`，实测 `拖球 657,58 → 836,208 · 展开后按钮底边 882 ≤ 视口 900`。同时把这条写进 README 与 CHANGELOG 的创造者模式条目，因为它属于「面板能在别人家页面上活下来」这一类承诺，和「位置写内联样式覆盖不动」是同一件事。
 
 **这一批之后 20 个场景全绿**（`npm run verify` exit=0），消费端冒烟 `npm run verify:consumer` 也 PASS（包内 11/11 关键文件、ESM/CJS/tune 双入口、类型正反例、script 标签全局形状、创造者模式全局入口、真实页面 0 报错）。
+
+### 13.19 五种分布顺序 + 等工时切带（2026-11-08）
+
+用户对 §13.17 的方案回答「这些都进行」，于是 A `cols` / B `snake` / C `depth` / D `radial` / E `balance` 全做。`spiral`（由外向内）没做：它和 `radial` 只差把带子倒过来读，多一个选项多一套验收，不值。
+
+**三个只有量出来才会发现的问题**，都是临时探针直接读 `Scheduler.agentQueues` 抓到的，不是看画面看出来的——画面在有 work stealing 的情况下会把分发错误遮掉：
+
+1. **`cols` 的沟检测一开始在所有演示页上都是 1 块**，也就是永远退回横带。原因是页头、通栏容器这类 `width == 页宽` 的元素横跨左右两栏，它们一参与 x 区间合并，任何页面都会被压成一块。改法是统计沟之前先扔掉 `width > 页宽 60%` 的元素。改完 `dark-ui` 认出 4 块并真的按 x 切带（带间在 x 上不重叠），其余四页仍是 1 块、仍退回横带——单栏页按 x 切只是把同一行劈成两半，画面更乱。
+2. **`snake` 第一版只 `reverse()` 奇数带，等于把一串按 y 排的项倒过来念**：带内顺序继承自切带用的 `centerY`，压根没有左右方向可言，「首尾 x 差正负交替」这条断言当场失败。改法是带内先按 `centerX` 排（tie-break 回 centerY），再反转奇数带；实测长页面首尾 x 差 `-577 336 -577 336 -382 336`，密集页 `-1196 932 -937 906 -881 819`，交替且幅度是页宽级。
+3. **`balance` 第一版会让画面更不均匀**：按 `total/agentCount` 贪心收口，尾部 leftovers 全压进最后一条带，实测 landing rows `1.612→1.637`、simple rows `2.93→4.955`。换成 painters partition DP（最优连续划分，`splitPoints()`）之后一律变好：长页面 `1.959→1.102`、密集控制台 `1.252→1.034`、simple `2.93→1.123`、逐层在四张页面上 `3.14→1.13 / 1.90→1.08 / 2.82→1.20 / 9.68→1.23`。DP 的最优性顺带给了一个可断言的性质——等件数切带本身也是一种连续切带，所以 `spread(on) ≤ spread(off)` 恒成立，反过来一出现就是实现坏了。
+
+**为什么均衡必须发生在「切」那一步，而不是装箱那一步。** 第一版把 balance 只接到 `lighten()`（LPT 装箱）上，于是七个 order 的散布 off 和 on 一模一样：带的条数正好等于光标数时，装箱只能决定「哪条带给谁」，而每条带有多重是切的时候就定死的，重排是恒等置换。改完后 `bands()` 与 `layers()` 都吃 `cost`，`lighten()` 只在单元数多于光标数时（`group` / `random`）起作用。工时直接复用估算器的 `itemCost(item, opts, item.x, item.y)`——把自己当自己的起点，位移项归零，剩下的就是与起点无关的那部分成本；包一层导出成 `itemWeight()`，排程和 `targetDuration` 用的还是同一个成本模型，没有第二套价目表。
+
+**验收 `order-more @1280` 卡的是分发本身。** 观测点不是 DOM 出现顺序而是 `Scheduler.agentQueues`（纯函数，不受飞行时间和 work stealing 影响），逐条对上算法承诺：dark-ui 上 cols 的带在 x 上互不重叠且分布确实不同于 rows；长页面单栏无沟 → cols 的队列 id 序列与 rows 完全相同；snake 首尾 x 差正负交替；depth 每条队列的 `depth` 单调不减（骨架先于叶子）；radial 各队列到蓝图中心的半径中位数递增；balance 五空间顺序 × 两页全部 `on ≤ off` 且至少三组压平 >0.15。最后七种 order 在 simple 上各跑一遍真实施工，建成件数必须彼此相等（rows 那趟带着 balance），证明新分发没把谁卡死。
+
+**这一批之后 21 个场景全绿**（新增 `order-more @1280`），消费端冒烟照旧 PASS。实测：`竖列（dark-ui 70 件）按 x 切带互不重叠=true`、`蛇形 首尾 x 差 -577 336 -577 336 -382 336`、`逐层 6 条队列深度单调=6/6`、`工时均衡 长页面 rows 1.96→1.10 · depth 3.14→1.13 · 多栏页 cols 1.55→1.12`、`跑完性 group/rows/cols/snake/depth/radial/random 全部 22/22`。
+
+**顺手修掉一处会一直骗人的门禁常量。** `[simple|landing|dark-ui] @800` 报的是 `创造者模式面板只有 18 行参数`——断言写死了 17，而 §13.19 加了 `balance` 之后就是 18。这种过期常量只会用「失败」提醒人，改法是把期望值换成库自己给出的配置面：面板每行打上 `data-row-key`（控件那侧已经占了 `data-key`，`[data-key=…]` 若先命中 `<label>` 就会让 §13.13 那套写值 helper 全线静默失效，所以换了名字），门禁 `import('/src/tune/snippet.ts')` 取 `DEFAULT_CONFIG` 的键集，断言**每个配置键都有一行**、外加不滚动就看得全。以后再加参数，这条断言会在漏暴露的那一刻红，而不是在一个数字上红。
+
 
 ---
 

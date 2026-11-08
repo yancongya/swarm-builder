@@ -206,20 +206,28 @@ for (const width of WIDTHS) {
     }
 
     const done = finished
-      ? await page.evaluate(() => ({
-          status: document.querySelector('[data-sb-chrome]').shadowRoot.querySelector('[data-status]').textContent,
-          overlayGone: !document.querySelector('.sb-overlay'),
-          originalVisible: document.querySelectorAll('.sb-hidden').length === 0,
-          // 顶栏已经删干净：页面上不该再有 body > .bar，参数只在面板里改。
-          toolbar: document.querySelectorAll('body > .bar').length,
-          rows: document.querySelector('[data-sb-chrome]').shadowRoot.querySelectorAll('.row').length,
-          // 参数都暴露 = 15 行不用滚动就全看得见。
-          clipped: (() => {
-            const f = document.querySelector('[data-sb-chrome]').shadowRoot.querySelector('.fields');
-            return f.scrollHeight > f.clientHeight + 1;
-          })(),
-        }))
-      : { status: 'TIMEOUT', toolbar: 0, rows: 0, clipped: true };
+      ? await page.evaluate(async () => {
+          const { DEFAULT_CONFIG } = await import('/src/tune/snippet.ts');
+          const sr = document.querySelector('[data-sb-chrome]').shadowRoot;
+          const keys = [...sr.querySelectorAll('.row')].map((el) => el.dataset.rowKey);
+          return {
+            status: sr.querySelector('[data-status]').textContent,
+            overlayGone: !document.querySelector('.sb-overlay'),
+            originalVisible: document.querySelectorAll('.sb-hidden').length === 0,
+            // 顶栏已经删干净：页面上不该再有 body > .bar，参数只在面板里改。
+            toolbar: document.querySelectorAll('body > .bar').length,
+            rows: keys.length,
+            // 参数都暴露 = 配置面里的每一个键都有自己的一行。行数由库自己给出，
+            // 加参数时不必再回来改一个手写的数字（上一批就是这么过期的）。
+            missing: Object.keys(DEFAULT_CONFIG).filter((key) => !keys.includes(key)),
+            // 而且不用滚动就全看得见。
+            clipped: (() => {
+              const f = sr.querySelector('.fields');
+              return f.scrollHeight > f.clientHeight + 1;
+            })(),
+          };
+        })
+      : { status: 'TIMEOUT', toolbar: 0, rows: 0, missing: [], clipped: true };
 
     await page.screenshot({ path: `${OUT}${name}-${width}.png`, fullPage: false });
 
@@ -237,7 +245,7 @@ for (const width of WIDTHS) {
     const expectedGuides = EXPECTED_GUIDES[name] ?? 0;
     if (guides < expectedGuides) problems.push(`辅助线只画了 ${guides}/${expectedGuides} 条`);
     if (done.toolbar > 0) problems.push(`页面还留着 ${done.toolbar} 个顶栏工具条`);
-    if (done.rows !== 17) problems.push(`创造者模式面板只有 ${done.rows} 行参数`);
+    if (done.missing.length) problems.push(`配置面有 ${done.missing.length} 个参数在面板里没有行：${done.missing.join(', ')}`);
     if (done.clipped) problems.push('面板参数列表要滚动才看得全');
     if (errors.length) problems.push(`控制台报错 ${errors.length} 条: ${errors[0]}`);
 
@@ -1098,6 +1106,7 @@ for (const width of WIDTHS) {
     return {
       host: !!host,
       rows: sr?.querySelectorAll('.row').length ?? 0,
+      rowKeys: [...(sr?.querySelectorAll('.row') ?? [])].map((el) => el.dataset.rowKey),
       font: card ? getComputedStyle(card).fontFamily : '',
       cardBg: card ? getComputedStyle(card).backgroundColor : '',
       btnBorder: btn ? getComputedStyle(btn).borderTopWidth : '',
@@ -1117,8 +1126,15 @@ for (const width of WIDTHS) {
   await page.goto(`${BASE}/demos/tune.html`, { waitUntil: 'load' });
   await page.waitForTimeout(300);
   const problems = [];
+  // 期望的行数不写死：拿库自己的配置面（DEFAULT_CONFIG 的键）当尺子，
+  // 上一批那个 17 就是这么过期的——加了 balance 之后它是 18，报的却是「面板没建起来」。
+  const configKeys = await page.evaluate(async () => {
+    const { DEFAULT_CONFIG } = await import('/src/tune/snippet.ts');
+    return Object.keys(DEFAULT_CONFIG);
+  });
   const first = await panelState();
-  if (!first.host || first.rows !== 17) problems.push(`面板没建起来：${JSON.stringify(first)}`);
+  const missingRows = configKeys.filter((key) => !first.rowKeys.includes(key));
+  if (!first.host || missingRows.length) problems.push(`面板没建起来 / 参数行对不上配置面：host=${first.host} 行数=${first.rows} 缺行=${missingRows.join(',') || '无'}`);
   // 宿主页用 * { font-family: Georgia } 和 button{border:3px double} 故意撞面板。
   if (/Georgia/i.test(first.font)) problems.push(`宿主字体渗进面板：${first.font}`);
   // 断言的是「不等于宿主 .card 的底色」，不是「等于库自己的底色」——后者会把面板配色
@@ -1473,7 +1489,147 @@ for (const width of WIDTHS) {
 }
 
 // ---------------------------------------------------------------------------
-// 长页面 + 镜头跟随：这一页约 3300px，窗口只有 900px 高，
+// 另外四种分布顺序（竖列 / 蛇形 / 逐层 / 由内向外）+ 工时均衡。
+// 这里卡的是「排程发出去的那份队列」本身：它是纯函数，不受飞行时间和 work
+// stealing 影响，所以能逐条对上算法的承诺。画面层的观测交给 order-seed 和跑完性。
+//   cols   —— 先看这页有没有真的沟：dark-ui 有 4 块，按 x 切且带间不重叠；
+//             tall 是单栏，必须退回按 y 切（切出来的队列和 rows 一模一样）。
+//   snake  —— 每条带内部改按 x 排，奇数带反着走：首尾 x 差正负交替。
+//   depth  —— 每个光标的队列里 DOM 深度只增不减：先骨架后叶子。
+//   radial —— 按到蓝图中心的距离切带，队列的半径中位数递增。
+//   balance —— 等工时切带用的是 painters partition DP，最优连续切分，
+//              「等件数」也是连续切分的一种，所以开了只会更平不会更差。
+// ---------------------------------------------------------------------------
+{
+  const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+  const page = await ctx.newPage();
+  const errors = [];
+  page.on('console', (msg) => msg.type() === 'error' && errors.push(msg.text()));
+  page.on('pageerror', (err) => errors.push(String(err)));
+
+  const dist = (url, maxItems) => page.goto(url, { waitUntil: 'load' })
+    .then(() => page.evaluate(() => Promise.all([...document.images].map((i) => i.decode().catch(() => null)))))
+    .then(() => page.evaluate(async (limit) => {
+      const { snapshot } = await import('/src/core/snapshot.ts');
+      const { normalizeOptions } = await import('/src/core/config.ts');
+      const { Scheduler } = await import('/src/core/scheduler.ts');
+      const { itemWeight } = await import('/src/core/estimate.ts');
+      const cx = (i) => i.x + i.width / 2;
+      const cy = (i) => i.y + i.height / 2;
+      const base = normalizeOptions({ maxItems: limit, agentCount: 6 });
+      const bp = snapshot(document.querySelector('#app'), base);
+      const sched = (order, balance) => {
+        const opts = normalizeOptions({ maxItems: limit, agentCount: 6, order, balance });
+        return [...new Scheduler(bp, {
+          agentCount: 6, order, seed: 7, balance, cost: (it) => itemWeight(it, opts),
+        }).agentQueues.map((q) => q.slice())];
+      };
+      const ids = (queues) => queues.map((q) => q.map((it) => it.id).join(',')).join('|');
+      const med = (q, key) => q.map(key).sort((a, b) => a - b)[Math.floor(q.length / 2)] ?? 0;
+      const asc = (xs) => xs.every((v, i) => i === 0 || v > xs[i - 1]);
+      // 相邻两带在某个轴上不许重叠：max(带 i) <= min(带 i+1)
+      const contiguous = (queues, key) => queues.slice(0, -1).every(
+        (q, i) => Math.max(...q.map(key)) <= Math.min(...queues[i + 1].map(key)) + 0.5,
+      );
+      const spread = (queues, weight) => {
+        const loads = queues.map((q) => q.reduce((s, it) => s + weight(it), 0)).filter((v) => v > 0);
+        return Math.max(...loads) / Math.min(...loads);
+      };
+      const orders = ['rows', 'cols', 'snake', 'depth', 'radial'];
+      const out = { items: bp.items.filter((i) => !i.consumed).length, width: bp.width, orders: {}, balance: {}, snakeEnds: [], depthMonotone: [], radialAsc: false, colsLikeRows: false };
+      for (const order of orders) {
+        const queues = sched(order, false);
+        out.orders[order] = {
+          yAsc: asc(queues.map((q) => med(q, cy))),
+          xContiguous: contiguous(queues, cx),
+          yContiguous: contiguous(queues, cy),
+        };
+        const weight = (it) => itemWeight(it, normalizeOptions({ maxItems: limit, order }));
+        out.balance[order] = { off: spread(queues, weight), on: spread(sched(order, true), weight) };
+      }
+      out.snakeEnds = sched('snake', false).map((q) => cx(q[0]) - cx(q[q.length - 1]));
+      out.depthMonotone = sched('depth', false).map((q) => q.every((it, i) => i === 0 || it.depth >= q[i - 1].depth));
+      const rings = sched('radial', false);
+      out.radialAsc = asc(rings.map((q) => med(q, (it) => Math.hypot(cx(it) - bp.width / 2, cy(it) - bp.height / 2))));
+      out.colsLikeRows = ids(sched('cols', false)) === ids(sched('rows', false));
+      return out;
+    }, maxItems));
+
+  const problems = [];
+
+  // 多栏页：dark-ui 有真的沟，竖列带必须按 x 分开互不重叠。
+  const wide = await dist(`${BASE}/demos/dark-ui.html`, 200);
+  if (wide.colsLikeRows) problems.push('dark-ui 明明有左右两栏，竖列却退回成了横带（沟检测没认出来）');
+  if (!wide.orders.cols.xContiguous) problems.push('竖列带之间在 x 上互相重叠：光标分的不是一个个区域');
+  if (!wide.orders.rows.yAsc) problems.push('多栏页上 rows 的横带中位数不再递增（cols 的改动串到了 rows）');
+
+  // 单栏页：没有沟就必须退回按 y 切，画面不能被竖着劈开。
+  const tall = await dist(`${BASE}/demos/tall.html`, 400);
+  if (!tall.colsLikeRows) problems.push('长页面是单栏，竖列没有退回成自上而下');
+  if (!tall.orders.cols.yContiguous) problems.push('长页面退回横带后带间仍然重叠');
+
+  // 蛇形：带内按 x 排，奇数带反走 → 首尾 x 差正负交替
+  const flips = tall.snakeEnds.map((v) => (v > 0 ? 1 : -1));
+  const alternates = flips.every((v, i) => i === 0 || v !== flips[i - 1]);
+  if (!alternates) problems.push(`蛇形没有左右交替：首尾 x 差 ${tall.snakeEnds.map(Math.round).join(' ')}`);
+
+  // 逐层：每个光标的队列里深度只增不减
+  if (!tall.depthMonotone.every(Boolean)) problems.push('逐层顺序里存在某条队列先盖叶子再盖容器');
+
+  // 由内向外：半径中位数一条比一条远
+  if (!tall.radialAsc) problems.push('由内向外不是从中心一圈圈往外盖：各队列半径中位数没有递增');
+
+  // 均衡：DP 是最优连续切分，开了 balance 的散布不许比不开更差
+  const spreadOf = (page, order) => [page.balance[order].off, page.balance[order].on];
+  const wins = [];
+  for (const [name, dist2] of [['长页面', tall], ['多栏页', wide]]) {
+    for (const order of ['rows', 'cols', 'snake', 'depth', 'radial']) {
+      const [off, on] = spreadOf(dist2, order);
+      if (on > off + 1e-6) problems.push(`${name} ${order}：开了工时均衡反而更 uneven（${off.toFixed(3)} → ${on.toFixed(3)}）`);
+      if (off - on > 0.15) wins.push(`${name} ${order} ${off.toFixed(2)}→${on.toFixed(2)}`);
+    }
+  }
+  if (wins.length < 3) problems.push(`工时均衡在两张页面上只压平了 ${wins.length} 组散布，可能压根没起作用`);
+
+  // 跑完性：七种顺序都得把整页盖完，而且盖掉的件数一模一样（新算法只在分发上动刀）
+  await page.goto(`${BASE}/demos/simple.html`, { waitUntil: 'load' });
+  const built = {};
+  for (const order of ['group', 'rows', 'cols', 'snake', 'depth', 'radial', 'random']) {
+    built[order] = await page.evaluate((o) => {
+      document.querySelectorAll('.sb-overlay').forEach((el) => el.remove());
+      document.querySelectorAll('.sb-hidden').forEach((el) => el.classList.remove('sb-hidden'));
+      return new Promise((resolve) => {
+        new window.SwarmBuilder({
+          root: document.querySelector('#app'),
+          agentCount: 6,
+          speed: 6,
+          order: o,
+          balance: o === 'rows',
+          tour: false,
+          onComplete: (r) => resolve(r.built),
+        }).start();
+      });
+    }, order);
+  }
+  const counts = Object.values(built);
+  if (counts.some((v) => v !== counts[0])) {
+    problems.push(`七种顺序建成的件数不一致：${Object.entries(built).map(([k, v]) => `${k}=${v}`).join(' ')}`);
+  }
+  if ((counts[0] ?? 0) < 10) problems.push(`简单页只建成 ${counts[0]} 项，跑完性判定不成立`);
+  if (errors.length) problems.push(`控制台报错 ${errors.length} 条: ${errors[0]}`);
+
+  report('order-more @1280', problems, [
+    `竖列（dark-ui ${wide.items} 件）: 按 x 切带互不重叠=${wide.orders.cols.xContiguous} · 与横带分布不同=${!wide.colsLikeRows}`,
+    `竖列（长页面 ${tall.items} 件）: 单栏无沟 → 退回横带=${tall.colsLikeRows}`,
+    `蛇形: 首尾 x 差 ${tall.snakeEnds.map(Math.round).join(' ')} · 左右交替=${alternates}`,
+    `逐层: 6 条队列深度单调=${tall.depthMonotone.filter(Boolean).length}/6 · 骨架先于叶子`,
+    `由内向外: 各队列半径中位数递增=${tall.radialAsc}`,
+    `工时均衡: ${wins.join(' · ')}`,
+    `跑完性: ${Object.entries(built).map(([k, v]) => k + '=' + v).join(' · ')}（rows 那趟带着 balance）`,
+  ]);
+  await ctx.close();
+}
+
 // 镜头必须自己往下滚跟着施工前沿，收尾再把页面交还页首。
 // ---------------------------------------------------------------------------
 {

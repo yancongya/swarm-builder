@@ -44,6 +44,15 @@ export function estimateRun(blueprint: Blueprint, opts: NormalizedOptions, queue
   return Math.round(longest * PACE_CALIBRATION);
 }
 
+/**
+ * The part of an item's cost that does not depend on where the cursor came
+ * from. Feeding this to the scheduler's bin packing is what `balance` is:
+ * estimated milliseconds per item, not item counts.
+ */
+export function itemWeight(item: BlueprintItem, opts: NormalizedOptions): number {
+  return itemCost(item, opts, item.x, item.y);
+}
+
 function itemCost(item: BlueprintItem, opts: NormalizedOptions, fromX: number, fromY: number): number {
   const targetX = item.dup && !item.consumed ? item.dup.from.x : item.x;
   const targetY = item.dup && !item.consumed ? item.dup.from.y : item.y;

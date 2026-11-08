@@ -2,7 +2,7 @@ import type { SwarmBuilderOptions, SwarmResult, AgentInfo } from './types';
 import type { Blueprint } from './core/blueprint';
 import type { Tickable } from './core/engine';
 import { normalizeOptions, applyPerformanceMode, clamp, SPEED_MIN, SPEED_MAX } from './core/config';
-import { estimateRun } from './core/estimate';
+import { estimateRun, itemWeight } from './core/estimate';
 import { Engine } from './core/engine';
 import { Agent } from './core/agent';
 import { Scheduler } from './core/scheduler';
@@ -84,6 +84,8 @@ export class SwarmBuilder {
       agentCount: this.opts.agentCount,
       order: this.opts.order,
       seed: this.opts.seed,
+      balance: this.opts.balance,
+      cost: (item) => itemWeight(item, this.opts),
     });
     const engine = new Engine();
     const flock = new Flock();

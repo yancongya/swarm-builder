@@ -21,8 +21,20 @@ const FIELDS: Field[] = [
   { key: 'agentCount', label: '光标数量', kind: 'range', min: 1, max: 24, step: 1, hint: '同时施工的光标数。越多越快，画面也越吵。' },
   {
     key: 'order', label: '构建顺序', kind: 'select',
-    hint: '子树并行：一栋楼交给一个光标，最快，但画面铺满整页。自上而下：每个光标认领一条横带，页面从头顶一层层盖到脚底。随机：打散认领顺序，配合种子可复现。',
-    choices: [['group', '子树并行'], ['rows', '自上而下'], ['random', '随机']],
+    hint: '光标怎么认领这一页。子树并行一栋楼一个人最快；自上而下每条横带一个光标；竖列与它转置；蛇形是横带来回扫；逐层先骨架后填肉；由内向外从页面中心扩散；随机打散认领顺序，配合种子可复现。',
+    choices: [
+      ['group', '子树并行'],
+      ['rows', '自上而下'],
+      ['cols', '竖列'],
+      ['snake', '蛇形层扫'],
+      ['depth', '逐层（骨架先行）'],
+      ['radial', '由内向外'],
+      ['random', '随机'],
+    ],
+  },
+  {
+    key: 'balance', label: '工时均衡', kind: 'check',
+    hint: '默认按「件数」把页面切成等大的带，密集的那条带就会比稀疏的厚一倍。打开后改成按预估工时切等分，几个光标差不多同时收工，不会出现五个停下来等一个收尾。它只改带多长，不改朝哪个方向扫。',
   },
   {
     key: 'seed', label: '随机种子', kind: 'number', min: 0, max: 2147483647, step: 1,
@@ -307,6 +319,10 @@ export class Panel {
   private row(field: Field, config: PlainConfig, handlers: PanelHandlers): HTMLElement {
     const row = document.createElement('label');
     row.className = 'row';
+    // 行和参数键一一对上：验收要检查「配置面里的每个键都有一行」，没有这个标记
+    // 就只能靠一个手写的行数，加参数时必然忘记改。控件那侧用的是 data-key，
+    // 这里换个名字，免得 [data-key=…] 先选中行而不是输入框。
+    row.dataset.rowKey = field.key;
     row.dataset.tip = field.hint;
     const key = document.createElement('span');
     key.className = 'k';
