@@ -58,7 +58,8 @@ export class Overlay {
 
     const hidden: HTMLElement[] = [];
     for (const child of Array.from(root.children)) {
-      if (child === el) continue;
+      // Host chrome (a tuning panel, a persistent widget) stays up during the run.
+      if (child === el || child.hasAttribute('data-sb-chrome')) continue;
       const html = child as HTMLElement;
       html.classList.add(HIDDEN_CLASS);
       hidden.push(html);

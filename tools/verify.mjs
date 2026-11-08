@@ -793,6 +793,115 @@ for (const width of WIDTHS) {
   await ctx.close();
 }
 
+// ---------------------------------------------------------------------------
+// 场景 18：调参面板嵌进「别人家的站点」（shadow DOM 隔离 + 导出片段 + chrome 不被遮）
+// ---------------------------------------------------------------------------
+{
+  const ctx = await browser.newContext({
+    viewport: { width: 1280, height: 900 },
+    permissions: ['clipboard-read', 'clipboard-write'],
+  });
+  const page = await ctx.newPage();
+  const errors = [];
+  page.on('console', (msg) => msg.type() === 'error' && errors.push(msg.text()));
+  page.on('pageerror', (err) => errors.push(String(err)));
+
+  const panelState = () => page.evaluate(() => {
+    const host = document.querySelector('[data-sb-chrome]');
+    const sr = host?.shadowRoot;
+    const card = sr?.querySelector('.card');
+    const btn = sr?.querySelector('[data-apply]');
+    return {
+      host: !!host,
+      rows: sr?.querySelectorAll('.row').length ?? 0,
+      font: card ? getComputedStyle(card).fontFamily : '',
+      cardBg: card ? getComputedStyle(card).backgroundColor : '',
+      btnBorder: btn ? getComputedStyle(btn).borderTopWidth : '',
+      status: sr?.querySelector('[data-status]')?.textContent ?? '',
+      hidden: host?.classList.contains('sb-hidden') ?? true,
+      visibility: host ? getComputedStyle(host).visibility : '',
+      overlay: !!document.querySelector('.sb-overlay'),
+      items: document.querySelectorAll('.sb-item').length,
+    };
+  });
+  const waitPanelDone = (ms) => page.waitForFunction(
+    () => document.querySelector('[data-sb-chrome]')?.shadowRoot
+      ?.querySelector('[data-status]')?.textContent.startsWith('完成'),
+    { timeout: ms, polling: 200 },
+  );
+
+  await page.goto(`${BASE}/demos/tune.html`, { waitUntil: 'load' });
+  await page.waitForTimeout(300);
+  const problems = [];
+  const first = await panelState();
+  if (!first.host || first.rows !== 15) problems.push(`面板没建起来：${JSON.stringify(first)}`);
+  // 宿主页用 * { font-family: Georgia } 和 button{border:3px double} 故意撞面板。
+  if (/Georgia/i.test(first.font)) problems.push(`宿主字体渗进面板：${first.font}`);
+  if (first.cardBg !== 'rgb(20, 24, 33)') problems.push(`面板底色被宿主 .card 规则改掉：${first.cardBg}`);
+  if (first.btnBorder !== '1px') problems.push(`面板按钮被宿主 button 规则改成 ${first.btnBorder} 边框`);
+
+  await page.click('[data-apply]');
+  await page.waitForTimeout(900);
+  const mid = await panelState();
+  if (mid.hidden || mid.visibility !== 'visible') problems.push(`运行中面板被隔离层遮掉：${JSON.stringify(mid)}`);
+  if (!mid.overlay || mid.items === 0) problems.push(`面板触发的重建没跑起来：${JSON.stringify(mid)}`);
+  await page.screenshot({ path: `${OUT}tune-mid.png` });
+  await waitPanelDone(60000);
+  const done = await panelState();
+  if (!done.status.startsWith('完成') || done.overlay) problems.push(`面板这局没正常收尾：${JSON.stringify(done)}`);
+  const leftover = await page.evaluate(() => document.querySelectorAll('.sb-hidden').length);
+  if (leftover !== 0) problems.push(`结束后还有 ${leftover} 个元素带着 sb-hidden`);
+
+  await page.evaluate(() => {
+    const input = document.querySelector('[data-sb-chrome]').shadowRoot.querySelector('[data-key="agentCount"]');
+    input.value = '12';
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+  const snippet = await page.evaluate(() => window.__tuner.snippet());
+  if (!snippet.includes('agentCount: 12')) problems.push('导出片段没跟上面板改动');
+  if (!snippet.includes("document.querySelector('#site')")) problems.push('导出片段的 root 选择器不对');
+  if (snippet.includes('data-sb-chrome')) problems.push('导出片段把面板自己的 ignore 选择器带进了生产配置');
+  if (!snippet.includes('swarm.start();')) problems.push('导出片段不是可直接运行的代码');
+
+  await page.click('[data-copy]');
+  await page.waitForTimeout(200);
+  // Windows 剪贴板会把 \n 归一成 \r\n，比较前先还原。
+  const clip = (await page.evaluate(() => navigator.clipboard.readText())).replace(/\r\n/g, '\n');
+  if (clip !== snippet) problems.push('剪贴板内容和 snippet() 不一致');
+  await page.screenshot({ path: `${OUT}tune-panel.png` });
+
+  // root=body 时面板是 body 的子节点：既不能被遮，也不能被当成内容重建。
+  const bodyCase = await page.evaluate(async () => {
+    const { tune } = await import('/src/tune/index.ts');
+    const t = tune({ root: document.body, open: true, position: 'top-left' });
+    t.apply();
+    await new Promise((r) => setTimeout(r, 900));
+    const hosts = [...document.querySelectorAll('[data-sb-chrome]')];
+    const visible = hosts.every((h) => !h.classList.contains('sb-hidden') && getComputedStyle(h).visibility === 'visible');
+    // 面板钉在左上角，正文从 #site 左缘才开始：落在正文左缘以左的 item 只可能是
+    // 面板自己被重建了（真实内容的 item 不会越进这条左侧空栏）。
+    const gutter = document.querySelector('#site').getBoundingClientRect().left - 8;
+    const inPanelColumn = [...document.querySelectorAll('.sb-item')].filter((el) => {
+      const r = el.getBoundingClientRect();
+      return r.width > 0 && r.left < gutter;
+    }).length;
+    t.destroy();
+    return { visible, inPanelColumn, hostsLeft: document.querySelectorAll('[data-sb-chrome]').length };
+  });
+  if (!bodyCase.visible) problems.push('root=body 时面板被隔离层遮掉');
+  if (bodyCase.inPanelColumn !== 0) problems.push(`面板自己被重建了：${bodyCase.inPanelColumn} 个 item 落在面板所在的左栏`);
+  if (bodyCase.hostsLeft !== 1) problems.push(`destroy 后还剩 ${bodyCase.hostsLeft} 个面板宿主`);
+  if (errors.length) problems.push(`控制台报错 ${errors.length} 条: ${errors[0]}`);
+
+  report('tune-panel @1280', problems, [
+    `面板: ${first.rows} 行控件 · 字体 ${first.font.split(',')[0]} · 底色 ${first.cardBg}`,
+    `运行中: 面板可见=${!mid.hidden} · 途中元素=${mid.items} · ${done.status}`,
+    `导出: ${snippet.split('\n').length} 行 · 剪贴板一致=${clip === snippet}`,
+    `root=body: 面板可见=${bodyCase.visible} · 落在面板左栏的 item=${bodyCase.inPanelColumn}`,
+  ]);
+  await ctx.close();
+}
+
 await browser.close();
 console.log(`\n${failures === 0 ? '全部通过' : failures + ' 个场景有问题'} · 截图在 .shots/`);
 process.exit(failures === 0 ? 0 : 1);

@@ -1,7 +1,7 @@
 # Swarm Builder 成熟库改造计划（Agent 交接文档）
 
 > 最后更新：2026-11-08  
-> 状态：**全部批次完成**——完整版（批次 1–5）+ 高级版（定速、性能模式、Flocking、Tour、主题适配、README/API 文档）+ 预览壳页与真实规模案例（§13.11），验收 17 个场景全绿  
+> 状态：**全部批次完成**——完整版（批次 1–5）+ 高级版 + 预览壳页与真实规模案例（§13.11）+ 发布护栏（§13.12）+ 调参面板（§13.13），验收 18 个场景全绿  
 > 目标：让其他 Agent 可直接接手推进
 
 ---
@@ -196,6 +196,7 @@
 
 配置：`root`、`agentCount`、`speed`、`targetDuration`、`performanceMode`、`ignore`（string|string[]）、`maxItems`、`duplicate`、`maxCopies`、`guides`、`maxGuides`、`grow`、`sound`、`flocking`、`tour`、`theme`、`autoStart`、`onStart` / `onProgress` / `onComplete`
 方法：`start()`、`pause()` / `resume()` / `isPaused`、`setSpeed()`、`skip()`、`destroy()`，另有 `mount(options)` 一步开局
+调参面板（独立子入口 `swarm-builder/tune`，§13.13）：`tune(options)` / `SwarmTuner`，方法 `apply()` / `snippet()` / `copy()` / `open()` / `close()` / `destroy()`；选项 `root`（元素或选择器）/ `initial` / `position` / `open`
 
 - `followScroll` → **`tour`**（`scroll` 太容易被理解成「滚动行为开关」，它实际是镜头跟随 + 结束交还页首）
 - `showRulers` → **`guides`**（与 §3.4 的「拉辅助线并吸附」同名，只有一处拼写）
@@ -561,7 +562,7 @@ README 是对外唯一的 API 文档，`swarm-builder-plan.md` 退居交接文�
 
 终验：`tsc --noEmit` 干净，`npm run build` 出 es 43.89 kB（gzip 13.36）/ iife 35.60 kB（gzip 12.08），`node tools/verify.mjs` 16 个场景全绿（4 页 × 2 宽度 + controls / fixed-scroll / ignore[] / sound / pace-perf / flocking / tour / theme）。
 
-未决（需要人拍板，不是代码问题）：`package.json` 没有 `license` 字段。§10 锁的五项决策不含许可协议，而参考的 swarm-cursors 仓库本身没有授权，本仓库要公开发布就得先定自己的协议。
+许可协议已于 2026-11-08 拍板为 **MIT**（用户选定），落地见 §13.12；本条不再是未决项。
 
 ### 13.11 预览壳页 + 真实规模案例（2026-11-08）
 
@@ -593,10 +594,40 @@ README 是对外唯一的 API 文档，`swarm-builder-plan.md` 退居交接文�
 
 新增验收场景 `shell-case @1280`：壳页初始案例、切到密集案例的建成数与丢弃数、抬上限后建成数增加、定速 10s 的误差（±35%）、案例内 `.bar` 的计算样式必须是 `static`（就是上面那个 bug 的回归哨兵）、切回落地页后内容正确、控制台零报错。全量 17 个场景重跑（含 `.bar` 作用域改动对既有页面的影响）全绿。
 
+### 13.12 发布护栏：MIT + CJS + 消费端冒烟（2026-11-08）
+
+用户问「可以封装为 npm 库了吗」，实测答案是「ESM/TS/CDN/SSR-import 可以，CJS 不行，且没有许可与发布护栏」。本批把缺口全补：
+
+- **MIT**：`LICENSE`（© 2026 tycon）+ `package.json.license`。§13.10 的未决项就此关闭。
+- **CJS 入口**：`dist/swarm-builder.cjs`。包是 `"type": "module"`，CJS 产物若叫 `.js` 会被 Node 当 ESM 而 `require` 失败，所以后缀必须是 `.cjs`；`main` 与 `exports.require` 都指它。
+- **`exports` 双条件**：`types` / `import` / `require` 三条件齐全，`./tune` 子入口同构（§13.13）。
+- **`prepublishOnly`**：typecheck → build → verify → verify:consumer，任何一环红了发不出去。
+- **`tools/consumer.mjs`**：真的 `npm pack` 再把 tarball 装进独立的 `.consumer/`，检查关键文件在位、ESM/CJS 导入形状、tsc 正例过反例拦、起一个本地 http 服务让页面从 `node_modules` 引产物真跑一场（途中采样峰值 + 结束覆盖层清除 + 零控制台报错）。
+
+消费端门禁顺手抓到一处**文档错误**：README 的 CDN 示例写 `new SwarmBuilder(...)`，但 vite 的 IIFE `lib.name` 产出的是**命名空间对象**（`window.SwarmBuilder.SwarmBuilder` / `.mount`），照文档写第一行就抛。已把「IIFE 全局形状」做成消费端断言，并修正 README 为解构写法。`demos/cdn.html` 一直用的是正确的解构写法，错的只有文档。
+
+实测：tarball 106.0 kB / 解包 318.3 kB / 39 文件（含 `CHANGELOG.md`）；主产物 es 43.92 kB（gzip 13.38）/ cjs 35.60（12.07）/ iife 35.63（12.10）。
+
+### 13.13 调参面板（创造者模式）（2026-11-08）
+
+用户提议：在要改的 web 里加一个悬浮窗，现场改参数、应用，或一键复制给 agent。落地为**独立子入口** `swarm-builder/tune`（`src/tune/`：`index.ts` 编排、`panel.ts` shadow DOM 面板、`snippet.ts` 导出），第二个 vite 配置 `vite.tune.config.ts` 产出 es/cjs/iife。不进主包：生产构建不引它就零字节；产物**自带引擎**，所以无构建页面一个 script 标签就能开面板（tune iife 48.05 kB / gzip 17.18）。
+
+面板覆盖全部纯数据选项（15 行控件）+ 暂停/跳过/复制。导出的是**可粘贴代码**而非 JSON：只列与默认值不同的项、`root` 转成选择器、剥掉面板自己的 ignore；给人和给 agent 是同一份。剪贴板在非安全上下文不可用时回退为「片段留在面板里并自动选中」。
+
+两个实测踩出来的坑，都已做成回归断言：
+
+- **外层 document 规则优先于 `:host`，且继承属性会从 host 元素流进 shadow tree。** 宿主页一句 `* { font-family: Georgia }` 就把面板字体改掉了（`btn` 的边框/底色没被改，因为那些不是继承属性）。字体重置必须写在 shadow **内层节点**（`.card,.fab`）上，写 `:host` 无效。
+- **`root` 默认是 `body` 时面板是 body 的子节点，会被隔离层一起遮掉。** 新增 `data-sb-chrome` 标记：`Overlay.create` 跳过带标记的子节点（不遮），tuner 把它注入 `ignore`（不重建）。这个标记也留给宿主自己的常驻悬浮件。
+
+验收场景 `tune-panel @1280`（第 18 个）：15 行控件、字体/底色/按钮边框不被宿主串改、运行中面板可见、导出片段跟上面板改动且不含 chrome 选择器、剪贴板与 `snippet()` 一致、root=body 时面板可见且左栏无 item、destroy 后宿主清除、零控制台报错。
+
+两条**测试自身的 bug** 也记下来，免得下次再犯：Windows 剪贴板把 `\n` 归一成 `\r\n`，比较前要还原；用「item 与面板屏幕矩形相交」判断「面板被重建」是错的——真实正文本来就压在面板下面，改判「正文左缘以左的左栏里有没有 item」。
+
 
 下一步优先级：
 
-1. 全部计划内批次已完成；剩下的只有发布前的许可协议决策（§13.10）与真实页面上的肉眼验收（先在 `demos/index.html` 的密集控制台案例上开「跟随」看一遍）。
+1. 发布：`npm publish` 还差一个 npm 账号与 `repository.url`（仓库尚无远端）；护栏与产物已就绪。
+2. 真实页面上的肉眼验收：先在 `demos/index.html` 的密集控制台案例上开「跟随」看一遍，再用 `demos/tune.html` 的面板在真实站点上调一轮参。
 
 
 ---

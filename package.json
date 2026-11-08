@@ -2,23 +2,34 @@
   "name": "swarm-builder",
   "version": "0.1.0",
   "description": "Embeddable cursor-swarm page rebuild library",
+  "license": "MIT",
   "type": "module",
   "files": [
-    "dist"
+    "dist",
+    "CHANGELOG.md"
   ],
+  "main": "./dist/swarm-builder.cjs",
   "module": "./dist/swarm-builder.es.js",
   "types": "./dist/types/index.d.ts",
   "exports": {
     ".": {
       "types": "./dist/types/index.d.ts",
-      "import": "./dist/swarm-builder.es.js"
+      "import": "./dist/swarm-builder.es.js",
+      "require": "./dist/swarm-builder.cjs"
+    },
+    "./tune": {
+      "types": "./dist/types/tune/index.d.ts",
+      "import": "./dist/swarm-builder.tune.es.js",
+      "require": "./dist/swarm-builder.tune.cjs"
     }
   },
   "scripts": {
     "dev": "vite",
-    "build": "vite build && tsc -p tsconfig.build.json",
+    "build": "vite build && vite build --config vite.tune.config.ts && tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit",
-    "verify": "node tools/verify.mjs"
+    "verify": "node tools/verify.mjs",
+    "verify:consumer": "node tools/consumer.mjs",
+    "prepublishOnly": "npm run typecheck && npm run build && npm run verify && npm run verify:consumer"
   },
   "devDependencies": {
     "playwright": "^1.54.1",
