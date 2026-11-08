@@ -6,6 +6,8 @@ export interface AgentInfo {
   color: string;
 }
 
+export type BuildOrder = 'group' | 'rows' | 'random';
+
 export interface SwarmBuilderOptions {
   /** Element whose subtree is rebuilt. Defaults to document.body. */
   root?: HTMLElement;
@@ -41,10 +43,25 @@ export interface SwarmBuilderOptions {
    */
   targetDuration?: number;
   /**
-   * 'auto' (default) drops guides, heading grow, sound and most copies once the
-   * root holds 250+ elements; 'low' always trims; 'high' never does.
+   * 'auto' (default) drops guides, heading grow and most copies once the root
+   * holds 250+ elements; 'low' always trims; 'high' never does. Sound is not
+   * trimmed: it costs a handful of oscillators a second, not DOM work.
    */
   performanceMode?: 'auto' | 'high' | 'low';
+  /**
+   * Which order the cursors take the page in.
+   * 'group' (default) keeps a subtree on one cursor and balances the cursors by
+   * size — fastest, and the swarm spreads over the whole page at once.
+   * 'rows' splits the page into one horizontal band per cursor and each cursor
+   * sweeps downward, so a tall page visibly builds top to bottom (pairs with `tour`).
+   * 'random' shuffles the queue with `seed`.
+   */
+  order?: BuildOrder;
+  /**
+   * Seed for `order: 'random'`. 0 (default) draws a fresh sequence every run;
+   * any other value makes that run reproducible.
+   */
+  seed?: number;
   /** Start on the next frame instead of waiting for start(). */
   autoStart?: boolean;
   onStart?: (agents: AgentInfo[]) => void;
@@ -56,4 +73,9 @@ export interface SwarmResult {
   built: number;
   dropped: number;
   durationMs: number;
+  /**
+   * The seed the run shuffled with. Passing 0 means "draw one", so this is the
+   * only place that number can be read back — put it in `seed` to replay.
+   */
+  seed: number;
 }

@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="zh">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Swarm Builder · 长页面</title>
+  <link rel="stylesheet" href="./demo.css" />
+</head>
+<body data-demo="tall" data-swarm='{"agentCount":6,"speed":1.5,"tour":true,"order":"rows"}'>
+  <div id="app">
+    <div class="page-tall">
+      <header class="masthead">
+        <h1>长页面 · 镜头跟随</h1>
+        <p class="sub">这一页约 3300px 高，窗口只有半屏。构建顺序选「自上而下」，滚动跟着施工前沿走，看完一遍就知道镜头在跟谁。</p>
+      </header>
+
+      <section class="chapter">
+        <h2>01 · 采蓝图</h2>
+        <p>快照先遍历一次 DOM，把每个元素压成矩形、文本和样式三张图纸。它只读不写，所以页面此刻什么样，蓝图就什么样；后面的重建不会再回看原页面一眼。</p>
+        <div class="shots">
+          <figure>
+            <img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='360' height='200'%3E%3Crect width='360' height='200' fill='%23efe9dc'/%3E%3Crect x='24' y='24' width='140' height='96' rx='8' fill='%23f9f6ef' stroke='%23c9bfa8'/%3E%3Crect x='180' y='24' width='156' height='40' rx='6' fill='%23c9793c'/%3E%3Crect x='180' y='76' width='120' height='12' rx='6' fill='%23c9bfa8'/%3E%3Crect x='180' y='96' width='84' height='12' rx='6' fill='%23c9bfa8'/%3E%3Crect x='24' y='140' width='312' height='36' rx='8' fill='%23f9f6ef' stroke='%23c9bfa8'/%3E%3C/svg%3E" alt="蓝图示意图" />
+            <figcaption>每个元素压成一个带坐标的盒子</figcaption>
+          </figure>
+          <figure>
+            <img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='360' height='200'%3E%3Crect width='360' height='200' fill='%23e6e0d1'/%3E%3Cg fill='%23f9f6ef' stroke='%23c9bfa8'%3E%3Crect x='20' y='20' width='100' height='72' rx='8'/%3E%3Crect x='130' y='20' width='100' height='72' rx='8'/%3E%3Crect x='240' y='20' width='100' height='72' rx='8'/%3E%3Crect x='20' y='108' width='320' height='72' rx='8'/%3E%3C/g%3E%3Crect x='130' y='20' width='100' height='72' rx='8' fill='%238a9c5b' opacity='.35'/%3E%3C/svg%3E" alt="分组示意图" />
+            <figcaption>重复的兄弟节点归到同一组</figcaption>
+          </figure>
+        </div>
+        <ul class="notes">
+          <li>超过条目上限的部分计入「丢弃」，不会悄悄少做。</li>
+          <li>隐藏元素与零宽容器不进蓝图。</li>
+          <li>固定定位的元素单独记一层，滚动时不会漂。</li>
+        </ul>
+      </section>
+
+      <section class="chapter">
+        <h2>02 · 排工</h2>
+        <p>调度器决定谁做哪一块。子树并行最快，一个光标包一栋楼；自上而下则把页面切成横带，每个光标守一条带往下走。父盒子永远是子元素的依赖，所以顺序可以换，依赖不能破。</p>
+        <ul class="notes">
+          <li>「子树并行」：按根节点的子树分堆，大的先切小再摊平。</li>
+          <li>「自上而下」：按中心 y 排序后等分，光标 0 在最上面那条带。</li>
+          <li>「随机」：用种子洗牌，同一颗种子能重放同一场施工。</li>
+          <li>谁卡住了就去别人的队里拿一件能做的，不留空等的光标。</li>
+        </ul>
+      </section>
+
+      <section class="chapter">
+        <h2>03 · 画盒子</h2>
+        <p>光标飞过去，灰盒从左上角拉出尺寸，再补上边框、圆角和底色。这一段最容易露馅：如果盒子中途改位置，笔就画歪了，所以位置在起手那一刻就定死。</p>
+        <div class="shots">
+          <figure>
+            <img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='360' height='200'%3E%3Crect width='360' height='200' fill='%23efe9dc'/%3E%3Crect x='36' y='32' width='288' height='136' rx='10' fill='%23d8d2c4'/%3E%3Crect x='36' y='32' width='150' height='76' rx='10' fill='%23f9f6ef' stroke='%23c9793c' stroke-width='2'/%3E%3C/svg%3E" alt="盒子生长" />
+            <figcaption>灰盒一边拉一边定尺寸</figcaption>
+          </figure>
+          <figure>
+            <img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='360' height='200'%3E%3Crect width='360' height='200' fill='%23efe9dc'/%3E%3Crect x='36' y='32' width='288' height='136' rx='10' fill='%23f9f6ef' stroke='%23c9bfa8'/%3E%3Crect x='72' y='64' width='216' height='72' rx='8' fill='%23c9793c' opacity='.2'/%3E%3C/svg%3E" alt="补样式" />
+            <figcaption>再补上底色与圆角</figcaption>
+          </figure>
+        </div>
+      </section>
+
+      <section class="chapter">
+        <h2>04 · 打字</h2>
+        <p>文本不是淡入的，是一个字符一个字符敲出来的，光标带着插入点往前走。标题可以一边打字一边长到真实字号，这样大标题不会先缩成一小坨再突然撑开。</p>
+        <ul class="notes">
+          <li>行间距按真实字体度量算，不靠估。</li>
+          <li>标题步进可以在面板里关掉。</li>
+          <li>键盘声按秒限量，密集页面也不会变成噪音。</li>
+        </ul>
+      </section>
+
+      <section class="chapter">
+        <h2>05 · 盖章</h2>
+        <p>同一组重复内容只真做一个，其余按住 Option 拖出去复印。副本是一次淡入，不重画也不重打字——一百行列表里逐个打字，看着像坏了，不像在建。</p>
+        <div class="shots">
+          <figure>
+            <img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='360' height='200'%3E%3Crect width='360' height='200' fill='%23e6e0d1'/%3E%3Cg fill='%23f9f6ef' stroke='%23c9bfa8'%3E%3Crect x='28' y='28' width='140' height='64' rx='8'/%3E%3Crect x='192' y='28' width='140' height='64' rx='8' opacity='.45'/%3E%3Crect x='28' y='108' width='140' height='64' rx='8' opacity='.45'/%3E%3Crect x='192' y='108' width='140' height='64' rx='8' opacity='.45'/%3E%3C/g%3E%3C/svg%3E" alt="母版与副本" />
+            <figcaption>实心的是母版，半透明的是盖章出来的</figcaption>
+          </figure>
+        </div>
+      </section>
+
+      <section class="chapter">
+        <h2>06 · 辅助线</h2>
+        <p>三个以上元素对齐同一条线，就把那条线画出来，元素最后再吸附上去。它借的是排版本来就存在的网格，所以关掉以后页面还是那个页面，只是少了脚手架。</p>
+        <ul class="notes">
+          <li>密集页面自动少画，线条多了会糊成一张网。</li>
+          <li>线条颜色按页面底色挑，浅底用深墨、深底用浅墨。</li>
+        </ul>
+      </section>
+
+      <section class="chapter">
+        <h2>07 · 交还</h2>
+        <p>最后一帧，重建层淡出，真实页面回到原位。镜头在此之前一直跟着施工前沿跑，结束时把滚动交回页首——这一局做了什么，从头看一遍就知道了。</p>
+      </section>
+
+      <footer class="colophon">
+        <p>页面高度约 3300px · 视口约 700px · 镜头至少滚动 4 次才算跟上。</p>
+      </footer>
+    </div>
+  </div>
+
+  <script type="module" src="./creator.ts"></script>
+</body>
+</html>

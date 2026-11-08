@@ -10,7 +10,7 @@
 - 零运行时依赖，全场只有一个 `requestAnimationFrame` 时钟
 - 主产物 es 43.92 kB（gzip 13.38）/ iife 35.63 kB（gzip 12.10），样式由 JS 注入，单 script 可嵌入
 - 不改宿主 DOM 结构，只在 `root` 里加一个 overlay，结束时精确还原
-- 自带一个可嵌进任意页面的[调参面板](#调参面板创造者模式)，改完一键导出可粘贴配置
+- 自带一个可嵌进任意页面的[创造者模式](#创造者模式)：一颗悬浮球入口，改完一键导出可粘贴配置
 
 <details>
 <summary>目录</summary>
@@ -19,7 +19,7 @@
 - [安装](#安装)
 - [快速开始](#快速开始)
 - [四种引入方式](#四种引入方式)
-- [调参面板（创造者模式）](#调参面板创造者模式)
+- [创造者模式](#创造者模式)
 - [API](#api)
 - [节奏与性能](#节奏与性能)
 - [框架集成](#框架集成)
@@ -79,12 +79,13 @@ const swarm = new SwarmBuilder({
 swarm.start();
 ```
 
-**只作用于一个容器，长页面让镜头跟着施工。** 坐标全部相对 `root` 计算，容器有没有边框、页面滚到哪都不影响对齐：
+**只作用于一个容器，长页面让镜头跟着施工。** 坐标全部相对 `root` 计算，容器有没有边框、页面滚到哪都不影响对齐。默认的 `group` 会同时开工在整页各处，页面比视口高时看起来是「到处乱跳」——想要从头铺到尾，把顺序换成 `rows`：
 
 ```js
 new SwarmBuilder({
   root: document.querySelector('#dashboard'),
   tour: true,          // 滚动跟随施工前沿，结束交还页首
+  order: 'rows',       // 每个光标守一条横带，自上而下往下盖
   maxItems: 800,       // 长页面抬上限，超出的计入 dropped
 }).start();
 ```
@@ -111,9 +112,9 @@ window.addEventListener('pagehide', () => swarm.destroy());
 > [!CAUTION]
 > 包标了 `sideEffects: false`，样式是在**构造实例时**注入的。裸 `import 'swarm-builder'` 而不使用任何导出会被 tree-shake 掉，连带样式一起消失——要么真的 `new` 一个实例，要么别这么引。
 
-## 调参面板（创造者模式）
+## 创造者模式
 
-给「别人的网站」或自己的真实页面现场调参：一个悬浮面板，改完应用重跑，或一键复制成可粘贴的代码片段交给 agent。它是**独立子入口**，不进主包，生产构建不引它就一个字节都不加载。
+给「别人的网站」或自己的真实页面现场改参数：入口是一颗悬浮球，球面上是自绘的标记（石墨球体 + 铜色轨道与光标），轻点展开参数、按住就能挪位置；改完应用重跑，或一键复制成可粘贴的代码片段交给 agent。它是**独立子入口**，不进主包，生产构建不引它就一个字节都不加载。
 
 ```js
 import { tune } from 'swarm-builder/tune';
@@ -122,14 +123,14 @@ const tuner = tune({
   root: '#app',             // 元素或选择器；默认 document.body
   initial: { agentCount: 6, targetDuration: 8 },
   position: 'bottom-right', // 四个角可选，躲开宿主自己的悬浮件
-  open: true,               // 初始展开；默认收成一个小按钮
+  open: true,               // 初始展开；默认收成一颗悬浮球
 });
 
 tuner.apply();                // 用当前面板值重跑一局
 tuner.reset();                // 全部退回库默认值（不擅自重跑）
 tuner.restore();              // 停掉施工，把页面原样交还——跑中途也能按
 const code = tuner.snippet(); // 可粘贴代码，只列与默认值不同的项
-tuner.open();                 // 展开；tuner.close() 收成小按钮
+tuner.open();                 // 展开；tuner.close() 收成悬浮球
 console.log(tuner.status, tuner.phase, tuner.expanded); // 给宿主镜像成自己的状态栏
 tuner.destroy();
 ```
@@ -141,20 +142,21 @@ tuner.destroy();
 <script>SwarmBuilderTune.tune({ root: '#app', open: true });</script>
 ```
 
-面板把 15 个纯数据选项一行不落全铺开：光标数量、速度、目标时长、条目上限、复制盖章、每组复制、辅助线、辅助线数、标题步进、光标避让、镜头跟随、音效、施工线色、性能模式、跳过选择器。行高是按 800px 宽的宿主量出来的，默认不用滚动就能看全；宿主实在太矮才交给滚动条，那时滚动条也是可见的。
+面板把 17 个纯数据选项一行不落全铺开：光标数量、构建顺序、随机种子、速度、目标时长、条目上限、复制盖章、每组复制、辅助线、辅助线数、标题步进、光标避让、镜头跟随、音效、施工线色、性能模式、跳过选择器。默认尺寸是按 900px 高的宿主量出来的，17 行不用滚动就能看全；宿主太矮才交给滚动条，那时滚动条也是可见的——也可以按住表头把面板拖到别处，或拽右下角的把手把它拉大，位置和大小写在内联样式里，宿主页面的规则覆盖不动。收起以后剩下的那颗悬浮球同样能按住拖走，移动满 4px 才算拖，所以拖完松手不会顺手再展开一次；球拖到贴近屏幕边上时，展开的那一瞬间面板会按自己的真实尺寸把位置夹回视口里，底部的按钮永远点得到。
 
 面板与引擎的对应关系是照着「一局」建立的：
 
 - 状态行下面一条细进度条按 `built/total` 推进，跑完停在 100%；未触发时它是灰的。
-- 改过的行标成蓝色并带一个 `·`，下面一行写明「N 项待生效 · 点『应用并重跑』」；点过之后变成「已与正在跑的这一局一致」。
-- 有依赖的行会自动灰掉并说清原因：设了目标时长，速度倍率归估算器管，滑块就禁用，title 里写着「把目标时长改回 0 才能手调速度」；关掉复制盖章，每组复制同样灰掉。
+- 改过的行标成铜色并带一个 `·`，下面一行写明「N 项待生效 · 点『应用并重跑』」；点过之后变成「已与正在跑的这一局一致」。
+- 每一行、每一颗按钮、连同收起后的那颗球都有 hover 提示，提示气泡由面板自己画（原生 `title` 要等一秒、字号配色也不受控）：鼠标一停就出现，永远落在视口里，拖球的时候它会自己收起来，灰掉的行会把原因接在同一句话后面。
+- 有依赖的行会自动灰掉并说清原因：设了目标时长，速度倍率归估算器管，滑块就禁用，提示里写着「把目标时长改回 0 才能手调速度」；关掉复制盖章，每组复制同样灰掉；构建顺序不是「随机」，随机种子那一行也一样。
 - 暂停 / 跳过只在跑着的时候可点，结束或停掉后自动禁用；暂停按钮文字在「暂停 / 继续」之间切。
 - 底部三颗按钮各管一段：复制配置（剪贴板不可用时改成选中文本）、重置（回库默认值，不重跑）、恢复原状（`destroy()` 当前这局并把页面原样交还，跑中途可用）。
 
 导出的片段长这样：
 
 ```js
-// 由 swarm-builder 调参面板导出，只列出与默认值不同的选项。
+// 由 swarm-builder 创造者模式导出，只列出与默认值不同的选项。
 import { SwarmBuilder } from 'swarm-builder';
 
 const swarm = new SwarmBuilder({
@@ -179,7 +181,7 @@ swarm.start();
 | --- | --- | --- |
 | `SwarmBuilder` | `new (options?: SwarmBuilderOptions)` | 主类 |
 | `mount` | `(options?) => SwarmBuilder` | 建实例并立即 `start()` |
-| `tune` / `SwarmTuner` | 子入口 `swarm-builder/tune` | 调参面板，见上 |
+| `tune` / `SwarmTuner` | 子入口 `swarm-builder/tune` | 创造者模式，见上 |
 | 类型 | `SwarmBuilderOptions` `SwarmResult` `AgentInfo` `CursorShape` `PlainConfig` | 声明文件随包发布 |
 
 ### 选项（`SwarmBuilderOptions`）
@@ -190,7 +192,9 @@ swarm.start();
 | `agentCount` | `number` | `6` | 光标数量，1–24 |
 | `speed` | `number` | `1` | 全局时间倍率，0.25–8 |
 | `targetDuration` | `number` | `0` | 目标秒数，0–120。>0 时取代 `speed`，由估算器反推倍率 |
-| `performanceMode` | `'auto' \| 'high' \| 'low'` | `'auto'` | `auto` 在 `root` 内元素数 ≥250 时关辅助线、字号步进、音效并把复制压到 6；`low` 永远裁剪；`high` 永远不裁 |
+| `order` | `'group' \| 'rows' \| 'random'` | `'group'` | 光标怎么认领活儿：`group` 一棵子树一个人（最快，画面铺满整页）；`rows` 一个光标一条横带，页面自上而下盖下来（配 `tour` 最自然）；`random` 用 `seed` 洗牌 |
+| `seed` | `number` | `0` | 只在 `order: 'random'` 下参与排程。0 = 每局现抽一个新顺序；同一个数字 = 同一场施工可重放 |
+| `performanceMode` | `'auto' \| 'high' \| 'low'` | `'auto'` | `auto` 在 `root` 内元素数 ≥250 时关辅助线、字号步进并把复制压到 6；`low` 永远裁剪；`high` 永远不裁。音效不在裁剪名单里：它按秒限量发声、不产生 DOM 节点，砍掉只会让人以为选项坏了 |
 | `ignore` | `string \| string[]` | `[]` | 命中选择器的元素连同子树整块跳过 |
 | `maxItems` | `number` | `400` | 蓝图条目上限，1–5000，超出计入 `dropped` |
 | `duplicate` | `boolean` | `true` | 重复兄弟节点只真做一个，其余 Option 拖拽盖章 |
@@ -205,7 +209,9 @@ swarm.start();
 | `autoStart` | `boolean` | `false` | 下一帧自动开始，不用手动 `start()` |
 | `onStart` | `(agents: AgentInfo[]) => void` | — | 本局所有光标的 `{ id, name, color }` |
 | `onProgress` | `(built: number, total: number) => void` | — | 每建成一项回调一次 |
-| `onComplete` | `(result: SwarmResult) => void` | — | `{ built, dropped, durationMs }` |
+| `onComplete` | `(result: SwarmResult) => void` | — | `{ built, dropped, durationMs, seed }` |
+
+`SwarmResult.seed` 是本局**实际**用的种子。传 0 表示「现抽一个」，抽到几只有这里知道——看到一场想重看的，把它填回 `seed` 就能按同一套认领顺序重放。
 
 ### 方法
 
@@ -277,8 +283,9 @@ useEffect(() => {
 
 - `targetDuration` 定速进场、`performanceMode` 自动降级、`theme` 深浅色自适应
 - `tour` 镜头跟随、`fixed` 视口钉定层、重建中滚动的坐标修正
+- `order` 三套认领算法 + `seed` 可复现的随机排程（原版与轻量库都是固定顺序，看第二遍和第一遍一模一样）
 - `ignore` / `maxItems` + `dropped` 计数、`pause/resume/setSpeed/skip/destroy`
-- 完整 TypeScript 声明、三格式产物、消费端冒烟门禁、可嵌入的调参面板
+- 完整 TypeScript 声明、三格式产物、消费端冒烟门禁、可嵌入的创造者模式（悬浮球入口可拖拽、面板可缩放、每项都有 hover 提示）
 
 没做的也记下来：滚动时动态增减光标（`maxAgents/minAgents`）、`typingSpeed/drawSpeed` 细分倍率——前者要重排已发队列、后者会让暂停/跳过/定速互相打架，收益抵不上复杂度，理由见交接文档 §6。
 
@@ -288,12 +295,12 @@ useEffect(() => {
 npm run dev              # http://localhost:5199/demos/index.html
 npm run build            # 主包 es/cjs/iife + tune 子入口 + 声明文件
 npm run typecheck        # tsc --noEmit
-npm run verify           # Playwright 18 个验收场景，截图落在 .shots/
+npm run verify           # Playwright 20 个验收场景，截图落在 .shots/
 npm run verify:consumer  # 把 tarball 装进独立目录，按真实消费者入口各走一遍
 npm publish --dry-run    # 发布预检：跑完整 prepublishOnly，只打包不上传
 ```
 
-`demos/index.html` 是唯一的预览入口：一个 mockup 浏览器窗口，标签页切案例（简单页 / 密集控制台 / 深色落地页 / 复杂工作台），地址栏、前进后退、重新载入和底部状态栏都按真的浏览器样子画。案例页本身没有工具栏，参数只在案例 iframe 内的创造者模式面板里改——iframe 不是偷懒：镜头跟随读的是 `window.scrollY / innerHeight`，换成内联滚动容器会让相机跟着错误的视口走。`tune.html` 假装成「别人家的站点」（满屏裸选择器 + 故意和面板撞名的类），专门用来验证面板隔离，现在也是窗口里的第五个标签。`swarm-builder-plan.md` 是交接文档：能力分级、每批实测数据、踩过的坑都在里面。
+`demos/index.html` 是唯一的预览入口：一个铺满屏幕的 mockup 浏览器窗口，标签页切案例（简单页基准 / 密集控制台 / 深色落地页 / 复杂工作台 / 长页面跟随 / 别人的站点），地址栏、前进后退、重新载入和底部状态栏都按真的浏览器样子画。案例页本身没有工具栏，参数只在案例 iframe 内的创造者模式面板里改——iframe 不是偷懒：镜头跟随读的是 `window.scrollY / innerHeight`，换成内联滚动容器会让相机跟着错误的视口走。`tall.html` 专门做镜头跟随：实测页高 2767px、默认 `order: 'rows' + tour: true`，一眼能看出页面是一层层往下盖的。`tune.html` 假装成「别人家的站点」（满屏裸选择器 + 故意和面板撞名的类），专门用来验证面板隔离。`swarm-builder-plan.md` 是交接文档：能力分级、每批实测数据、踩过的坑都在里面。
 
 `prepublishOnly` 串起 typecheck → build → verify → verify:consumer，任何一环红了都发不出去。消费端门禁会真的 `npm pack` + 安装，检查 ESM/CJS/两个 IIFE 全局形状、声明文件正例过反例拦、以及装完包之后页面里真跑一场。
 

@@ -101,7 +101,7 @@ const fieldOf = (page, key) => page.evaluate(
       off: row?.dataset.off === 'true',
       disabled: !!el?.disabled,
       dirty: row?.dataset.dirty === 'true',
-      title: row?.title ?? '',
+      tip: row?.dataset.tip ?? '',
     };
   },
   key,
@@ -237,7 +237,7 @@ for (const width of WIDTHS) {
     const expectedGuides = EXPECTED_GUIDES[name] ?? 0;
     if (guides < expectedGuides) problems.push(`辅助线只画了 ${guides}/${expectedGuides} 条`);
     if (done.toolbar > 0) problems.push(`页面还留着 ${done.toolbar} 个顶栏工具条`);
-    if (done.rows !== 15) problems.push(`创造者模式面板只有 ${done.rows} 行参数`);
+    if (done.rows !== 17) problems.push(`创造者模式面板只有 ${done.rows} 行参数`);
     if (done.clipped) problems.push('面板参数列表要滚动才看得全');
     if (errors.length) problems.push(`控制台报错 ${errors.length} 条: ${errors[0]}`);
 
@@ -520,9 +520,46 @@ for (const width of WIDTHS) {
   if (on.clock <= 0) problems.push('AudioContext 时钟没有推进');
   if (errors.length) problems.push(`控制台报错 ${errors.length} 条: ${errors[0]}`);
 
+  // 密集页必须同样出声：auto 性能模式以前会顺手把 sound 关掉，于是「复杂网页没有音效」
+  // 看起来像音效坏了，其实是性能裁剪清单收错了对象。
+  const crowded = await (async () => {
+    const c2 = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+    const p2 = await c2.newPage();
+    p2.on('pageerror', (err) => errors.push(String(err)));
+    await p2.goto(`${BASE}/demos/console.html`, { waitUntil: 'load' });
+    await p2.evaluate(() => {
+      window.__audio = { contexts: 0, voices: 0 };
+      const Real = window.AudioContext;
+      window.AudioContext = class extends Real {
+        constructor(...args) { super(...args); window.__audio.contexts++; window.__audio.last = this; }
+      };
+      const create = Real.prototype.createOscillator;
+      Real.prototype.createOscillator = function () { window.__audio.voices++; return create.apply(this, arguments); };
+    });
+    const out = await p2
+      .evaluate(() =>
+        new Promise((resolve) => {
+          new window.SwarmBuilder({
+            root: document.querySelector('#app'),
+            agentCount: 6,
+            speed: 4,
+            maxItems: 400,
+            sound: true,
+            onComplete: () => resolve({ ...window.__audio, guides: window.__guides ?? -1 }),
+          }).start();
+        }),
+      )
+      .catch(() => ({ contexts: 0, voices: 0 }));
+    await c2.close();
+    return out;
+  })();
+  if (crowded.contexts < 1) problems.push(`密集页面没有创建 AudioContext（音效被性能模式吃掉了）`);
+  if (crowded.voices < 20) problems.push(`密集页面只发声 ${crowded.voices} 次，少于 20`);
+
   report('sound @1280', problems, [
     `关闭: AudioContext=${off.contexts} 发声=${off.voices}`,
     `开启: AudioContext=${on.contexts} 发声=${on.voices} · 状态=${on.state} · 时钟=${on.clock}s`,
+    `密集页(399 项): AudioContext=${crowded.contexts} 发声=${crowded.voices}`,
   ]);
   await ctx.close();
 }
@@ -996,7 +1033,7 @@ for (const width of WIDTHS) {
   const wentFwd = await chromeShape();
   if (wentFwd.tab !== 'console' || wentFwd.fwd !== true) problems.push(`前进后外壳不对: ${JSON.stringify(wentFwd)}`);
 
-  // 创造者模式开关：关掉时面板收成按钮，页面本身不受影响。
+  // 创造者模式开关：关掉时面板收成一颗悬浮球，页面本身不受影响。
   await page.click('[data-creator]');
   await page.waitForTimeout(200);
   const closed = await chromeShape();
@@ -1041,7 +1078,7 @@ for (const width of WIDTHS) {
 }
 
 // ---------------------------------------------------------------------------
-// 场景 18：调参面板嵌进「别人家的站点」（shadow DOM 隔离 + 导出片段 + chrome 不被遮）
+// 场景 18：创造者模式嵌进「别人家的站点」（shadow DOM 隔离 + 导出片段 + chrome 不被遮）
 // ---------------------------------------------------------------------------
 {
   const ctx = await browser.newContext({
@@ -1081,10 +1118,12 @@ for (const width of WIDTHS) {
   await page.waitForTimeout(300);
   const problems = [];
   const first = await panelState();
-  if (!first.host || first.rows !== 15) problems.push(`面板没建起来：${JSON.stringify(first)}`);
+  if (!first.host || first.rows !== 17) problems.push(`面板没建起来：${JSON.stringify(first)}`);
   // 宿主页用 * { font-family: Georgia } 和 button{border:3px double} 故意撞面板。
   if (/Georgia/i.test(first.font)) problems.push(`宿主字体渗进面板：${first.font}`);
-  if (first.cardBg !== 'rgb(20, 24, 33)') problems.push(`面板底色被宿主 .card 规则改掉：${first.cardBg}`);
+  // 断言的是「不等于宿主 .card 的底色」，不是「等于库自己的底色」——后者会把面板配色
+  // 写死进验收，改一次视觉语言就得改一次测试。
+  if (first.cardBg === 'rgb(255, 217, 160)') problems.push(`面板底色被宿主 .card 规则改掉：${first.cardBg}`);
   if (first.btnBorder !== '1px') problems.push(`面板按钮被宿主 button 规则改成 ${first.btnBorder} 边框`);
 
   await page.click('[data-apply]');
@@ -1114,12 +1153,154 @@ for (const width of WIDTHS) {
   await setField(page, 'targetDuration', 8);
   const speedRow = await fieldOf(page, 'speed');
   if (!speedRow.off || !speedRow.disabled) problems.push(`设了目标时长，速度行没灰：off=${speedRow.off} disabled=${speedRow.disabled}`);
-  if (!speedRow.title.includes('目标时长')) problems.push(`灰掉的行没解释原因：${speedRow.title}`);
+  if (!speedRow.tip.includes('目标时长')) problems.push(`灰掉的行没解释原因：${speedRow.tip}`);
   const dupRow = await fieldOf(page, 'maxCopies');
   if (dupRow.off !== !dupRow.value) problems.push(`「每组复制」跟着「复制盖章」的开关走：off=${dupRow.off}`);
   await setField(page, 'targetDuration', 0);
   const restoredSpeed = await fieldOf(page, 'speed');
   if (restoredSpeed.off || restoredSpeed.disabled) problems.push('目标时长归零后速度行仍然锁着');
+
+  // 依赖的另一条：种子只在「随机」下参与排程，其他顺序要把这一行灰掉并说明为什么。
+  await setField(page, 'order', 'group');
+  const seedRow = await fieldOf(page, 'seed');
+  if (!seedRow.off || !seedRow.disabled) problems.push(`顺序不是随机时种子行没灰：off=${seedRow.off} disabled=${seedRow.disabled}`);
+  if (!seedRow.tip.includes('随机')) problems.push(`灰掉的种子行没解释原因：${seedRow.tip}`);
+  await setField(page, 'order', 'random');
+  const liveSeed = await fieldOf(page, 'seed');
+  if (liveSeed.off || liveSeed.disabled) problems.push('切回随机后种子行还锁着');
+
+  // 「每个参数都有 hover 提示」是逐行的硬要求，不是有一句总体说明就算。
+  const hints = await page.evaluate(() => {
+    const sr = document.querySelector('[data-sb-chrome]').shadowRoot;
+    const noTip = (sel) => [...sr.querySelectorAll(sel)].filter((el) => !(el.dataset.tip ?? '').length).length;
+    return { rows: sr.querySelectorAll('.row').length, bare: noTip('.row'), buttons: noTip('header button,footer button,.util button,.grip,.orb'), title: sr.querySelectorAll('[title]').length };
+  });
+  if (hints.bare > 0) problems.push(`${hints.bare} 行参数没有 hover 提示`);
+  if (hints.buttons > 0) problems.push(`${hints.buttons} 个按钮没有 hover 提示`);
+  if (hints.title > 0) problems.push(`还剩 ${hints.title} 处用原生 title：和自绘提示会撞成两个气泡`);
+
+  // 提示是面板自己画的：立刻出现、字号受控，而且不能溢出视口。
+  const rowBox = await page.evaluate(() => {
+    const el = document.querySelector('[data-sb-chrome]').shadowRoot.querySelector('[data-key="speed"]').closest('.row');
+    const r = el.getBoundingClientRect();
+    return { x: r.left + 8, y: r.top + r.height / 2 };
+  });
+  await page.mouse.move(rowBox.x, rowBox.y);
+  await page.waitForTimeout(150);
+  const tipShown = await page.evaluate(() => {
+    const tip = document.querySelector('[data-sb-chrome]').shadowRoot.querySelector('.tip');
+    const box = tip.getBoundingClientRect();
+    return {
+      show: tip.dataset.show,
+      text: tip.textContent,
+      size: getComputedStyle(tip).fontSize,
+      inView: box.left >= 0 && box.top >= 0 && box.right <= innerWidth && box.bottom <= innerHeight,
+    };
+  });
+  if (tipShown.show !== 'true' || !tipShown.text.includes('倍率')) problems.push(`悬停参数行没弹出对应提示：${JSON.stringify(tipShown)}`);
+  if (!tipShown.inView) problems.push('提示气泡溢出视口');
+  await page.mouse.move(4, 4);
+  await page.waitForTimeout(150);
+  if ((await page.evaluate(() => document.querySelector('[data-sb-chrome]').shadowRoot.querySelector('.tip').dataset.show)) !== 'false') {
+    problems.push('移开后提示气泡没收起');
+  }
+
+  // 拖表头换位置：宿主自己的控件挡住参数时不用改代码，也躲得开。
+  const anchored = await page.evaluate(() => {
+    const host = document.querySelector('[data-sb-chrome]');
+    const r = host.getBoundingClientRect();
+    const h = host.shadowRoot.querySelector('header').getBoundingClientRect();
+    return { left: Math.round(r.left), top: Math.round(r.top), x: h.left + h.width / 2, y: h.top + h.height / 2 };
+  });
+  await page.mouse.move(anchored.x, anchored.y);
+  await page.mouse.down();
+  await page.mouse.move(anchored.x - 320, anchored.y - 200, { steps: 8 });
+  await page.mouse.up();
+  const dragged = await page.evaluate(() => {
+    const host = document.querySelector('[data-sb-chrome]');
+    const r = host.getBoundingClientRect();
+    return { pos: host.dataset.pos, left: Math.round(r.left), top: Math.round(r.top), inline: host.style.left };
+  });
+  if (dragged.pos !== 'free') problems.push(`拖过表头后位置还是 ${dragged.pos}（应为 free）`);
+  if (dragged.left > anchored.left - 100 || dragged.top > anchored.top - 100) problems.push(`面板没被拖走：${anchored.left},${anchored.top} → ${dragged.left},${dragged.top}`);
+  if (!dragged.inline) problems.push('位置没写成内联样式：宿主页面的规则能覆盖 :host，覆盖不了内联');
+
+  // 拉右下角把手变大：拉高以后参数行不用滚就能看全。
+  const fieldsBefore = await page.evaluate(() => {
+    const sr = document.querySelector('[data-sb-chrome]').shadowRoot;
+    const f = sr.querySelector('.fields');
+    const g = sr.querySelector('.grip').getBoundingClientRect();
+    return { height: sr.querySelector('.card').offsetHeight, clipped: f.scrollHeight > f.clientHeight + 1, x: g.left + 6, y: g.top + 6 };
+  });
+  await page.mouse.move(fieldsBefore.x, fieldsBefore.y);
+  await page.mouse.down();
+  await page.mouse.move(fieldsBefore.x + 70, fieldsBefore.y + 200, { steps: 6 });
+  await page.mouse.up();
+  const resized = await page.evaluate(() => {
+    const sr = document.querySelector('[data-sb-chrome]').shadowRoot;
+    const card = sr.querySelector('.card');
+    const f = sr.querySelector('.fields');
+    return { width: card.offsetWidth, height: card.offsetHeight, clipped: f.scrollHeight > f.clientHeight + 1 };
+  });
+  if (resized.height <= fieldsBefore.height + 100) problems.push(`拉把手没变高：${fieldsBefore.height} → ${resized.height}`);
+  if (resized.width < 300) problems.push(`拉把手没变宽：${resized.width}`);
+  if (resized.clipped) problems.push('拉到 200px 以上还需要滚动才看得全参数');
+
+  // 收起态的入口是一颗悬浮球：自绘 logo、名字写在球下面，按住能拖走，拖完不会顺手展开。
+  await page.evaluate(() => window.__tuner.close());
+  await page.waitForTimeout(120);
+  const ball = await page.evaluate(() => {
+    const sr = document.querySelector('[data-sb-chrome]').shadowRoot;
+    const orb = sr.querySelector('.orb');
+    const r = orb.getBoundingClientRect();
+    const cs = getComputedStyle(orb);
+    return {
+      round: cs.borderRadius,
+      radiusPx: parseFloat(cs.borderTopLeftRadius) || 0,
+      width: Math.round(r.width), height: Math.round(r.height),
+      logo: orb.querySelectorAll('svg path, svg circle').length,
+      tag: (sr.querySelector('.tag')?.textContent ?? '').trim(),
+      tip: orb.dataset.tip ?? '',
+      aria: orb.getAttribute('aria-label') ?? '',
+      cardShown: getComputedStyle(sr.querySelector('.card')).display !== 'none',
+      x: r.left + r.width / 2, y: r.top + r.height / 2,
+      left: Math.round(r.left), top: Math.round(r.top),
+    };
+  });
+  if (ball.cardShown) problems.push('close() 以后卡片还露着，入口没收成球');
+  if (ball.width !== ball.height || ball.radiusPx < ball.width / 2 - 1) problems.push(`入口不是正圆球：${ball.width}×${ball.height} · 圆角 ${ball.round}`);
+  if (ball.logo < 3) problems.push(`悬浮球里没有自绘 logo（图元只有 ${ball.logo} 个）`);
+  if (ball.tag !== '创造者模式' || ball.aria !== '创造者模式') problems.push(`入口名字是「${ball.tag}」/「${ball.aria}」`);
+  if (!ball.tip.includes('创造者模式')) problems.push(`悬浮球提示没写入口名：${ball.tip}`);
+  await page.mouse.move(ball.x, ball.y);
+  await page.mouse.down();
+  // 往右下拖：球这时贴在视口上沿，往左上拖会立刻撞到钳位，量不出真实位移。
+  await page.mouse.move(ball.x + 190, ball.y + 150, { steps: 6 });
+  await page.mouse.up();
+  const ballMoved = await page.evaluate(() => {
+    const host = document.querySelector('[data-sb-chrome]');
+    const r = host.getBoundingClientRect();
+    return { pos: host.dataset.pos, open: host.dataset.open, dragging: host.dataset.dragging ?? '', left: Math.round(r.left), top: Math.round(r.top) };
+  });
+  if (ballMoved.pos !== 'free') problems.push(`拖过悬浮球后位置还是 ${ballMoved.pos}`);
+  if (ballMoved.open !== 'false') problems.push('拖完悬浮球松手就自动展开了——拖被当成了点');
+  if (ballMoved.dragging) problems.push('松手后还停在 dragging 状态');
+  if (ballMoved.left < ball.left + 100 || ballMoved.top < ball.top + 100) problems.push(`悬浮球没被拖走：${ball.left},${ball.top} → ${ballMoved.left},${ballMoved.top}`);
+  await page.waitForTimeout(300);
+  await page.click('.orb');
+  await page.waitForTimeout(120);
+  const openedByBall = await page.evaluate(() => document.querySelector('[data-sb-chrome]').dataset.open);
+  if (openedByBall !== 'true') problems.push('轻点悬浮球没有展开创造者模式');
+  // 拖到贴近下沿再展开：卡片必须自己夹回视口，不然底部按钮永远点不到。
+  const fits = await page.evaluate(() => {
+    const sr = document.querySelector('[data-sb-chrome]').shadowRoot;
+    const b = sr.querySelector('[data-copy]').getBoundingClientRect();
+    return { bottom: Math.round(b.bottom), right: Math.round(b.right), vh: window.innerHeight, vw: window.innerWidth };
+  });
+  if (fits.bottom > fits.vh || fits.right > fits.vw) {
+    problems.push(`拖到边上再展开后卡片顶出视口：复制按钮底边 ${fits.bottom} / 视口高 ${fits.vh}，右 ${fits.right} / 宽 ${fits.vw}`);
+  }
+  await page.screenshot({ path: `${OUT}tune-panel-moved.png` });
 
   const snippet = await page.evaluate(() => window.__tuner.snippet());
   if (!snippet.includes('agentCount: 12')) problems.push('导出片段没跟上面板改动');
@@ -1182,11 +1363,180 @@ for (const width of WIDTHS) {
     `面板: ${first.rows} 行控件 · 字体 ${first.font.split(',')[0]} · 底色 ${first.cardBg}`,
     `运行中: 面板可见=${!mid.hidden} · 途中元素=${mid.items} · ${done.status}`,
     `待生效: ${touched.dirty} 行 · ${touched.note}`,
-    `依赖: 设时长后速度行 off=${speedRow.off} disabled=${speedRow.disabled} · 说明「${speedRow.title.slice(0, 24)}…」`,
+    `依赖: 设时长后速度行 off=${speedRow.off} disabled=${speedRow.disabled} · 提示「${speedRow.tip.slice(0, 24)}…」`,
+    `提示: ${hints.rows} 行 + 按钮全部有 hover 气泡 · 弹出=${tipShown.show}「${tipShown.text.slice(0, 14)}…」@${tipShown.size} · 视口内=${tipShown.inView} · 种子行灰掉=${seedRow.off}`,
+    `几何: 拖表头 ${anchored.left},${anchored.top} → ${dragged.left},${dragged.top}（pos=${dragged.pos}） · 拉把手 ${fieldsBefore.height}px → ${resized.height}px × ${resized.width}px`,
+    `入口: ${ball.width}×${ball.height} 圆球（圆角 ${ball.round}）· logo ${ball.logo} 个图元 · 名字「${ball.tag}」· 拖球 ${ball.left},${ball.top} → ${ballMoved.left},${ballMoved.top}（没收成展开=${ballMoved.open}）· 轻点展开=${openedByBall} · 展开后按钮底边 ${fits.bottom} ≤ 视口 ${fits.vh}`,
     `导出: ${snippet.split('\n').length} 行 · 剪贴板一致=${clip === snippet}`,
     `重置: ${afterReset.status} · 光标数量=${(await fieldOf(page, 'agentCount')).value} · 待生效 ${afterReset.dirty} 行`,
     `恢复原状（途中）: ${beforeRestore.status} → ${restored.status} · 遮罩残留 ${restored.hidden}`,
     `root=body: 面板可见=${bodyCase.visible} · 落在面板左栏的 item=${bodyCase.inPanelColumn}`,
+  ]);
+  await ctx.close();
+}
+
+// ---------------------------------------------------------------------------
+// 构建顺序 + 种子：长页面是唯一能把「从上到下」看出来的场景，所以跑在 tall.html 上。
+// 观测点是 DOM 里 item 的出现顺序（每个光标第一帧各认领一件，所以前 agentCount 件
+// 完全由排程决定，不受飞行时间影响——种子是否复现就看这前几件）。
+// 「自上而下」卡两条真实保证：6 个光标时开工的前 agentCount 件严格递增（第 i 个光标拿第 i 条
+// 横带，带 i 整条在带 i+1 上面）；1 个光标时整条创建序列单调往下（没有并发横带互相穿插）。
+// 全局创建顺序的 y 中位数不卡：6 条带同时在盖，前 1/4 和后 1/4 都横跨整页，那个指标恒不成立。
+// ---------------------------------------------------------------------------
+{
+  const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+  const page = await ctx.newPage();
+  const errors = [];
+  page.on('console', (msg) => msg.type() === 'error' && errors.push(msg.text()));
+  page.on('pageerror', (err) => errors.push(String(err)));
+  await page.goto(`${BASE}/demos/tall.html`, { waitUntil: 'load' });
+
+  const run = (options) => page.evaluate((opts) => {
+    document.querySelectorAll('.sb-overlay').forEach((el) => el.remove());
+    document.querySelectorAll('.sb-hidden').forEach((el) => el.classList.remove('sb-hidden'));
+    window.__seq = [];
+    if (!window.__observed) {
+      window.__observed = true;
+      new MutationObserver((records) => {
+        for (const record of records) {
+          for (const node of record.addedNodes) {
+            if (node.nodeType === 1 && node.dataset.item) window.__seq.push([node.dataset.item, parseFloat(node.style.top) || 0]);
+          }
+        }
+      }).observe(document.body, { childList: true, subtree: true });
+    }
+    return new Promise((resolve) => {
+      const swarm = new window.SwarmBuilder({
+        root: document.querySelector('#app'),
+        agentCount: 6,
+        speed: 3,
+        maxItems: 400,
+        ...opts,
+        onComplete: (result) => resolve({
+          head: window.__seq.slice(0, (opts && opts.agentCount) || 6).map(([id]) => id),
+          headYs: window.__seq.slice(0, (opts && opts.agentCount) || 6).map(([, y]) => y),
+          rec: window.__seq.slice(),
+          built: result.built,
+          seed: result.seed,
+        }),
+      });
+      swarm.start();
+    });
+  }, options);
+
+  const sweepOf = (rec, tol) => {
+    const seen = new Set();
+    const ys = rec.filter((r) => !seen.has(r[0]) && (seen.add(r[0]), true)).map(([, y]) => y);
+    let forward = 0, back = 0, worst = 0;
+    for (let i = 1; i < ys.length; i++) {
+      const step = ys[i] - ys[i - 1];
+      if (step >= -tol) forward++;
+      else { back++; worst = Math.max(worst, -step); }
+    }
+    return { items: ys.length, pairs: forward + back, ratio: forward / Math.max(1, forward + back), worst };
+  };
+
+  const problems = [];
+  const group = await run({ order: 'group', tour: false });
+  const rows = await run({ order: 'rows', tour: false });
+  const solo = await run({ order: 'rows', agentCount: 1, speed: 6, tour: false });
+  const soloSweep = sweepOf(solo.rec, 60);
+
+  const seedA = await run({ order: 'random', seed: 12345, tour: false });
+  const seedB = await run({ order: 'random', seed: 12345, tour: false });
+  const seedC = await run({ order: 'random', seed: 67890, tour: false });
+  const freeA = await run({ order: 'random', tour: false });
+  const freeB = await run({ order: 'random', tour: false });
+
+  const span = (ys) => Math.round(ys[ys.length - 1] - ys[0]);
+  const ascending = (ys) => ys.every((y, i) => i === 0 || y > ys[i - 1]);
+  if (!ascending(rows.headYs)) problems.push(`自上而下不是「一条横带一个光标」：开工前 ${rows.headYs.length} 件 y=${rows.headYs.map(Math.round).join(' ')}`);
+  if (span(rows.headYs) < 1500) problems.push(`开工前 6 件只跨了 ${span(rows.headYs)}px，光标没铺到整页的各条带上`);
+  if (soloSweep.ratio < 0.9) problems.push(`单光标自上而下不成立：${soloSweep.items} 件的 ${soloSweep.pairs} 对里回跳 ${Math.round((1 - soloSweep.ratio) * soloSweep.pairs)} 对，最大回跳 ${Math.round(soloSweep.worst)}px`);
+  if (seedA.head.join(',') !== seedB.head.join(',')) problems.push(`同一颗种子排出的开工顺序不一样：${seedA.head.join(' ')} vs ${seedB.head.join(' ')}`);
+  if (seedA.head.join(',') === seedC.head.join(',')) problems.push('换种子顺序完全没变，种子没参与排程');
+  if (freeA.head.join(',') === freeB.head.join(',')) problems.push('种子填 0 却每次抽出同一个顺序');
+  if (!(seedA.seed > 0) || seedA.seed !== 12345) problems.push(`完成状态没回显用到的种子：${seedA.seed}`);
+  if (!(freeA.seed > 0) || freeA.seed === freeB.seed) problems.push(`种子填 0 时没各抽一个：${freeA.seed} / ${freeB.seed}`);
+  if (rows.built < 60) problems.push(`长页面只建成 ${rows.built} 项，蓝图可能被上限砍掉`);
+  if (errors.length) problems.push(`控制台报错 ${errors.length} 条: ${errors[0]}`);
+
+  report('order-seed @1280', problems, [
+    `自上而下（6 光标）: 开工 ${rows.headYs.length} 件 y=${rows.headYs.map(Math.round).join(' ')} · 跨 ${span(rows.headYs)}px · 一条带一个光标`,
+    `自上而下（1 光标）: ${soloSweep.items} 件 · 顺 ${soloSweep.pairs - Math.round((1 - soloSweep.ratio) * soloSweep.pairs)}/${soloSweep.pairs} 对（容 60px 回跳）· 最大回跳 ${Math.round(soloSweep.worst)}px`,
+    `子树并行（6 光标）: 开工 ${group.headYs.map(Math.round).join(' ')} · 跨 ${span(group.headYs)}px · 对照，不卡门槛`,
+    `种子 12345 两次开工: ${seedA.head.join(' ')} = ${seedB.head.join(' ')}`,
+    `种子 67890 开工: ${seedC.head.join(' ')}`,
+    `种子 0 现抽: ${freeA.seed} ≠ ${freeB.seed}`,
+  ]);
+  await ctx.close();
+}
+
+// ---------------------------------------------------------------------------
+// 长页面 + 镜头跟随：这一页约 3300px，窗口只有 900px 高，
+// 镜头必须自己往下滚跟着施工前沿，收尾再把页面交还页首。
+// ---------------------------------------------------------------------------
+{
+  const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+  const page = await ctx.newPage();
+  const errors = [];
+  page.on('pageerror', (err) => errors.push(String(err)));
+  await page.goto(`${BASE}/demos/tall.html?auto`, { waitUntil: 'load' });
+
+  const shape = await page.evaluate(() => ({
+    docHeight: document.documentElement.scrollHeight,
+    viewport: innerHeight,
+    tour: JSON.parse(document.body.dataset.swarm ?? '{}').tour === true,
+  }));
+
+  const scrolls = [];
+  const problems = [];
+  const deadline = Date.now() + 90000;
+  while (Date.now() < deadline) {
+    const sample = await page.evaluate(() => ({
+      y: Math.round(window.scrollY),
+      building: [...document.querySelectorAll('.sb-item')]
+        .filter((el) => el.classList.contains('sb-item--building'))
+        .map((el) => {
+          const r = el.getBoundingClientRect();
+          return r.top > -200 && r.bottom < innerHeight + 200;
+        }),
+      status: document.querySelector('[data-sb-chrome]').shadowRoot.querySelector('[data-status]').textContent.trim(),
+    }));
+    scrolls.push({ y: sample.y, inView: sample.building.filter(Boolean).length });
+    if (sample.status.startsWith('完成')) break;
+    await page.waitForTimeout(200);
+  }
+  // 交还页首走的也是平滑滚动，等它落定再判定；超时不报错，交给下面的断言说结果。
+  await page.waitForFunction(() => window.scrollY < 120, null, { timeout: 6000, polling: 200 }).catch(() => {});
+  const settled = await page.evaluate(() => ({
+    y: Math.round(window.scrollY),
+    status: document.querySelector('[data-sb-chrome]').shadowRoot.querySelector('[data-status]').textContent.trim(),
+  }));
+
+  const maxScroll = Math.max(...scrolls.map((s) => s.y));
+  // 平滑滚动本身是一段动画，逐帧的增量会把它算成很多次。这里数「停下来又起步」的次数：
+  // 一次跟随便是一次停下→再起步，镜头若只搬一次家就说明它没有真的跟着前沿走。
+  let bursts = 0;
+  for (let i = 1; i < scrolls.length; i++) {
+    const calm = i < 2 || scrolls[i - 1].y - scrolls[i - 2].y < 20;
+    if (scrolls[i].y - scrolls[i - 1].y > 120 && calm) bursts++;
+  }
+  const followed = scrolls.filter((s) => s.y > 200 && s.inView > 0).length;
+
+  if (shape.docHeight < shape.viewport * 2.5) problems.push(`这一页只有 ${shape.docHeight}px，比视口高不到 2.5 倍，镜头没东西可跟`);
+  if (!shape.tour) problems.push('长页面案例没默认打开镜头跟随');
+  if (maxScroll < 600) problems.push(`镜头最多只滚到 ${maxScroll}px，没跟着走到页面深处`);
+  if (bursts < 2) problems.push(`镜头只起步 ${bursts} 次，不像跟随更像是跳过去`);
+  if (followed === 0) problems.push('滚动之后没有把正在施工的元素留在视野里');
+  if (!settled.status.startsWith('完成')) problems.push(`长页面没跑完：${settled.status}`);
+  if (settled.y > 120) problems.push(`结束后镜头没交还页首，停在 ${settled.y}px`);
+  if (errors.length) problems.push(`页面报错 ${errors.length} 条: ${errors[0]}`);
+
+  report('tall-tour @1280', problems, [
+    `页面 ${shape.docHeight}px · 视口 ${shape.viewport}px · 默认 tour=${shape.tour}`,
+    `镜头: 最深 ${maxScroll}px · 停下再起步 ${bursts} 次 · ${followed} 次采样里正在建的元素在视野内`,
+    `收尾: ${settled.status} · 回到 ${settled.y}px`,
   ]);
   await ctx.close();
 }

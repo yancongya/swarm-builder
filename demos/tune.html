@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Swarm Builder · 调参面板嵌入宿主页</title>
+  <title>Swarm Builder · 创造者模式嵌入宿主页</title>
   <style>
     /* 故意写成「别人家的站点」：全局裸选择器 + 和面板撞名的 .card / .row / .status。
        面板在 shadow root 里，这些规则一条都不该渗进去。 */
@@ -15,7 +15,8 @@
     .card { border: 4px solid #2c2a26; background: #ffd9a0; padding: 30px; box-shadow: 10px 10px 0 #b4462f; }
     .row { display: block; border-bottom: 4px dotted #b4462f; padding: 18px; font-size: 22px; }
     .status { background: #b4462f; color: #ffe9c7; font-size: 24px; padding: 14px; }
-    .fab { font-size: 30px; border-radius: 0; }
+    .orb { font-size: 30px; border-radius: 0; }
+    .tag { display: block; width: 300px; background: #b4462f; }
     .icon { width: 90px; height: 60px; }
     .code { font-size: 26px; background: #ffd9a0; }
     #site { max-width: 880px; margin: 0 auto; padding: 40px 24px 80px; }
@@ -39,7 +40,7 @@
       <nav><span>Archive</span><span>Essays</span><span>About</span></nav>
     </header>
     <p class="lede">这一页假装是「别人的网站」：全局裸选择器、和面板撞名的类名、衬线字体。
-      调参面板挂在 body 上、活在 shadow root 里，所以它既不会被这些规则改样，也不会被当成待重建的内容抓进蓝图。</p>
+      创造者模式挂在 body 上、活在 shadow root 里，所以它既不会被这些规则改样，也不会被当成待重建的内容抓进蓝图。</p>
     <div class="grid">
       <div class="card"><h3>现场调参</h3><p>光标数、速度、目标时长、上限、复制、辅助线、跟随、音效，全部可在真实页面上改。</p></div>
       <div class="card"><h3>应用并重跑</h3><p>蓝图在开始那一刻冻结，所以除速度外都要下一局生效。面板把这句话写在脚注里。</p></div>

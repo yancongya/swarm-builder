@@ -134,11 +134,11 @@ writeFileSync(join(DIR, 'iife.html'), [
   '',
 ].join('\n'));
 
-// 调参面板那一档：独立 IIFE 产物，一个 script 标签就能在任意页面上开面板。
+// 创造者模式那一档：独立 IIFE 产物，一个 script 标签就能在任意页面上开面板。
 writeFileSync(join(DIR, 'tune.html'), [
   '<!doctype html><html><head><meta charset="utf-8"><style>',
   '#target{max-width:520px;margin:32px auto;font:15px/1.6 system-ui}.box{height:48px;margin:8px 0;border:1px solid #d7deea;background:#f7f9fc}',
-  '</style></head><body><div id="target"><h2>调参面板宿主</h2><p>面板应当浮在这一页上。</p><div class="box"></div></div>',
+  '</style></head><body><div id="target"><h2>创造者模式宿主</h2><p>面板应当浮在这一页上。</p><div class="box"></div></div>',
   '<script src="/node_modules/swarm-builder/dist/swarm-builder.tune.iife.js"></script>',
   '<script>',
   'const NS = window.SwarmBuilderTune;',
@@ -216,7 +216,7 @@ if (!iife.built || iife.items === 0 || !iife.overlayGone) problems.push(`script 
 if (errors.length > errorsBefore) problems.push(`script 标签页控制台报错：${errors[errorsBefore]}`);
 lines.push(`script 标签: 全局形状 ${JSON.stringify(shape)} · 途中元素=${iife.items} · 覆盖层已清除=${iife.overlayGone}`);
 
-// 调参面板：独立产物在真实页面上开面板、跑一局、导出片段。
+// 创造者模式：独立产物在真实页面上开面板、跑一局、导出片段。
 await page.goto(`http://127.0.0.1:${port}/tune.html`, { waitUntil: 'load' });
 const tuneShape = await page.evaluate(() => window.__tuneShape);
 if (tuneShape?.ns !== 'object' || tuneShape?.tune !== 'function' || tuneShape?.cls !== 'function') {
@@ -244,7 +244,7 @@ const tuneRan = await page.evaluate(async () => {
 if (!tuneRan.panel || tuneRan.items === 0 || !tuneRan.done) problems.push(`tune 面板在消费端跑不起来：${JSON.stringify(tuneRan).slice(0, 200)}`);
 if (!tuneRan.snippet.includes("document.querySelector('#target')")) problems.push('tune 导出的 root 选择器不对');
 if (errors.length > tuneErrorsBefore) problems.push(`tune 页面控制台报错：${errors[tuneErrorsBefore]}`);
-lines.push(`调参面板: 全局 ${JSON.stringify(tuneShape)} · 途中元素=${tuneRan.items} · 收尾=${tuneRan.done} · 导出含 root=${tuneRan.snippet.includes('#target')}`);
+lines.push(`创造者模式: 全局 ${JSON.stringify(tuneShape)} · 途中元素=${tuneRan.items} · 收尾=${tuneRan.done} · 导出含 root=${tuneRan.snippet.includes('#target')}`);
 
 await browser.close();
 await new Promise((done) => server.close(done));

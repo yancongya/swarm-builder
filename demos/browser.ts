@@ -13,6 +13,7 @@ const CASES: Case[] = [
   { key: 'console', title: '密集控制台', href: './console.html', origin: 'https://orbit.demo/console' },
   { key: 'landing', title: '深色落地页', href: './landing.html', origin: 'https://nova.demo' },
   { key: 'dark-ui', title: '复杂工作台', href: './dark-ui.html', origin: 'https://studio.demo' },
+  { key: 'tall', title: '长页面跟随', href: './tall.html', origin: 'https://notes.demo/long' },
   { key: 'tune', title: '别人的站点', href: './tune.html', origin: 'https://letterpress.demo' },
 ];
 

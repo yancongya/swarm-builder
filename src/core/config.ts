@@ -1,4 +1,4 @@
-import type { SwarmBuilderOptions } from '../types';
+import type { BuildOrder, SwarmBuilderOptions } from '../types';
 import type { PageTheme } from '../render/theme';
 
 export const SPEED_MIN = 0.25;
@@ -20,6 +20,8 @@ export interface NormalizedOptions {
   theme: 'auto' | PageTheme;
   targetDuration: number;
   performanceMode: 'auto' | 'high' | 'low';
+  order: BuildOrder;
+  seed: number;
   moveSpeed: number;
   typeInterval: number;
   fadeDuration: number;
@@ -43,6 +45,8 @@ export function normalizeOptions(options: SwarmBuilderOptions | undefined): Norm
     theme: options?.theme ?? 'auto',
     targetDuration: clamp(options?.targetDuration ?? 0, 0, 120),
     performanceMode: options?.performanceMode ?? 'auto',
+    order: options?.order ?? 'group',
+    seed: Math.round(clamp(options?.seed ?? 0, 0, 2 ** 31 - 1)),
     moveSpeed: 2200,
     typeInterval: 28,
     fadeDuration: 140,
@@ -59,6 +63,10 @@ export function clamp(value: number, min: number, max: number): number {
  * rate is not what breaks on a crowded page - the choreography drags and turns
  * into noise - so auto trims the effects that add per-item work and visual
  * clutter once the page is past that scale.
+ *
+ * Sound is deliberately NOT in this list: it is throttled to a handful of
+ * oscillators per second and adds no nodes, so trimming it bought nothing and
+ * made a dense page look like the option was broken.
  */
 const CROWDED_NODES = 250;
 
@@ -67,7 +75,6 @@ export function applyPerformanceMode(opts: NormalizedOptions, elementCount: numb
   if (opts.performanceMode === 'auto' && elementCount < CROWDED_NODES) return;
   opts.guides = false;
   opts.grow = false;
-  opts.sound = false;
   opts.maxCopies = Math.min(opts.maxCopies, 6);
 }
 

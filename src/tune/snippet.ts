@@ -8,6 +8,8 @@ export const DEFAULT_CONFIG: Required<PlainConfig> = {
   speed: 1,
   targetDuration: 0,
   performanceMode: 'auto',
+  order: 'group',
+  seed: 0,
   ignore: [],
   maxItems: 400,
   duplicate: true,
@@ -68,7 +70,7 @@ export function buildSnippet(config: PlainConfig, root: { selector: string; gues
     rows.push(key === 'ignore' ? `  ignore: ${literal(withoutChrome(value as string[]))},` : `  ${key}: ${literal(value)},`);
   }
   return [
-    '// 由 swarm-builder 调参面板导出，只列出与默认值不同的选项。',
+    '// 由 swarm-builder 创造者模式导出，只列出与默认值不同的选项。',
     "import { SwarmBuilder } from 'swarm-builder';",
     '',
     'const swarm = new SwarmBuilder({',

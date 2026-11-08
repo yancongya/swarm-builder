@@ -16,7 +16,9 @@ import { CursorLayer } from './render/cursor_layer';
 import { injectStyle } from './render/styles';
 import { pageTheme } from './render/theme';
 
-const PALETTE = ['#ff6b6b', '#4dd0e1', '#ffd166', '#a78bfa', '#8bc34a', '#f472b6', '#60a5fa', '#fb923c'];
+// 八色按「土系 + 一枚石板灰」排：相邻必须能一眼分开，因为光标名牌只有 10px，
+// 且名牌底就是这色、字是深色——饱和度太高的霓虹套色在浅页上直接糊掉。
+const PALETTE = ['#e08b3f', '#c9a227', '#93a54f', '#6f9d8a', '#c9603f', '#a97e56', '#8a97ab', '#dcc07a'];
 const NAMES = ['Ava', 'Bo', 'Cy', 'Dee', 'Echo', 'Fay', 'Gus', 'Hal', 'Ivy', 'Jo', 'Kai', 'Lux'];
 
 class ProgressTicker implements Tickable {
@@ -71,14 +73,18 @@ export class SwarmBuilder {
     // Nothing measurable (hidden or zero-width host): skip the blank layer so
     // the real page never flickers off for a frame.
     if (blueprint.items.length === 0) {
-      this.options.onComplete?.({ built: 0, dropped: blueprint.dropped, durationMs: 0 });
+      this.options.onComplete?.({ built: 0, dropped: blueprint.dropped, durationMs: 0, seed: this.opts.seed });
       return;
     }
 
     const theme = this.opts.theme === 'auto' ? pageTheme(this.root, blueprint.backdrop) : this.opts.theme;
     const overlay = Overlay.create(this.root, blueprint.width, blueprint.height, blueprint.rootOffset, blueprint.backdrop, theme);
     const cursors = new CursorLayer(overlay.el);
-    const scheduler = new Scheduler(blueprint, this.opts.agentCount);
+    const scheduler = new Scheduler(blueprint, {
+      agentCount: this.opts.agentCount,
+      order: this.opts.order,
+      seed: this.opts.seed,
+    });
     const engine = new Engine();
     const flock = new Flock();
     // A target time replaces the baseline multiplier: the run is timed, not sped.
@@ -142,6 +148,7 @@ export class SwarmBuilder {
       built: this.scheduler?.built ?? 0,
       dropped: this.blueprint?.dropped ?? 0,
       durationMs: Math.round(performance.now() - this.startedAt),
+      seed: this.scheduler?.seed ?? this.opts.seed,
     };
     this.overlay?.reveal();
     this.cursors?.destroy();

@@ -1,7 +1,7 @@
 # Swarm Builder 成熟库改造计划（Agent 交接文档）
 
 > 最后更新：2026-11-08  
-> 状态：**全部批次完成**——完整版（批次 1–5）+ 高级版 + 预览壳页与真实规模案例（§13.11）+ 发布护栏（§13.12）+ 调参面板（§13.13）+ 上架准备（§13.14）+ 预览统一进 mockup 浏览器与创造者模式收口（§13.15），验收 18 个场景全绿、`npm publish --dry-run` 全链路通过；只差本人 npm 登录后正式发 0.1.0  
+> 状态：**全部批次完成**——完整版（批次 1–5）+ 高级版 + 预览壳页与真实规模案例（§13.11）+ 发布护栏（§13.12）+ 调参面板（§13.13）+ 上架准备（§13.14）+ 预览统一进 mockup 浏览器与创造者模式收口（§13.15）+ 构建顺序与种子、密集页音效、长页面镜头（§13.16）+ 入口改名创造者模式与悬浮球（§13.17）+ 悬浮球贴边展开的视口钳制（§13.18），验收 20 个场景全绿、`npm publish --dry-run` 全链路通过；只差本人 npm 登录后正式发 0.1.0  
 > 目标：让其他 Agent 可直接接手推进
 
 ---
@@ -196,7 +196,7 @@
 
 配置：`root`、`agentCount`、`speed`、`targetDuration`、`performanceMode`、`ignore`（string|string[]）、`maxItems`、`duplicate`、`maxCopies`、`guides`、`maxGuides`、`grow`、`sound`、`flocking`、`tour`、`theme`、`autoStart`、`onStart` / `onProgress` / `onComplete`
 方法：`start()`、`pause()` / `resume()` / `isPaused`、`setSpeed()`、`skip()`、`destroy()`，另有 `mount(options)` 一步开局
-调参面板（独立子入口 `swarm-builder/tune`，§13.13）：`tune(options)` / `SwarmTuner`，方法 `apply()` / `reset()` / `restore()` / `snippet()` / `copy()` / `open()` / `close()` / `destroy()`，只读口 `status` / `phase`（`idle|running|paused|done`）/ `expanded`；选项 `root`（元素或选择器）/ `initial` / `position` / `open`
+创造者模式（独立子入口 `swarm-builder/tune`，§13.13 起、§13.17 换成悬浮球入口）：`tune(options)` / `SwarmTuner`，方法 `apply()` / `reset()` / `restore()` / `snippet()` / `copy()` / `open()` / `close()` / `destroy()`，只读口 `status` / `phase`（`idle|running|paused|done`）/ `expanded`；选项 `root`（元素或选择器）/ `initial` / `position` / `open`。收起态入口是一颗 46px 悬浮球（自绘 SVG 标记 + 球下「创造者模式」一行），轻点展开、按住可拖到视口任意位置
 
 - `followScroll` → **`tour`**（`scroll` 太容易被理解成「滚动行为开关」，它实际是镜头跟随 + 结束交还页首）
 - `showRulers` → **`guides`**（与 §3.4 的「拉辅助线并吸附」同名，只有一处拼写）
@@ -671,6 +671,51 @@ README 是对外唯一的 API 文档，`swarm-builder-plan.md` 退居交接文�
 本批收口顺序：验收 18 场景全绿 → 本地一个 commit → 等本人肉眼确认「没问题」→ 才谈 push 与 `npm publish`（§13.14 的 1/2/3 步在那之后）。
 
 **收口后的清理（同日）。** 预览入口收到一个：`demos/tune.html` 同时挂成 mockup 浏览器的第五个标签「别人的站点」（`load()` 对每个案例都 `tuner.apply()`，所以它进窗口即自动跑一局，不必再单独开页），窗口共 5 个标签、1280 宽度下标签条不换行不溢出。删掉 `tools/ab.mjs`（A/B 结论已落在 §13.6/§13.7，脚本里的 `ROOTS` 还停在三个旧案例，属于会误导人的死代码）、`.pubdry.log`、`.verify.log` 与旧 `.shots/`（验收重跑即再生）。`.refs/`（41MB，无许可的参考实现源码，已 gitignore）保留不动：它是效果基准的唯一凭据，删了不可恢复。5199 上发现两个手工起过的 vite 实例（一个 IPv4、一个 IPv6），都还在吐 11 月 7 日缓存的 tune 产物——全部停掉后重启，`curl` 回来才是 `58vh`。长跑 dev server 缓存 `dist/` 这件事已经写进上面第四处修正，属于同一个坑的人肉版本。
+
+### 13.16 密集页音效、长页面镜头、构建顺序与种子、面板提示与几何（2026-11-08）
+
+用户这一批提了五点：简单页有音效而复杂页没有；要有长页面测镜头跟随；滚动时不是从上往下构建，能不能把种子和构建顺序算法暴露到参数接口；每个参数都该有 hover 提示；面板要能拖位置、能改大小。仍然「先等我是确定没问题了再推送发版」——本批照旧只做本地提交。
+
+**密集页没声音不是音频问题，是性能模式把选项吃掉了。** 三次升级的取证（外壳 → 面板 → 裸 API）先排掉了自动播放策略：iframe 里 `AudioContext` 根本没被构造（`created: 0`），而页面之外直接调 API 也复现——问题在库内。真凶是 `applyPerformanceMode()` 里的 `opts.sound = false`：音效按秒限量（type .03s / draw .07s / stamp .06s / guide .06s 的墙钟间隔），一个密集页也只发二百多次振荡器，不产生 DOM 节点，砍掉它省不到一帧，只会让「我明明勾了音效」变成无声。修法是把它从裁剪名单里删掉，注释写明为什么不在名单里。验收 `sound @1280` 加了一档密集页子场景（`demos/console.html`，399 项）：`AudioContext=1 · 发声=252`（修复前 0）。
+
+**构建顺序进了参数接口：`order: 'group' | 'rows' | 'random'` + `seed`。** `src/core/rng.ts` 用 mulberry32（可播种、跨引擎可重放，`Math.random()` 两样都做不到）配 Fisher–Yates。调度器从「按子树分堆」扩成三种分法：`group` 保留原样（子树成组、大的先切小再摊平给最闲的队列）；`rows` 按中心 y 排序后等分成 `agentCount` 条横带，第 i 条带直接交给第 i 个光标，光标 0 在最上面那条——这就是「自上而下」；`random` 洗牌后按 `target` 切块再摊平。种子只在 `random` 下参与排程，0 表示现抽一只，实际用的那颗从 `Scheduler.seed` 回显到 `SwarmResult.seed`，看到想重放的填回去即可。
+`take()` 同时改成先扫自己的队列、再按固定轮转去别人的队列借一件能做的。这不是锦上添花：横带把一棵子树切给了两个光标，子元素等父元素完成，父元素却在隔壁带上没人认领——不借就是死锁。借完之后有个不变量兜底：阻塞关系永远是「更浅的祖先」，所以只要还有队列非空，其中深度最浅的那件必然已就绪，于是「全局无就绪」等价于「所有队列已空」，光标可以在正确的时刻收工。
+
+**长页面案例 `demos/tall.html`。** 实测页高 2767px、7 个章节，默认 `data-swarm` 写死 `order:'rows' + tour:true`，是 mockup 浏览器的第 6 个标签「长页面跟随」。两个新场景：`order-seed @1280` 观测点选的是 DOM 里 item 的出现顺序——每个光标第一帧各认领一件，所以前 `agentCount` 件完全由排程决定、不受飞行时间影响，同种子两次必须逐位相等、换种子必须不等、种子 0 两次抽到的 `result.seed` 必须不同。`rows` 卡的是它真正保证的两件事：6 光标时开工的前 6 件 y 严格递增且跨满整页（实测 48 549 1158 1442 1926 2470，跨 2422px——第 i 个光标拿第 i 条横带，带 i 整条在带 i+1 上面）；再用 `agentCount:1` 单独跑一局，此时没有并发横带互相穿插，整条创建序列必须自上而下（实测 58 件 57 对里 54 对顺势、最大回跳 505px，阈值卡 ≥90%）。第一版这里写的是「全局创建顺序前 1/4 中位 y → 后 1/4 中位 y 至少下移 400px」，跑出来 -416px：6 条带同时在盖，前后四分位都横跨整页，这个指标恒不成立，属于口径错了而不是实现错了。`group` 的开工顺序只报不卡：`#app` 只有一个子树，`group` 会退化成按文档顺序切块，而文档顺序在这页上≈y 顺序，卡它属于碰运气。`tall-tour @1280` 每 200ms 采一次 `scrollY` 与「正在建的元素是否在视野内」，卡页面高度 ≥2.5 倍视口、最深滚动 ≥600px、停下再起步 ≥2 次（平滑滚动是一段动画，逐帧增量会把它数成很多次，所以数的是「静止→再动」的转变）、收尾 `scrollY < 120`（交还页首也走平滑滚动，先等它落定再判，超时不报错、交给断言说结果）。
+
+**面板：提示自己画、位置与大小归用户。** 原生 `title` 要等一秒、字号配色不受控，而且和自绘气泡会撞成两层，所以 17 行参数、信息钮、折叠钮、底部三颗、工具条三颗、把手全部改成 `data-tip` + 一个 shadow 内的 `.tip`（`position:fixed` 按悬停元素的矩形定位，右→左→压回视口三级退让，并挂 `aria-describedby`）。灰掉的行把原因接在同一句话后面，仍然只有一条提示。表头与 fab 可拖（`pointerdown` + 窗口级 `pointermove/pointerup`，落在按钮上不触发拖拽），拖完 `data-pos="free"` 并把 left/top 写成**内联**样式——宿主页面的规则能覆盖 `:host`，覆盖不动内联声明；右下角 `.grip` 改卡片宽高，卡片改成 `display:flex;flex-direction:column`、`.fields` 变 `flex:1 1 auto;min-height:0`，于是拉高多出来的高度全部给了参数行。
+
+**「参数全露」这条几何断言跟着改了基线。** 原来是 `max-height:58vh` + 15 行；17 行以后改成「卡片自然高度 + `max-height:88vh`」，900px 高的宿主里 17 行仍然 `scrollHeight === clientHeight`，验收行变成 `面板 17 行 全露`。这是量出来的、不是偏好：门禁真的比较 `scrollHeight > clientHeight + 1`，并且新卡「拉到 200px 以上还必须要滚」这一条——能拉大就等于没有借口。`tune-panel @1280` 因此多出四组断言：逐行/逐钮提示覆盖率与非零的 `title` 残留、悬停后气泡出现且落在视口内、拖表头后 `pos=free` 且 left/top 确实挪了 ≥100px 并写成内联、拉把手后卡片宽高都变大。
+
+**其余同步项。** `types.ts` 新增 `BuildOrder` 与两个选项、`SwarmResult.seed`；`tune/snippet.ts` 的 `DEFAULT_CONFIG` 跟上（`order:'group'`、`seed:0`，导出的片段因此仍然只列与默认值不同的项）；面板里「随机种子」一行在顺序不是随机时灰掉并说明原因，验收为此专门走一遍这条依赖。场景数 18 → 20。
+
+### 13.17 入口改名为创造者模式、悬浮球 logo、更多构建顺序的方案（2026-11-08）
+
+用户两点：入口改名为「创造者模式」并设计一个 logo，形态是**可拖拽的悬浮球**；构建分布顺序「可以再多几种算法」，但方案由他先选。
+
+**收起态从胶囊按钮换成一颗球。** `.fab`（`<i></i>调参`）改成 `.entry` = `.orb`（46×46、`border-radius:50%` 的石墨球，`radial-gradient(circle at 34% 26%, #3d3a32, var(--card) 60%)` 给出一枚高光）+ `.tag`（球下面一行「创造者模式」）。表头也跟着换主次：`<b>创造者模式</b><span class="sub">swarm-builder</span>`，原来正好相反。导出片段的头注释、`demos/tune.html` 的标题与撞名探针（`.fab` → `.orb`、`.tag`）、README 的目录锚点（`#调参面板创造者模式` → `#创造者模式`）一起跟上——名字改了，文档里不能还有三处叫旧名。
+
+**logo 是自绘 SVG，不是图片文件。** 一枚光标停在虚线轨道上，轨道上还有三颗正在赶路的光标（一颗铜色领点 + 两颗灰阶同伴）：一群光标围着同一个点施工，这就是这个库在做的事。 viewBox 28、球面 29px，`aria-hidden` + 按钮自带 `aria-label="创造者模式"`。跑动时只有外面那圈轨道在缓慢自转（`animation:sb-orbit 3.6s linear`，`transform-box:view-box` + `transform-origin:14px 14px`，`prefers-reduced-motion` 下停转）。第一版把颜色写成 `fill="var(--ink)"` 这种 presentation attribute，Chrome 实测能解析（`rgb(236,234,223)`），但 WebKit 不支持在 attribute 里做 `var()` 替换，所以全部改成 `.orb .ring{stroke:…}` / `.arrow{fill:…}` 这类 CSS 规则——库要嵌进别人的页面，不能只在自己测过的浏览器里成立。
+
+**球兼任两件事，靠 4px 阈值分开。** `bindDrag(handle, allowButtons)`：表头保持「落在按钮上就不拖」，球自己就是按钮，必须放开。`pointermove` 里先累计位移，满 4px 才判定为拖，并在真正开始拖时才 `preventDefault()`——早早在 `pointerdown` 上 `preventDefault` 会把兼容性鼠标事件一起取消，`click` 也跟着没了，球就再也点不开（这是这一批唯一一次「改完功能反而坏了」的坑）。拖动过程中 `data-dragging="true"` 让光标变 `grabbing`、把 hover 气泡收起来；松手记下 `draggedAt`，250ms 内的 click 忽略。位置仍然写成内联 `left/top`，钳制改成按元素实际宽高留 8px 边（原来是硬留 120px，球这种窄元素会被推到屏幕外半截）。
+
+**验收新增的四条：** 球是正圆（`offsetWidth === offsetHeight` 且 `border-radius ≥ 半径`）、里面有 ≥3 个自绘图元、名字在球下和 `aria-label` 里都是「创造者模式」、往右下拖 190×150 后 `pos=free` 且**没有**顺手展开、轻点才展开；`.orb` 也进了 hover 提示覆盖率名单。拖拽方向是量出来的：这一步球贴在视口上沿（前一条断言刚把面板拖到 646,58），往左上拖立刻撞到 8px 钳位，实测只走 50px，断言就变成在测钳位而不是在测拖拽。轻点展开前要先等 300ms——面板用 250ms 内的事件窗口把「拖完紧接着的 click」判成拖的一部分，Playwright 的 click 紧跟着上一次 `mouse.up` 就会真的被吞掉，这不是测试的毛病，是同一个手势在 0ms 内确实分不开。
+
+**这一批还纠了一个上一批的错口径。** `order-seed @1280` 原来卡「全局创建顺序前 1/4 中位 y → 后 1/4 中位 y 至少下移 400px」，实测 -416px 判红。指标本身站不住：6 条横带同时在盖，任何四分位都横跨整页。改成卡两条真实保证（见 §13.16 同一处的更正）。
+
+**跑验收期间不要改 `src/`。** 门禁的 dev server 有文件监听，页面中途被整页重载，`[data-apply]` 那一局的进度直接归零，`waitPanelDone` 60s 超时报错——现象长得像功能坏了，实际是测试被自己打断。要么先跑完再改，要么改完重跑。
+
+**更多构建顺序算法：方案已列给用户选，未实现。** 候选是竖带 `cols`（rows 的转置）、蛇形 `snake`（横带来回扫）、逐层 `depth`（按 DOM 深度，骨架先立起来）、径向 `radial` / `spiral`（由中心向外 / 由外向内）、权重配额 `balance`（让所有光标同时收工，可叠加在任意空间顺序上）。用户明确「等下给我方案选择」，所以这里只留决策入口，不预先写代码；选定后另起一节记录取舍与实测。
+
+### 13.18 悬浮球贴边展开会把按钮顶出视口（2026-11-08）
+
+上一批的门禁最后一条红了：`tools/verify.mjs:1302` 点 `[data-copy]` 超时，Playwright 报的不是「找不到元素」而是 **element is outside of the viewport** —— 元素在、可点，只是在视口外面。原因不在测试：悬浮球本来就能拖到任意位置，而展开时卡片是从球那个位置**往下长**的（`max-height:88vh`），球贴在上半屏往下拖 150px 以后，208 + 792 > 900，底部的「应用并重跑 / 复制配置」整排落到了屏幕外。拖表头那一步没暴露它，是因为表头只允许在卡片已经展开时拖，钳制用的就是卡片宽高；球是收起态，钳制按 46px 的球算，展开以后就没人再管位置了。
+
+**修的是面板，不是断言。** `setExpanded(true)` 之后补一次 `fitInView()`：只有 `data-pos="free"`（也就是被人拖过）才处理，读 `host.getBoundingClientRect()` 拿到展开后的真实尺寸，把 `left/top` 按 `[8, 视口 - 尺寸 - 8]` 夹回来。顺序是关键——先写 `dataset.open`，再读尺寸，再写样式：这三步都在同一帧的同步代码里，浏览器还没画，所以不会出现「先跳到底下再弹回来」的一帧闪烁。`box.width/height` 为 0 时直接返回，避免在还没布局的状态下把面板推到 0,0。
+
+**门禁加了一条正向断言**（不是把坐标改回去绕开它）：拖到贴近下沿 → 轻点展开 → `[data-copy]` 的 `bottom ≤ innerHeight` 且 `right ≤ innerWidth`，实测 `拖球 657,58 → 836,208 · 展开后按钮底边 882 ≤ 视口 900`。同时把这条写进 README 与 CHANGELOG 的创造者模式条目，因为它属于「面板能在别人家页面上活下来」这一类承诺，和「位置写内联样式覆盖不动」是同一件事。
+
+**这一批之后 20 个场景全绿**（`npm run verify` exit=0），消费端冒烟 `npm run verify:consumer` 也 PASS（包内 11/11 关键文件、ESM/CJS/tune 双入口、类型正反例、script 标签全局形状、创造者模式全局入口、真实页面 0 报错）。
 
 ---
 
