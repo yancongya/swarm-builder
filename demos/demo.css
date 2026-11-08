@@ -5,26 +5,8 @@
 * { box-sizing: border-box; }
 body { margin: 0; font: 15px/1.6 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
 
-/* Shared control bar: lives outside #app so it is never part of the snapshot. */
-body > .bar {
-  position: fixed; z-index: 50; top: 0; left: 0; right: 0;
-  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
-  padding: 8px 14px; background: #14171c; color: #e8eaed;
-  border-bottom: 1px solid #2a2f37; font-size: 12px;
-}
-body > .bar b { font-weight: 600; letter-spacing: .01em; }
-body > .bar button {
-  font: inherit; padding: 5px 12px; border-radius: 6px; cursor: pointer;
-  border: 1px solid #3b424d; background: #222831; color: #e8eaed;
-}
-body > .bar button:hover { background: #2c333d; }
-body > .bar button.primary { background: #3b82f6; border-color: #3b82f6; color: #fff; }
-body > .bar select {
-  font: inherit; padding: 4px 6px; border-radius: 6px;
-  border: 1px solid #3b424d; background: #222831; color: #e8eaed;
-}
-body > .bar .status { margin-left: auto; color: #9aa4b2; font-variant-numeric: tabular-nums; }
-body > #app { padding-top: 46px; }
+/* No toolbar any more: every knob lives in the creator-mode panel the tuner injects,
+   so nothing here can collide with a case's own class names. */
 
 /* --- simple --- */
 .page-simple { max-width: 760px; margin: 0 auto; padding: 40px 24px 80px; }

@@ -49,7 +49,7 @@ npm i swarm-builder
 ```
 
 > [!NOTE]
-> 仓库当前处于发布准备完成、尚未上架 npm 的状态。本地消费用 `npm i ./swarm-builder-0.1.0.tgz`（`npm pack` 产出）或直接引源码；上架流程见[开发与验收](#开发与验收)。
+> 仓库当前处于发布准备完成、尚未上架 npm 的状态。本地消费用 `npm i ./swarm-builder-0.1.0.tgz`（`npm pack` 产出），或直接从 [GitHub](https://github.com/yancongya/swarm-builder) 引源码；上架流程见[开发与验收](#开发与验收)。
 
 不想打包就直接引 IIFE。**全局是命名空间对象，不是类本身**：
 
@@ -126,7 +126,11 @@ const tuner = tune({
 });
 
 tuner.apply();                // 用当前面板值重跑一局
+tuner.reset();                // 全部退回库默认值（不擅自重跑）
+tuner.restore();              // 停掉施工，把页面原样交还——跑中途也能按
 const code = tuner.snippet(); // 可粘贴代码，只列与默认值不同的项
+tuner.open();                 // 展开；tuner.close() 收成小按钮
+console.log(tuner.status, tuner.phase, tuner.expanded); // 给宿主镜像成自己的状态栏
 tuner.destroy();
 ```
 
@@ -137,7 +141,17 @@ tuner.destroy();
 <script>SwarmBuilderTune.tune({ root: '#app', open: true });</script>
 ```
 
-面板覆盖全部纯数据选项（光标数、速度、目标时长、上限、复制、辅助线、标题步进、避让、跟随、音效、主题、性能模式、跳过选择器），并带暂停 / 跳过 / 复制。导出的片段长这样：
+面板把 15 个纯数据选项一行不落全铺开：光标数量、速度、目标时长、条目上限、复制盖章、每组复制、辅助线、辅助线数、标题步进、光标避让、镜头跟随、音效、施工线色、性能模式、跳过选择器。行高是按 800px 宽的宿主量出来的，默认不用滚动就能看全；宿主实在太矮才交给滚动条，那时滚动条也是可见的。
+
+面板与引擎的对应关系是照着「一局」建立的：
+
+- 状态行下面一条细进度条按 `built/total` 推进，跑完停在 100%；未触发时它是灰的。
+- 改过的行标成蓝色并带一个 `·`，下面一行写明「N 项待生效 · 点『应用并重跑』」；点过之后变成「已与正在跑的这一局一致」。
+- 有依赖的行会自动灰掉并说清原因：设了目标时长，速度倍率归估算器管，滑块就禁用，title 里写着「把目标时长改回 0 才能手调速度」；关掉复制盖章，每组复制同样灰掉。
+- 暂停 / 跳过只在跑着的时候可点，结束或停掉后自动禁用；暂停按钮文字在「暂停 / 继续」之间切。
+- 底部三颗按钮各管一段：复制配置（剪贴板不可用时改成选中文本）、重置（回库默认值，不重跑）、恢复原状（`destroy()` 当前这局并把页面原样交还，跑中途可用）。
+
+导出的片段长这样：
 
 ```js
 // 由 swarm-builder 调参面板导出，只列出与默认值不同的选项。
@@ -218,6 +232,8 @@ swarm.start();
 | `targetDuration: 3` | 3.2s（+7%） |
 | `targetDuration: 10` | 8.8s（-12%） |
 
+估算按条目线性计价，而真实成本在整页规模上是超线性的（每多一个幽灵盒子，其余盒子的重排都更贵）。把 `maxItems` 从默认 400 抬到 2000、吃下密集控制台整页 440 项之后，自然节奏 53.1s、`targetDuration: 10` 实测 19.9s——定速仍然把节奏砍掉一半以上，但落点会从目标值偏出去。验收里 400 项那一档按 ±35% 卡死，整页那一档只卡「必须显著快于自然速度」，偏差如实报出来。
+
 页面很大时先考虑 `performanceMode`，再考虑 `targetDuration`：拥挤页面真正会崩的不是帧率（注入到 414 项时 rAF 仍是 16.67ms/帧、0 个长帧），而是四十秒的时长和满屏辅助线噪声。真实规模参照 `demos/console.html`：415 个可重建项、页高 2018px、68 次复制、10 个 `fixed` 元素，自然速度约 28s；这种页面上建议同时开 `tour`。
 
 ## 框架集成
@@ -274,11 +290,14 @@ npm run build            # 主包 es/cjs/iife + tune 子入口 + 声明文件
 npm run typecheck        # tsc --noEmit
 npm run verify           # Playwright 18 个验收场景，截图落在 .shots/
 npm run verify:consumer  # 把 tarball 装进独立目录，按真实消费者入口各走一遍
+npm publish --dry-run    # 发布预检：跑完整 prepublishOnly，只打包不上传
 ```
 
-`demos/index.html` 是壳页：工具栏只有一份，案例从各演示页的 `#app` 片段现场替换，标记内容保持单一来源；`console.html` 是真实规模的密集控制台，`tune.html` 假装成「别人家的站点」用来验证面板隔离。`swarm-builder-plan.md` 是交接文档：能力分级、每批实测数据、踩过的坑都在里面。
+`demos/index.html` 是唯一的预览入口：一个 mockup 浏览器窗口，标签页切案例（简单页 / 密集控制台 / 深色落地页 / 复杂工作台），地址栏、前进后退、重新载入和底部状态栏都按真的浏览器样子画。案例页本身没有工具栏，参数只在案例 iframe 内的创造者模式面板里改——iframe 不是偷懒：镜头跟随读的是 `window.scrollY / innerHeight`，换成内联滚动容器会让相机跟着错误的视口走。`tune.html` 假装成「别人家的站点」，专门用来验证面板隔离。`swarm-builder-plan.md` 是交接文档：能力分级、每批实测数据、踩过的坑都在里面。
 
 `prepublishOnly` 串起 typecheck → build → verify → verify:consumer，任何一环红了都发不出去。消费端门禁会真的 `npm pack` + 安装，检查 ESM/CJS/两个 IIFE 全局形状、声明文件正例过反例拦、以及装完包之后页面里真跑一场。
+
+发布目标由包自己的 `publishConfig.registry` 钉在 `registry.npmjs.org`，不受本地默认 registry（例如只读的 npmmirror 镜像）影响。门禁的嵌套 npm 命令会显式关掉 `npm_config_dry_run`——否则 `npm publish --dry-run` 传下来的这个变量会让它们只打印不写盘，`node_modules` 空掉、报错看起来像包坏了。
 
 ## 许可
 

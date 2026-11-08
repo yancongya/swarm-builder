@@ -15,8 +15,10 @@
 - 定速进场：`targetDuration` 由队列估算器反推速度倍率；`performanceMode` 在拥挤页面自动裁剪
 - 坐标健壮性：`position: fixed` 源元素进独立视口钉定层，重建中滚动不漂移；容器边框与滚动偏移抵消
 - 主题自适应：施工线墨色按页面底色判断明暗
-- 调参面板子入口 `swarm-builder/tune`：shadow DOM 悬浮面板，现场改参、应用重跑、一键导出可粘贴配置片段
-- 完整 TypeScript 声明；预览壳页 `demos/index.html` 与真实规模密集案例 `demos/console.html`
+- 调参面板子入口 `swarm-builder/tune`：shadow DOM 悬浮面板，15 项参数一屏全露；待生效标记、依赖灰化并写明原因、进度条与阶段驱动的暂停/跳过可用性、重置与「恢复原状」，并可一键导出可粘贴配置片段
+- 预览统一为一个 mockup 浏览器窗口 `demos/index.html`：标签页切案例、假域名地址栏、前进/后退/重载、底部状态栏镜像面板进度；案例页不再有顶栏，参数只在创造者模式里改
+- 真实规模密集案例 `demos/console.html`（415 个可重建项、页高 2018px）
+- 完整 TypeScript 声明，正反例都有拦截用例
 
 ### 分发
 
@@ -27,4 +29,4 @@
 
 ### 验收
 
-- Playwright 18 个场景：4 页 × 2 宽度 + controls / fixed-scroll / ignore[] / sound / pace-perf / flocking / tour / theme / shell-case / tune-panel
+- Playwright 18 个场景：4 页 × 2 宽度 + controls / fixed-scroll / ignore[] / sound / pace-perf / flocking / tour / theme / mockup-browser / tune-panel

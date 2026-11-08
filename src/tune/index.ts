@@ -1,9 +1,10 @@
 import { SwarmBuilder } from '../index';
 import type { AgentInfo, SwarmBuilderOptions, SwarmResult } from '../types';
-import { Panel, type Corner } from './panel';
+import { Panel, type Corner, type Phase } from './panel';
 import { CHROME_SELECTOR, DEFAULT_CONFIG, buildSnippet, describeRoot, pickPlain, type PlainConfig } from './snippet';
 
 export type { PlainConfig } from './snippet';
+export type { Corner, Phase } from './panel';
 export { DEFAULT_CONFIG } from './snippet';
 
 export interface TuneOptions {
@@ -47,12 +48,20 @@ export class SwarmTuner {
       onApply: () => this.apply(),
       onPause: () => {
         if (!this.swarm) return;
-        if (this.swarm.isPaused) this.swarm.resume();
-        else this.swarm.pause();
-        this.panel.setPaused(this.swarm.isPaused);
+        if (this.swarm.isPaused) {
+          this.swarm.resume();
+          this.panel.setPhase('running');
+          this.panel.setStatus('已继续');
+        } else {
+          this.swarm.pause();
+          this.panel.setPhase('paused');
+          this.panel.setStatus('已暂停');
+        }
       },
       onSkip: () => this.swarm?.skip(),
       onCopy: () => void this.copy(),
+      onReset: () => this.reset(),
+      onRestore: () => this.restore(),
     }, options.position ?? 'bottom-right', options.open ?? false);
     document.body.appendChild(this.panel.host);
   }
@@ -60,7 +69,8 @@ export class SwarmTuner {
   /** Rebuild with the panel's current values. The previous run is torn down first. */
   apply(): void {
     this.swarm?.destroy();
-    this.panel.setPaused(false);
+    this.panel.markApplied(this.config);
+    this.panel.setPhase('idle');
     this.panel.setStatus('采蓝图中…');
     this.swarm = new SwarmBuilder({
       ...this.config,
@@ -68,21 +78,38 @@ export class SwarmTuner {
       ignore: [CHROME_SELECTOR, ...(this.config.ignore ?? [])],
       autoStart: false,
       onStart: (agents: AgentInfo[]) => {
+        this.panel.setPhase('running');
         this.panel.setStatus(`施工中 · ${agents.length} 个光标`);
         this.initial.onStart?.(agents);
       },
       onProgress: (built: number, total: number) => {
         this.panel.setStatus(`重建中 ${built}/${total}`);
+        this.panel.setProgress(built, total);
         this.initial.onProgress?.(built, total);
       },
       onComplete: (result: SwarmResult) => {
-        this.panel.setPaused(false);
+        this.panel.setPhase('done');
         const dropped = result.dropped > 0 ? ` · 丢弃 ${result.dropped}` : '';
         this.panel.setStatus(`完成 ${result.built} 项 · ${(result.durationMs / 1000).toFixed(1)}s${dropped}`);
         this.initial.onComplete?.(result);
       },
     });
     this.swarm.start();
+  }
+
+  /** Back to the library defaults; the values still need 「应用并重跑」 to take effect. */
+  reset(): void {
+    this.config = { ...DEFAULT_CONFIG };
+    this.panel.setConfig(this.config);
+    this.panel.setStatus('已重置为库默认值');
+  }
+
+  /** Stop building and hand the page back untouched. */
+  restore(): void {
+    this.swarm?.destroy();
+    this.swarm = null;
+    this.panel.setPhase('idle');
+    this.panel.setStatus('已恢复原状');
   }
 
   /** The paste-ready snippet: plain data only, `root` as a selector, defaults omitted. */
@@ -111,6 +138,19 @@ export class SwarmTuner {
 
   close(): void {
     this.panel.setExpanded(false);
+  }
+
+  get expanded(): boolean {
+    return this.panel.expanded;
+  }
+
+  /** What the panel is reporting — for hosts that mirror it into their own chrome. */
+  get status(): string {
+    return this.panel.statusText;
+  }
+
+  get phase(): Phase {
+    return this.panel.currentPhase;
   }
 
   destroy(): void {

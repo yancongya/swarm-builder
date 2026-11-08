@@ -3,6 +3,22 @@
   "version": "0.1.0",
   "description": "Embeddable cursor-swarm page rebuild library",
   "license": "MIT",
+  "author": "tycon",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/yancongya/swarm-builder.git"
+  },
+  "homepage": "https://github.com/yancongya/swarm-builder#readme",
+  "bugs": "https://github.com/yancongya/swarm-builder/issues",
+  "keywords": [
+    "cursor",
+    "swarm",
+    "animation",
+    "page-rebuild",
+    "overlay",
+    "demo",
+    "vanilla"
+  ],
   "type": "module",
   "files": [
     "dist",
@@ -38,5 +54,9 @@
   },
   "unpkg": "./dist/swarm-builder.iife.js",
   "jsdelivr": "./dist/swarm-builder.iife.js",
-  "sideEffects": false
+  "sideEffects": false,
+  "publishConfig": {
+    "registry": "https://registry.npmjs.org",
+    "access": "public"
+  }
 }

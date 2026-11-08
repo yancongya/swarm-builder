@@ -4,63 +4,38 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Swarm Builder · 案例预览</title>
-  <link rel="stylesheet" href="./demo.css" />
+  <link rel="stylesheet" href="./browser.css" />
 </head>
-<body data-demo="shell">
-  <div class="bar">
-    <b>Swarm Builder</b>
-    <label>案例
-      <select data-case>
-        <option value="simple" selected>简单页（基准）</option>
-        <option value="console">密集控制台</option>
-        <option value="landing">深色落地页（长 + 图 + fixed）</option>
-        <option value="dark-ui">深色复杂 UI（100 项）</option>
-      </select>
-    </label>
-    <button class="primary" data-replay>重建</button>
-    <button data-destroy>销毁</button>
-    <button data-pause>暂停</button>
-    <button data-skip>跳过</button>
-    <label>光标
-      <select data-agents>
-        <option value="4">4</option>
-        <option value="6" selected>6</option>
-        <option value="10">10</option>
-        <option value="16">16</option>
-      </select>
-    </label>
-    <label>速度
-      <select data-speed>
-        <option value="0.5">0.5x</option>
-        <option value="1" selected>1x</option>
-        <option value="2">2x</option>
-        <option value="4">4x</option>
-      </select>
-    </label>
-    <label>时长
-      <select data-pace>
-        <option value="0" selected>自然</option>
-        <option value="6">6 秒</option>
-        <option value="10">10 秒</option>
-        <option value="20">20 秒</option>
-      </select>
-    </label>
-    <label>上限
-      <select data-max>
-        <option value="200">200</option>
-        <option value="400" selected>400</option>
-        <option value="800">800</option>
-        <option value="2000">2000</option>
-      </select>
-    </label>
-    <label>跟随 <input type="checkbox" data-tour /></label>
-    <label>群聚 <input type="checkbox" data-flock checked /></label>
-    <label>音效 <input type="checkbox" data-sound /></label>
-    <span class="status" data-status>待触发</span>
-  </div>
+<body>
+  <main class="win">
+    <div class="tabs" role="tablist" aria-label="案例" data-tabs>
+      <span class="lights" aria-hidden="true"><i></i><i></i><i></i></span>
+    </div>
 
-  <div id="app"></div>
+    <div class="nav">
+      <button class="icon" type="button" data-back title="后退" disabled>&larr;</button>
+      <button class="icon" type="button" data-fwd title="前进" disabled>&rarr;</button>
+      <button class="icon" type="button" data-reload title="重新载入这一页">&#x21bb;</button>
+      <div class="addr" data-addr>
+        <svg class="lock" viewBox="0 0 12 12" aria-hidden="true"><path d="M3.5 5.2V4a2.5 2.5 0 0 1 5 0v1.2M2.6 5.2h6.8v4.6H2.6z" fill="none" stroke="currentColor" stroke-width="1.1" stroke-linejoin="round"/></svg>
+        <span data-url></span>
+      </div>
+      <button class="creator" type="button" data-creator aria-pressed="true"
+              title="创造者模式：所有参数都在这一个面板里改，改完点「应用并重跑」">创造者模式</button>
+    </div>
 
-  <script type="module" src="./shell.ts"></script>
+    <div class="viewport">
+      <iframe data-frame title="案例页面" src="about:blank"></iframe>
+    </div>
+
+    <div class="statusbar" data-statusbar data-phase="idle">
+      <span class="dot" aria-hidden="true"></span>
+      <span data-hint>准备中</span>
+      <span class="sp"></span>
+      <span data-meta></span>
+    </div>
+  </main>
+
+  <script type="module" src="./browser.ts"></script>
 </body>
 </html>

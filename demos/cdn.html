@@ -3,57 +3,34 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Swarm Builder · script 标签引入</title>
+  <title>Swarm Builder · 无构建引入</title>
   <link rel="stylesheet" href="./demo.css" />
 </head>
 <body data-demo="cdn">
-  <div class="bar">
-    <b>Swarm Builder</b>
-    <button class="primary" data-replay>重建</button>
-    <button data-destroy>销毁</button>
-    <span class="status" data-status>待触发</span>
-  </div>
-
   <div id="app">
     <div class="page-simple">
       <h1>无构建产物依赖</h1>
-      <p class="sub">这一页只用一个 script 标签加载 IIFE 产物，验证 CDN 引入路径可用。</p>
+      <p class="sub">这一页只引一个 script 标签，没有打包、没有 import map，面板照样能用——调参产物自带引擎。</p>
       <div class="cards">
-        <div class="card"><h3>script</h3><p>window.SwarmBuilder 全局可用。</p></div>
-        <div class="card"><h3>mount</h3><p>一次调用完成快照与重建。</p></div>
-        <div class="card"><h3>回调</h3><p>onComplete 里做进场收尾。</p></div>
+        <div class="card"><h3>script</h3><p>window.SwarmBuilderTune 全局可用。</p></div>
+        <div class="card"><h3>tune</h3><p>一次调用就把创造者模式放到页面上。</p></div>
+        <div class="card"><h3>片段</h3><p>调完复制出来的就是能粘进源码的配置。</p></div>
       </div>
     </div>
   </div>
 
-  <script src="/dist/swarm-builder.iife.js"></script>
+  <script src="/dist/swarm-builder.tune.iife.js"></script>
   <script>
     const app = document.querySelector('#app');
-    const statusEl = document.querySelector('[data-status]');
-    let swarm = null;
-
-    document.querySelector('[data-replay]').addEventListener('click', () => {
-      swarm?.destroy();
-      statusEl.textContent = '重建中…';
-      swarm = new window.SwarmBuilder.SwarmBuilder({
-        root: app,
-        agentCount: 4,
-        speed: 2,
-        onComplete: (result) => {
-          statusEl.textContent = `完成 ${result.built} 项 · ${(result.durationMs / 1000).toFixed(1)}s`;
-        },
-      });
-      swarm.start();
+    const tuner = window.SwarmBuilderTune.tune({
+      root: app,
+      open: true,
+      position: 'bottom-right',
+      initial: { agentCount: 4, speed: 2 },
     });
+    window.__tuner = tuner;
 
-    document.querySelector('[data-destroy]').addEventListener('click', () => {
-      swarm?.destroy();
-      statusEl.textContent = '已销毁';
-    });
-
-    if (new URLSearchParams(location.search).has('auto')) {
-      document.querySelector('[data-replay]').click();
-    }
+    if (new URLSearchParams(location.search).has('auto')) tuner.apply();
   </script>
 </body>
 </html>

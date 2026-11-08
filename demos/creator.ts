@@ -1,0 +1,26 @@
+import { SwarmBuilder } from '../src/index';
+import type { SwarmBuilderOptions } from '../src/types';
+import { tune } from '../src/tune/index';
+import type { SwarmTuner } from '../src/tune/index';
+
+declare global {
+  interface Window {
+    SwarmBuilder: typeof SwarmBuilder;
+    __tuner: SwarmTuner;
+  }
+}
+
+// Still exposed so the acceptance harness can drive the API with no UI in the way.
+window.SwarmBuilder = SwarmBuilder;
+
+const app = document.querySelector<HTMLElement>('#app');
+if (!app) throw new Error('demo page needs #app');
+
+// Each case states its own starting values on <body data-swarm>, so the page stays the
+// single source and the panel opens on the numbers that case was always demoed with.
+const initial = JSON.parse(document.body.dataset.swarm ?? '{}') as SwarmBuilderOptions;
+
+const tuner = tune({ root: app, initial, open: true, position: 'bottom-right' });
+window.__tuner = tuner;
+
+if (new URLSearchParams(location.search).has('auto')) tuner.apply();

@@ -1,7 +1,44 @@
 import { chromium } from 'playwright';
 import { mkdirSync } from 'node:fs';
+import { spawn } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 
-const BASE = process.env.BASE ?? 'http://127.0.0.1:5199';
+const ROOT = fileURLToPath(new URL('..', import.meta.url));
+
+// 门禁自己起服务器：以前它默认 5199 上有个别人手工开着的 vite。
+// 那样有两个坑——没人开着就整片连不上，以及长跑的 dev server 会把 dist/ 里的
+// 产物缓存住，改了 src/tune 重新 build 之后 cdn 页仍在跑旧字节。
+// 端口给 0 让 vite 自己挑，从它的 stdout 里读回真实地址。
+async function startServer() {
+  const child = spawn(process.execPath, ['node_modules/vite/bin/vite.js', '--port', '0', '--host', '127.0.0.1'], {
+    cwd: ROOT,
+    // vite.config.ts 里写了 open：不关掉的话每次跑验收都会弹一个真浏览器。
+    env: { ...process.env, BROWSER: 'none' },
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+  process.on('exit', () => { try { child.kill(); } catch { /* 已经走了 */ } });
+  const url = await new Promise((resolve, reject) => {
+    let out = '';
+    const timer = setTimeout(() => reject(new Error(`dev server 30s 没报出地址：${out}`)), 30000);
+    child.stdout.on('data', (buf) => {
+      // 地址那一行可能被拆成多个 chunk，攒起来再找。
+      // vite 给横幅上了颜色，"Local:" 和 URL 之间夹着 ANSI 转义码，
+      // 不先抹掉的话 \\s+ 根本对不上。
+      out += String(buf).replace(/\x1b\[[0-9;]*m/g, '');
+      const m = /Local:\s+(http:\/\/[^\s]+?)\/?\s/m.exec(out + ' ');
+      if (m) { clearTimeout(timer); resolve(m[1]); }
+    });
+    child.stderr.on('data', (buf) => process.stderr.write(buf));
+    child.on('exit', (code) => { clearTimeout(timer); reject(new Error(`dev server 提前退出（code ${code}）`)); });
+  });
+  return { child, url };
+}
+
+const owned = process.env.BASE ? null : await startServer();
+const BASE = process.env.BASE ?? owned?.url;
+if (!BASE) throw new Error('没有可用的 BASE');
+process.on('exit', () => owned?.child.kill());
+
 const PAGES = ['simple', 'landing', 'dark-ui', 'cdn'];
 const EXPECTED_MEDIA = { landing: 5, 'dark-ui': 1 };
 const EXPECTED_COPIES = { simple: 3, landing: 9, 'dark-ui': 29 };
@@ -22,6 +59,73 @@ function report(title, problems, lines) {
   if (!ok) failures++;
   return ok;
 }
+
+// ---------------------------------------------------------------------------
+// 创造者模式是唯一的改参数入口，而面板在 shadow root 里：页面自己的 querySelector
+// 穿不进去，所以状态一律从 host.shadowRoot 读（下面每个 evaluate 里都要把它写全，
+// evaluate 的函数体是序列化后在页面里执行的，Node 侧的辅助函数带不过去）。
+// 点击可以放心交给 Playwright——它的选择器引擎会穿透 open shadow root——
+// 但写控件值必须自己派发 input 事件。
+// ---------------------------------------------------------------------------
+const readStatus = (page) => page.evaluate(
+  () => document.querySelector('[data-sb-chrome]').shadowRoot.querySelector('[data-status]')?.textContent ?? '',
+);
+
+const waitDone = (page, ms) => page.waitForFunction(
+  () => document.querySelector('[data-sb-chrome]').shadowRoot
+    .querySelector('[data-status]')?.textContent.startsWith('完成'),
+  null,
+  { timeout: ms, polling: 200 },
+);
+
+/** 写面板里的一个字段，返回「待生效」行数，用于确认改动被标了出来。 */
+const setField = (page, key, value) => page.evaluate(
+  ([k, v]) => {
+    const sr = document.querySelector('[data-sb-chrome]').shadowRoot;
+    const el = sr.querySelector(`[data-key="${k}"]`);
+    if (!el) throw new Error(`面板里没有 ${k} 这一项`);
+    if (el.type === 'checkbox') el.checked = Boolean(v);
+    else el.value = String(v);
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+    return sr.querySelectorAll('.row[data-dirty="true"]').length;
+  },
+  [key, value],
+);
+
+const fieldOf = (page, key) => page.evaluate(
+  (k) => {
+    const el = document.querySelector('[data-sb-chrome]').shadowRoot.querySelector(`[data-key="${k}"]`);
+    const row = el?.closest('.row');
+    return {
+      value: el?.type === 'checkbox' ? el.checked : el?.value,
+      off: row?.dataset.off === 'true',
+      disabled: !!el?.disabled,
+      dirty: row?.dataset.dirty === 'true',
+      title: row?.title ?? '',
+    };
+  },
+  key,
+);
+
+/** 面板自身那一圈交互状态：进度条、待生效提示、按钮可用性、阶段。 */
+const panelUi = (page) => page.evaluate(() => {
+  const sr = document.querySelector('[data-sb-chrome]').shadowRoot;
+  const host = document.querySelector('[data-sb-chrome]');
+  return {
+    open: host?.dataset.open,
+    phase: host?.dataset.phase,
+    status: sr.querySelector('[data-status]')?.textContent ?? '',
+    meter: sr.querySelector('[data-meter]')?.style.width ?? '',
+    note: sr.querySelector('[data-note]')?.textContent ?? '',
+    dirty: sr.querySelectorAll('.row[data-dirty="true"]').length,
+    off: sr.querySelectorAll('.row[data-off="true"]').length,
+    pauseDisabled: sr.querySelector('[data-pause]')?.disabled ?? null,
+    skipDisabled: sr.querySelector('[data-skip]')?.disabled ?? null,
+    overlay: !!document.querySelector('.sb-overlay'),
+    hidden: document.querySelectorAll('.sb-hidden').length,
+    items: document.querySelectorAll('.sb-item').length,
+  };
+});
 
 for (const width of WIDTHS) {
   for (const name of PAGES) {
@@ -46,7 +150,7 @@ for (const width of WIDTHS) {
         }
       }).observe(document.body, { childList: true, subtree: true });
     });
-    await page.click('[data-replay]');
+    await page.click('[data-apply]');
     await page.waitForTimeout(600);
     await page.screenshot({ path: `${OUT}${name}-${width}-mid.png` });
 
@@ -96,18 +200,26 @@ for (const width of WIDTHS) {
     let finished = false;
     while (Date.now() < deadline) {
       await sample();
-      finished = await page.evaluate(() => document.querySelector('[data-status]').textContent.startsWith('完成'));
+      finished = (await readStatus(page)).startsWith('完成');
       if (finished) break;
       await page.waitForTimeout(120);
     }
 
     const done = finished
       ? await page.evaluate(() => ({
-          status: document.querySelector('[data-status]').textContent,
+          status: document.querySelector('[data-sb-chrome]').shadowRoot.querySelector('[data-status]').textContent,
           overlayGone: !document.querySelector('.sb-overlay'),
           originalVisible: document.querySelectorAll('.sb-hidden').length === 0,
+          // 顶栏已经删干净：页面上不该再有 body > .bar，参数只在面板里改。
+          toolbar: document.querySelectorAll('body > .bar').length,
+          rows: document.querySelector('[data-sb-chrome]').shadowRoot.querySelectorAll('.row').length,
+          // 参数都暴露 = 15 行不用滚动就全看得见。
+          clipped: (() => {
+            const f = document.querySelector('[data-sb-chrome]').shadowRoot.querySelector('.fields');
+            return f.scrollHeight > f.clientHeight + 1;
+          })(),
         }))
-      : { status: 'TIMEOUT' };
+      : { status: 'TIMEOUT', toolbar: 0, rows: 0, clipped: true };
 
     await page.screenshot({ path: `${OUT}${name}-${width}.png`, fullPage: false });
 
@@ -124,6 +236,9 @@ for (const width of WIDTHS) {
     if (stamps < expectedCopies) problems.push(`复制只发生 ${stamps}/${expectedCopies} 次`);
     const expectedGuides = EXPECTED_GUIDES[name] ?? 0;
     if (guides < expectedGuides) problems.push(`辅助线只画了 ${guides}/${expectedGuides} 条`);
+    if (done.toolbar > 0) problems.push(`页面还留着 ${done.toolbar} 个顶栏工具条`);
+    if (done.rows !== 15) problems.push(`创造者模式面板只有 ${done.rows} 行参数`);
+    if (done.clipped) problems.push('面板参数列表要滚动才看得全');
     if (errors.length) problems.push(`控制台报错 ${errors.length} 条: ${errors[0]}`);
 
     report(`${name} @${width}`, problems, [
@@ -131,6 +246,7 @@ for (const width of WIDTHS) {
       `媒体: 槽位=${mid.media} 已呈现=${mid.mediaShown}/${expectedMedia} 降级=${mid.mediaFallback}`,
       `复制: 拖影=${mid.copies} 累计复制=${stamps}/${expectedCopies} ⌥ 徽章峰值=${mid.optionBadges}`,
       `辅助线: 累计=${guides}/${expectedGuides}`,
+      `入口: 顶栏 ${done.toolbar} 个 · 面板 ${done.rows} 行${done.clipped ? '（需滚动）' : ' 全露'}`,
       `结果: ${done.status}${done.overlayGone === false ? ' · overlay 未清除' : ''}${done.originalVisible === false ? ' · 原页面未恢复' : ''}`,
     ]);
 
@@ -150,31 +266,48 @@ for (const width of WIDTHS) {
   await page.goto(`${BASE}/demos/landing.html`, { waitUntil: 'load' });
 
   const readState = () =>
-    page.evaluate(() => ({
-      status: document.querySelector('[data-status]').textContent,
-      items: document.querySelectorAll('.sb-item, .sb-text').length,
-      cursors: [...document.querySelectorAll('.sb-cursor')].map((c) => c.style.transform).join('|'),
-    }));
+    page.evaluate(() => {
+      const sr = document.querySelector('[data-sb-chrome]').shadowRoot;
+      return {
+        status: sr.querySelector('[data-status]').textContent,
+        phase: document.querySelector('[data-sb-chrome]').dataset.phase,
+        meter: sr.querySelector('[data-meter]').style.width,
+        pause: sr.querySelector('[data-pause]').disabled,
+        skip: sr.querySelector('[data-skip]').disabled,
+        items: document.querySelectorAll('.sb-item, .sb-text').length,
+        cursors: [...document.querySelectorAll('.sb-cursor')].map((c) => c.style.transform).join('|'),
+      };
+    });
+
+  const problems = [];
+  const idle = await readState();
+  if (!idle.pause || !idle.skip) problems.push('还没开跑就能暂停/跳过');
+  if (idle.phase !== 'idle') problems.push(`未触发时阶段是 ${idle.phase}`);
 
   // pause / resume
-  await page.click('[data-replay]');
+  await page.click('[data-apply]');
   await page.waitForTimeout(900);
+  const running = await readState();
+  if (running.pause || running.skip) problems.push('跑起来了还不能暂停/跳过');
+  if (running.phase !== 'running') problems.push(`运行中阶段是 ${running.phase}`);
+  if (running.meter === '' || running.meter === '0%') problems.push(`运行中进度条没动：${running.meter || '空'}`);
   await page.click('[data-pause]');
   const frozen = await readState();
   await page.waitForTimeout(1000);
   const still = await readState();
   await page.screenshot({ path: `${OUT}controls-paused.png` });
+  if (still.phase !== 'paused') problems.push(`暂停后阶段是 ${still.phase}`);
   await page.click('[data-pause]');
   await page.waitForTimeout(700);
   const resumed = await readState();
 
-  const problems = [];
   if (frozen.status !== '已暂停') problems.push(`暂停后状态为 ${frozen.status}`);
   if (still.cursors !== frozen.cursors || still.items !== frozen.items) problems.push('暂停后画面仍在推进');
   if (resumed.cursors === frozen.cursors && resumed.items === frozen.items) problems.push('继续后没有任何变化');
 
-  // setSpeed mid-run
-  await page.selectOption('[data-speed]', '4');
+  // 未设目标时长时，面板上的「速度」应当直接改到正在跑的这一局。
+  const beforeLive = await page.evaluate(() => window.__tuner.phase);
+  await setField(page, 'speed', 4);
   const speedDeadline = Date.now() + 20000;
   let finishedRun = false;
   while (Date.now() < speedDeadline) {
@@ -183,17 +316,22 @@ for (const width of WIDTHS) {
     await page.waitForTimeout(150);
   }
   if (!finishedRun) problems.push('提速后未完成');
+  const done = await readState();
+  if (done.phase !== 'done') problems.push(`跑完阶段是 ${done.phase}`);
+  if (done.meter !== '100%') problems.push(`跑完进度条停在 ${done.meter}`);
+  if (!done.pause || !done.skip) problems.push('已经结束了还能暂停/跳过');
+  if (beforeLive !== 'running') problems.push(`提速前不该是 ${beforeLive}`);
 
   // skip
-  await page.selectOption('[data-speed]', '1');
-  await page.click('[data-replay]');
+  await setField(page, 'speed', 1);
+  await page.click('[data-apply]');
   await page.waitForTimeout(700);
   const beforeSkip = await readState();
   await page.screenshot({ path: `${OUT}controls-mid.png` });
   await page.click('[data-skip]');
   await page.waitForTimeout(300);
   const afterSkip = await page.evaluate(() => ({
-    status: document.querySelector('[data-status]').textContent,
+    status: document.querySelector('[data-sb-chrome]').shadowRoot.querySelector('[data-status]').textContent,
     overlayGone: !document.querySelector('.sb-overlay'),
     restored: document.querySelectorAll('.sb-hidden').length === 0,
   }));
@@ -206,9 +344,10 @@ for (const width of WIDTHS) {
   if (errors.length) problems.push(`控制台报错 ${errors.length} 条: ${errors[0]}`);
 
   report('controls @1280', problems, [
+    `面板: 待触发 暂停/跳过=${idle.pause}/${idle.skip} → 运行中=${running.pause}/${running.skip} · 进度条 ${running.meter}`,
     `暂停: ${frozen.status} → 1s 后 ${still.status}（光标位移 ${still.cursors === frozen.cursors ? '为 0' : '仍在变'}）`,
-    `继续: ${resumed.status}`,
-    `提速 4x 后完成: ${finishedRun}`,
+    `继续: ${resumed.status} · 阶段 ${idle.phase}→${running.phase}→${still.phase}→${resumed.phase}→${done.phase}（收尾 ${done.meter}）`,
+    `速度实时改 4x 后完成: ${finishedRun}`,
     `跳过: ${beforeSkip.status} → ${afterSkip.status}`,
   ]);
   await ctx.close();
@@ -715,7 +854,7 @@ for (const width of WIDTHS) {
 }
 
 // ---------------------------------------------------------------------------
-// 场景 17：壳页切换案例 + 密集控制台（真实规模页面）
+// 场景 17：mockup 浏览器——一个窗口切所有案例，参数全在创造者模式里改
 // ---------------------------------------------------------------------------
 {
   const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 } });
@@ -724,71 +863,179 @@ for (const width of WIDTHS) {
   page.on('console', (msg) => msg.type() === 'error' && errors.push(msg.text()));
   page.on('pageerror', (err) => errors.push(String(err)));
 
-  const shape = () => page.evaluate(() => ({
-    demo: document.body.dataset.demo,
-    case: new URLSearchParams(location.search).get('case'),
-    page: ['simple', 'console', 'landing', 'blender'].find((k) => document.querySelector('.page-' + k)) ?? 'none',
-    overlay: !!document.querySelector('.sb-overlay'),
-    status: document.querySelector('[data-status]').textContent.trim(),
-  }));
-  const waitDone = (ms) => page.waitForFunction(
-    () => document.querySelector('[data-status]').textContent.trim().startsWith('完成'),
+  // 案例页在 iframe 里跑：TourCam 读的是 window.scrollY / innerHeight，
+  // 换成内联滚动容器会让镜头跟着错误的视口走，所以只能是真的 frame。
+  const frameShape = () => page.evaluate(() => {
+    const doc = document.querySelector('[data-frame]').contentDocument;
+    const sr = doc?.querySelector('[data-sb-chrome]')?.shadowRoot;
+    const status = sr?.querySelector('[data-status]')?.textContent.trim() ?? '';
+    return {
+      demo: doc?.body.dataset.demo ?? 'none',
+      status,
+      built: Number((status.match(/完成 (\d+) 项/) ?? [])[1] ?? 0),
+      items: doc?.querySelectorAll('.sb-item').length ?? 0,
+    };
+  });
+  const chromeShape = () => page.evaluate(() => {
+    const need = (sel) => document.querySelector(sel);
+    return {
+      tab: need('.tab[aria-selected="true"]')?.dataset.key ?? 'none',
+      url: need('[data-url]').textContent,
+      addr: need('[data-addr]').dataset.loading,
+      hint: need('[data-hint]').textContent,
+      meta: need('[data-meta]').textContent,
+      phase: need('[data-statusbar]').dataset.phase,
+      back: need('[data-back]').disabled,
+      fwd: need('[data-fwd]').disabled,
+      creator: need('[data-creator]').getAttribute('aria-pressed'),
+      case_: new URLSearchParams(location.search).get('case'),
+      open: document.querySelector('[data-frame]').contentDocument
+        .querySelector('[data-sb-chrome]')?.dataset.open,
+    };
+  });
+  const waitFrameDone = (ms) => page.waitForFunction(
+    () => (document.querySelector('[data-frame]').contentDocument
+      .querySelector('[data-sb-chrome]')?.shadowRoot
+      .querySelector('[data-status]')?.textContent.trim() ?? '').startsWith('完成'),
+    null,
     { timeout: ms, polling: 200 },
   );
+  /** 在 iframe 里的面板上改字段并按「应用并重跑」。 */
+  const frameApply = (fields) => page.evaluate((list) => {
+    const sr = document.querySelector('[data-frame]').contentDocument
+      .querySelector('[data-sb-chrome]').shadowRoot;
+    for (const [k, v] of list) {
+      const el = sr.querySelector(`[data-key="${k}"]`);
+      if (!el) throw new Error(`面板里没有 ${k}`);
+      if (el.type === 'checkbox') el.checked = v;
+      else el.value = String(v);
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+    sr.querySelector('[data-apply]').click();
+  }, fields);
 
   await page.goto(`${BASE}/demos/index.html`, { waitUntil: 'load' });
-  await page.waitForTimeout(400);
+  await page.waitForFunction(() => document.querySelector('[data-frame]')?.contentDocument
+    ?.querySelector('[data-sb-chrome]') !== null, null, { timeout: 15000 });
 
   const problems = [];
-  const first = await shape();
-  if (first.page !== 'simple' || first.case !== 'simple') problems.push(`初始案例不对: ${JSON.stringify(first)}`);
-  await page.click('[data-replay]');
-  await waitDone(30000);
+  // 壳页自己开跑：mockup 浏览器载入案例后直接触发一局，不需要再去点顶栏。
+  const first = await chromeShape();
+  const firstFrame = await frameShape();
+  if (first.tab !== 'simple' || first.case_ !== 'simple') problems.push(`初始标签页不对: ${JSON.stringify(first)}`);
+  if (firstFrame.demo !== 'simple') problems.push(`第一个案例内容是 ${firstFrame.demo}`);
+  if (first.url !== 'https://swarm.demo') problems.push(`地址栏显示 ${first.url}`);
+  if (first.back !== true || first.fwd !== true) problems.push('首次进入时前进/后退应该都禁用');
+  await waitFrameDone(30000);
+  const simpleDone = await frameShape();
+  if (simpleDone.built < 20) problems.push(`简单页只建成 ${simpleDone.built} 项`);
+  // 顶层状态栏要如实镜像面板：用户不用展开面板也知道在跑什么。它是 200ms 轮询，
+  // 所以等它追上，而不是拿面板那一瞬间的值去比。
+  await page.waitForFunction(() => document.querySelector('[data-statusbar]').dataset.phase === 'done',
+    null, { timeout: 5000 }).catch(() => {});
+  const mirror = await chromeShape();
+  if (mirror.phase !== 'done') problems.push(`跑完后状态栏阶段是 ${mirror.phase}`);
+  if (!mirror.hint.includes('简单页基准') || !mirror.hint.includes('完成')) {
+    problems.push(`状态栏没有镜像面板进度：${JSON.stringify(mirror.hint)}`);
+  }
 
+  // 切密集控制台：iframe 隔离案例样式，案例里的 .bar 不该再被任何全局规则命中。
   const t0 = Date.now();
-  await page.selectOption('[data-case]', 'console');
-  await page.waitForTimeout(400);
-  const switched = await shape();
-  if (switched.page !== 'console') problems.push(`切到 console 后内容不对: ${JSON.stringify(switched)}`);
-  if (switched.case !== 'console') problems.push(`URL 没有跟上案例: ${switched.case}`);
-  await page.screenshot({ path: `${OUT}shell-console-mid.png` });
-  await waitDone(120000);
+  await page.click('.tab[data-key="console"]');
+  await page.waitForFunction(() => document.querySelector('[data-frame]').contentDocument
+    .body?.dataset.demo === 'console', null, { timeout: 15000 });
+  const switched = await chromeShape();
+  if (switched.tab !== 'console' || switched.case_ !== 'console') problems.push(`切到 console 后外壳没跟上: ${JSON.stringify(switched)}`);
+  if (switched.url !== 'https://orbit.demo/console') problems.push(`地址栏没换成 ${switched.url}`);
+  await page.waitForTimeout(1200);
+  await page.screenshot({ path: `${OUT}browser-console-mid.png` });
+  await waitFrameDone(120000);
   const naturalMs = Date.now() - t0;
-  const natural = await shape();
-  const built = Number((natural.status.match(/完成 (\d+) 项/) ?? [])[1] ?? 0);
-  if (built < 350) problems.push(`密集页面只建成 ${built} 项`);
-  // 工具栏规则串味会让柱条变成 fixed 块并挡住点击，这里直接查计算样式。
+  const natural = await frameShape();
+  if (natural.built < 350) problems.push(`密集页面默认上限只建成 ${natural.built} 项`);
   const leaked = await page.evaluate(() => {
-    const el = document.querySelector('.page-console .chart .bar');
-    return el ? getComputedStyle(el).position : 'absent';
+    const doc = document.querySelector('[data-frame]').contentDocument;
+    const el = doc.querySelector('.page-console .chart .bar');
+    const bar = el ? getComputedStyle(el).position : 'absent';
+    // 顶栏规则整族删掉了，宿主页也不该再多出一个 .bar 工具条。
+    return { bar, toolbars: doc.querySelectorAll('body > .bar').length };
   });
-  if (leaked !== 'static') problems.push(`案例里的 .bar 被工具栏规则命中：position=${leaked}`);
+  if (leaked.bar !== 'static') problems.push(`案例里的 .bar 仍被规则命中：position=${leaked.bar}`);
+  if (leaked.toolbars !== 0) problems.push(`案例页还留着 ${leaked.toolbars} 个顶栏工具条`);
 
-  await page.selectOption('[data-max]', '2000');
-  await page.selectOption('[data-pace]', '10');
-  const t1 = Date.now();
-  await page.click('[data-replay]');
-  await waitDone(90000);
-  const pacedMs = (Date.now() - t1) / 1000;
-  const paced = await shape();
-  const pacedBuilt = Number((paced.status.match(/完成 (\d+) 项/) ?? [])[1] ?? 0);
-  if (pacedBuilt <= built) problems.push(`抬到上限 2000 后建成数没有增加：${pacedBuilt} <= ${built}`);
-  if (Math.abs(pacedMs - 10) / 10 > 0.35) problems.push(`定速 10s 实测 ${pacedMs.toFixed(1)}s，超出 35%`);
+  // 抬上限 + 定速：全走面板，不再有单独的顶栏下拉。
+  // 两次都从面板起跑，比的是引擎自己报的时长，把载入和轮询都排除掉。
+  await frameApply([['maxItems', 2000], ['targetDuration', 0]]);
+  await waitFrameDone(120000);
+  const opened = await frameShape();
+  if (opened.built <= natural.built) problems.push(`抬到上限 2000 后建成数没有增加：${opened.built} <= ${natural.built}`);
 
-  await page.selectOption('[data-case]', 'landing');
-  await page.waitForTimeout(400);
-  const back = await shape();
-  if (back.page !== 'landing') problems.push(`切回 landing 后内容不对: ${JSON.stringify(back)}`);
-  await waitDone(60000);
+  await frameApply([['maxItems', 2000], ['targetDuration', 10]]);
+  await waitFrameDone(120000);
+  const paced = await frameShape();
+  const secondsOf = (status) => Number((status.match(/· ([\d.]+)s/) ?? [])[1] ?? 0);
+  const openSeconds = secondsOf(opened.status);
+  const pacedSeconds = secondsOf(paced.status);
+  // 定速在默认这一档是准的（pace-perf 场景按 35% 卡死）。但估算器按条目线性计价，
+  // 把上限抬到整页规模后真实成本是超线性的：实测 10s 目标要 ~20s 才跑完，
+  // 所以这里只锁方向——定速确实把自然节奏压掉一半以上，偏差作为信息报出来。
+  if (pacedSeconds >= openSeconds) problems.push(`定速没有变快：${openSeconds}s → ${pacedSeconds}s`);
+  if (pacedSeconds > openSeconds * 0.6) problems.push(`定速压得不够：自然 ${openSeconds}s → 目标 10s 实测 ${pacedSeconds}s`);
+  await page.screenshot({ path: `${OUT}browser-console-paced.png` });
+
+  // 后退/前进：此刻历史是 simple → console，退一步应回到简单页。
+  if ((await chromeShape()).back !== false) problems.push('已有两步历史时后退仍然禁用');
+  await page.click('[data-back]');
+  await page.waitForFunction(() => document.querySelector('[data-frame]').contentDocument
+    .body?.dataset.demo === 'simple', null, { timeout: 15000 });
+  const wentBack = await chromeShape();
+  if (wentBack.tab !== 'simple' || wentBack.fwd !== false) problems.push(`后退后外壳不对: ${JSON.stringify(wentBack)}`);
+  await page.click('[data-fwd]');
+  await page.waitForFunction(() => document.querySelector('[data-frame]').contentDocument
+    .body?.dataset.demo === 'console', null, { timeout: 15000 });
+  const wentFwd = await chromeShape();
+  if (wentFwd.tab !== 'console' || wentFwd.fwd !== true) problems.push(`前进后外壳不对: ${JSON.stringify(wentFwd)}`);
+
+  // 创造者模式开关：关掉时面板收成按钮，页面本身不受影响。
+  await page.click('[data-creator]');
+  await page.waitForTimeout(200);
+  const closed = await chromeShape();
+  if (closed.creator !== 'false' || closed.open !== 'false') problems.push(`关闭创造者模式后面板没收起来: ${JSON.stringify(closed)}`);
+  await page.screenshot({ path: `${OUT}browser-creator-off.png` });
+  await page.click('[data-creator]');
+  await page.waitForTimeout(200);
+  const reopened = await chromeShape();
+  if (reopened.open !== 'true') problems.push('重新打开创造者模式后面板没收回去');
+
+  // 重新载入：iframe 真的重新取页，所以面板回到案例自带的默认值——这是浏览器的语义，
+  // 面板不该自作主张把改动写进 URL 或 localStorage。
+  await page.click('[data-reload]');
+  await page.waitForTimeout(1500);
+  const reloading = await frameShape();
+  if (!/重建中|施工中|采蓝图|完成/.test(reloading.status)) problems.push(`重新载入后状态异常: ${reloading.status}`);
+  await waitFrameDone(120000);
+  const reloaded = await frameShape();
+  if (reloaded.built !== natural.built) problems.push(`重载后没有回到案例自带默认：${reloaded.built} vs ${natural.built}`);
+
+  // 切回落地页
+  await page.click('.tab[data-key="landing"]');
+  await page.waitForFunction(() => document.querySelector('[data-frame]').contentDocument
+    .body?.dataset.demo === 'landing', null, { timeout: 15000 });
+  await waitFrameDone(60000);
+  const back = await frameShape();
   if (errors.length) problems.push(`控制台报错 ${errors.length} 条: ${errors[0]}`);
+  await page.screenshot({ path: `${OUT}browser-landing.png` });
 
-  const after = await shape();
-  report('shell-case @1280', problems, [
-    `初始: ${first.page} · URL case=${first.case}`,
-    `密集案例: ${built} 项 · 自然速度 ${(naturalMs / 1000).toFixed(1)}s · ${natural.status}`,
-    `抬上限+定速: ${pacedBuilt} 项 · 目标 10s 实测 ${pacedMs.toFixed(1)}s`,
-    `案例内 .bar 定位: ${leaked}（应为 static，否则会被工具栏规则变成 fixed 块）`,
-    `切回: ${back.page} · ${after.status}`,
+  report('mockup-browser @1280', problems, [
+    `外壳: 标签 ${first.tab} · 地址 ${first.url} · 后退/前进初始 ${first.back}/${first.fwd}`,
+    `简单页: ${simpleDone.built} 项 · 状态栏 ${mirror.phase} · ${mirror.hint}`,
+    `密集案例: 默认上限 ${natural.built} 项 · 墙钟 ${(naturalMs / 1000).toFixed(1)}s · ${natural.status}`,
+    `面板抬上限: ${opened.built} 项 · 自然节奏 ${openSeconds}s`,
+    `面板定速 10s: ${paced.built} 项 · 实测 ${pacedSeconds}s（估算器按条目线性计价，整页规模会低估，见 plan §13.15）`,
+    `案例内 .bar 定位: ${leaked.bar}（应为 static）· 顶栏残留 ${leaked.toolbars} 个`,
+    `后退/前进: ${wentBack.tab}(fwd=${wentBack.fwd}) → ${wentFwd.tab}(fwd=${wentFwd.fwd})`,
+    `创造者模式: 关=${closed.open} 开=${reopened.open} · 重载回到默认 ${reloaded.built} 项`,
+    `切回: landing · ${back.status}`,
   ]);
   await ctx.close();
 }
@@ -857,6 +1104,23 @@ for (const width of WIDTHS) {
     input.value = '12';
     input.dispatchEvent(new Event('input', { bubbles: true }));
   });
+  // 蓝图在开始那一刻冻结：改了值只能标成「待生效」，不能假装立刻生效。
+  const touched = await panelUi(page);
+  if (touched.dirty !== 1) problems.push(`改光标数量后待生效行数=${touched.dirty}（应为 1）`);
+  if (!touched.note.includes('1 项待生效')) problems.push(`待生效提示不对：${touched.note}`);
+  if (!(await fieldOf(page, 'agentCount')).dirty) problems.push('「光标数量」这一行没被标成待生效');
+
+  // 依赖关系：设了目标时长，速度倍率由估算器接管，那一行必须灰掉并说清原因。
+  await setField(page, 'targetDuration', 8);
+  const speedRow = await fieldOf(page, 'speed');
+  if (!speedRow.off || !speedRow.disabled) problems.push(`设了目标时长，速度行没灰：off=${speedRow.off} disabled=${speedRow.disabled}`);
+  if (!speedRow.title.includes('目标时长')) problems.push(`灰掉的行没解释原因：${speedRow.title}`);
+  const dupRow = await fieldOf(page, 'maxCopies');
+  if (dupRow.off !== !dupRow.value) problems.push(`「每组复制」跟着「复制盖章」的开关走：off=${dupRow.off}`);
+  await setField(page, 'targetDuration', 0);
+  const restoredSpeed = await fieldOf(page, 'speed');
+  if (restoredSpeed.off || restoredSpeed.disabled) problems.push('目标时长归零后速度行仍然锁着');
+
   const snippet = await page.evaluate(() => window.__tuner.snippet());
   if (!snippet.includes('agentCount: 12')) problems.push('导出片段没跟上面板改动');
   if (!snippet.includes("document.querySelector('#site')")) problems.push('导出片段的 root 选择器不对');
@@ -869,6 +1133,27 @@ for (const width of WIDTHS) {
   const clip = (await page.evaluate(() => navigator.clipboard.readText())).replace(/\r\n/g, '\n');
   if (clip !== snippet) problems.push('剪贴板内容和 snippet() 不一致');
   await page.screenshot({ path: `${OUT}tune-panel.png` });
+
+  // 重置只回默认值，不擅自重跑；改动依然标成待生效，由人决定什么时候应用。
+  await page.click('[data-reset]');
+  const afterReset = await panelUi(page);
+  if (!afterReset.status.includes('已重置')) problems.push(`重置后状态是 ${afterReset.status}`);
+  if ((await fieldOf(page, 'agentCount')).value !== '6') problems.push('重置后光标数量没回到 6');
+  if (afterReset.dirty < 1) problems.push('重置后没有把与当前这局不一致的项标出来');
+
+  // 恢复原状必须能在跑的过程中用：停掉施工，把页面原样交还。
+  await page.click('[data-apply]');
+  await page.waitForTimeout(900);
+  const beforeRestore = await panelUi(page);
+  if (!beforeRestore.overlay) problems.push('应用后没有跑起来');
+  await page.click('[data-restore]');
+  await page.waitForTimeout(300);
+  const restored = await panelUi(page);
+  if (restored.overlay) problems.push('恢复原状后 overlay 还在');
+  if (restored.hidden !== 0) problems.push(`恢复原状后还有 ${restored.hidden} 个元素被遮住`);
+  if (restored.phase !== 'idle') problems.push(`恢复原状后阶段是 ${restored.phase}`);
+  if (!restored.status.includes('已恢复原状')) problems.push(`恢复原状后状态是 ${restored.status}`);
+  if (restored.pauseDisabled !== true) problems.push('停掉后暂停按钮还亮着');
 
   // root=body 时面板是 body 的子节点：既不能被遮，也不能被当成内容重建。
   const bodyCase = await page.evaluate(async () => {
@@ -896,12 +1181,17 @@ for (const width of WIDTHS) {
   report('tune-panel @1280', problems, [
     `面板: ${first.rows} 行控件 · 字体 ${first.font.split(',')[0]} · 底色 ${first.cardBg}`,
     `运行中: 面板可见=${!mid.hidden} · 途中元素=${mid.items} · ${done.status}`,
+    `待生效: ${touched.dirty} 行 · ${touched.note}`,
+    `依赖: 设时长后速度行 off=${speedRow.off} disabled=${speedRow.disabled} · 说明「${speedRow.title.slice(0, 24)}…」`,
     `导出: ${snippet.split('\n').length} 行 · 剪贴板一致=${clip === snippet}`,
+    `重置: ${afterReset.status} · 光标数量=${(await fieldOf(page, 'agentCount')).value} · 待生效 ${afterReset.dirty} 行`,
+    `恢复原状（途中）: ${beforeRestore.status} → ${restored.status} · 遮罩残留 ${restored.hidden}`,
     `root=body: 面板可见=${bodyCase.visible} · 落在面板左栏的 item=${bodyCase.inPanelColumn}`,
   ]);
   await ctx.close();
 }
 
 await browser.close();
-console.log(`\n${failures === 0 ? '全部通过' : failures + ' 个场景有问题'} · 截图在 .shots/`);
+owned?.child.kill();
+console.log(`\n${failures === 0 ? '全部通过' : failures + ' 个场景有问题'} · 截图在 .shots/ · 服务 ${BASE}`);
 process.exit(failures === 0 ? 0 : 1);

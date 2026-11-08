@@ -18,12 +18,23 @@ function quote(arg) {
 }
 
 // 走 shell 是因为 Windows 上 npm 是 npm.cmd，execFileSync 直接拒绝它；参数自己加引号。
+// `npm publish --dry-run` 会导出 npm_config_dry_run，被这里的 pack/install 继承后
+// 它们只打印不写盘，node_modules 空掉、报错看起来像包坏了。所以显式关掉。
 function run(cmd, args, cwd) {
+  const env = { ...process.env, npm_config_dry_run: 'false' };
   try {
-    return { ok: true, out: execSync([cmd, ...args].map(quote).join(' '), { cwd, encoding: 'utf8' }).trim() };
+    return { ok: true, out: execSync([cmd, ...args].map(quote).join(' '), { cwd, encoding: 'utf8', env }).trim() };
   } catch (err) {
     return { ok: false, out: `${String(err.stdout ?? '')}${String(err.stderr ?? '')}${String(err.message)}` };
   }
+}
+
+function report() {
+  console.log(`\n[consumer] ${problems.length === 0 ? 'PASS' : 'FAIL'}`);
+  for (const l of lines) console.log(`  ${l}`);
+  for (const p of problems) console.log(`  ! ${p}`);
+  if (problems.length === 0) rmSync(DIR, { recursive: true, force: true });
+  process.exit(problems.length === 0 ? 0 : 1);
 }
 
 rmSync(DIR, { recursive: true, force: true });
@@ -45,6 +56,8 @@ const needed = [
 const missing = needed.filter((f) => !existsSync(join(PKG, f)));
 if (missing.length) problems.push(`包里缺文件：${missing.join(', ')}`);
 lines.push(`包内容: ${needed.length - missing.length}/${needed.length} 个关键文件在位`);
+// 装不上就别往下走：后面每项都会以「读不到 undefined」的形式炸，把真正的原因埋掉。
+if (!installed.ok || missing.length) report();
 
 const esm = run('node', ['--input-type=module', '-e',
   "const m = await import('swarm-builder'); console.log(Object.keys(m).join(',') + '|' + (typeof m.SwarmBuilder));"], DIR);
@@ -240,8 +253,4 @@ if (!ran.overlayGone || ran.items === 0 || ran.texts === 0) problems.push(`页�
 if (errors.length) problems.push(`浏览器控制台报错 ${errors.length} 条：${errors[0]}`);
 lines.push(`真实页面: 途中峰值 元素=${ran.items} 文本=${ran.texts} 光标=${ran.cursors} · 结束覆盖层已清除=${ran.overlayGone} · 控制台报错=${errors.length}`);
 
-console.log(`\n[consumer] ${problems.length === 0 ? 'PASS' : 'FAIL'}`);
-for (const l of lines) console.log(`  ${l}`);
-for (const p of problems) console.log(`  ! ${p}`);
-if (problems.length === 0) rmSync(DIR, { recursive: true, force: true });
-process.exit(problems.length === 0 ? 0 : 1);
+report();

@@ -1,7 +1,7 @@
 # Swarm Builder 成熟库改造计划（Agent 交接文档）
 
 > 最后更新：2026-11-08  
-> 状态：**全部批次完成**——完整版（批次 1–5）+ 高级版 + 预览壳页与真实规模案例（§13.11）+ 发布护栏（§13.12）+ 调参面板（§13.13），验收 18 个场景全绿  
+> 状态：**全部批次完成**——完整版（批次 1–5）+ 高级版 + 预览壳页与真实规模案例（§13.11）+ 发布护栏（§13.12）+ 调参面板（§13.13）+ 上架准备（§13.14）+ 预览统一进 mockup 浏览器与创造者模式收口（§13.15），验收 18 个场景全绿、`npm publish --dry-run` 全链路通过；只差本人 npm 登录后正式发 0.1.0  
 > 目标：让其他 Agent 可直接接手推进
 
 ---
@@ -196,7 +196,7 @@
 
 配置：`root`、`agentCount`、`speed`、`targetDuration`、`performanceMode`、`ignore`（string|string[]）、`maxItems`、`duplicate`、`maxCopies`、`guides`、`maxGuides`、`grow`、`sound`、`flocking`、`tour`、`theme`、`autoStart`、`onStart` / `onProgress` / `onComplete`
 方法：`start()`、`pause()` / `resume()` / `isPaused`、`setSpeed()`、`skip()`、`destroy()`，另有 `mount(options)` 一步开局
-调参面板（独立子入口 `swarm-builder/tune`，§13.13）：`tune(options)` / `SwarmTuner`，方法 `apply()` / `snippet()` / `copy()` / `open()` / `close()` / `destroy()`；选项 `root`（元素或选择器）/ `initial` / `position` / `open`
+调参面板（独立子入口 `swarm-builder/tune`，§13.13）：`tune(options)` / `SwarmTuner`，方法 `apply()` / `reset()` / `restore()` / `snippet()` / `copy()` / `open()` / `close()` / `destroy()`，只读口 `status` / `phase`（`idle|running|paused|done`）/ `expanded`；选项 `root`（元素或选择器）/ `initial` / `position` / `open`
 
 - `followScroll` → **`tour`**（`scroll` 太容易被理解成「滚动行为开关」，它实际是镜头跟随 + 结束交还页首）
 - `showRulers` → **`guides`**（与 §3.4 的「拉辅助线并吸附」同名，只有一处拼写）
@@ -299,7 +299,7 @@
 如果需要补充文档，优先补：
 - 更细的模块职责说明
 - MVP 任务拆分看板
-- 测试页面清单（简单页 / 密集控制台 / 落地页 / 深色复杂 UI），由 `demos/index.html` 壳页统一切换
+- 测试页面清单（简单页 / 密集控制台 / 落地页 / 深色复杂 UI），由 `demos/index.html` 这个 mockup 浏览器窗口统一切换（§13.15；早期是带工具栏的壳页，顶栏已删）
 
 ---
 
@@ -623,12 +623,52 @@ README 是对外唯一的 API 文档，`swarm-builder-plan.md` 退居交接文�
 
 两条**测试自身的 bug** 也记下来，免得下次再犯：Windows 剪贴板把 `\n` 归一成 `\r\n`，比较前要还原；用「item 与面板屏幕矩形相交」判断「面板被重建」是错的——真实正文本来就压在面板下面，改判「正文左缘以左的左栏里有没有 item」。
 
+### 13.14 上架准备：registry、元数据与 dry-run 陷阱（2026-11-08）
+
+用户提醒「npm 包发版、README 更新不要忘了」，逐项查下来发现三个真问题，两个已修。
+
+- **默认 registry 是只读镜像。** 本机 `npm config get registry` = `https://registry.npmmirror.com`，`npm publish` 照这个配置走必然失败。已在 `package.json` 加 `publishConfig.registry = https://registry.npmjs.org` + `access: public`，把发布目标钉死在包自己身上，不依赖 whoever 的本地配置。dry-run 末行确认：`Publishing to https://registry.npmjs.org with tag latest and public access`。
+- **`npm publish --dry-run` 会把消费端门禁跑成假动作。** dry-run 仍然执行 `prepublishOnly`，并往子进程导出 `npm_config_dry_run=true`；`tools/consumer.mjs` 里嵌套的 `npm pack` / `npm install` 继承之后**只打印文件名、不写盘**。实测受控验证：空目录里 `npm_config_dry_run=true npm pack` 输出 `swarm-builder-0.1.0.tgz` 但写下 0 个文件。于是 `node_modules` 是空的，报错长得像「包坏了」（`MODULE_NOT_FOUND` + `Cannot read properties of undefined (reading 'start')`），真因被埋掉。两处修复：`run()` 给子进程显式设 `npm_config_dry_run: 'false'`；装不上时立刻 `report()` 退出，不再往下跑到浏览器阶段才崩。修完 `npm publish --dry-run` 全链路 EXIT=0，内含 18 场景全绿 + `[consumer] PASS`。
+- **npm 登录态失效。** `~/.npmrc` 里有 `//registry.npmjs.org/:_authToken`，但 `npm whoami --registry=https://registry.npmjs.org` 返回 **401**（token 过期或被吊销）。这一步只能由本人 `npm login` 完成，不代跑。
+
+名字可用：`npm view swarm-builder` 返回 404，即 npmjs.org 上未被占用。
+
+元数据补齐：`author`（只写名字，不把邮箱暴露到公开的 npm 元数据里）、`keywords`、`repository` / `homepage` / `bugs`。仓库地址不是猜的——用户拍板「先建 GitHub 仓库再发」，`gh repo create` 实建后拿到 **https://github.com/yancongya/swarm-builder**（gh 账号 yancongya，与 git commit 里的 author 名 tycon 不是一回事，按证据取）。公开前扫过：55 个跟踪文件、无 `.env`/`.npmrc`/私钥类文件名、内容里无 `ghp_`/`npm_`/`AKIA`/`sk-`/PEM 私钥模式。
+
+实测（含 CHANGELOG 与新元数据）：tarball 106.1 kB / 解包 318.6 kB / 39 文件。
 
 下一步优先级：
 
-1. 发布：`npm publish` 还差一个 npm 账号与 `repository.url`（仓库尚无远端）；护栏与产物已就绪。
-2. 真实页面上的肉眼验收：先在 `demos/index.html` 的密集控制台案例上开「跟随」看一遍，再用 `demos/tune.html` 的面板在真实站点上调一轮参。
+1. **本人 `npm login --registry=https://registry.npmjs.org`**（当前 token 401），之后 `npm publish` 发 0.1.0。护栏与产物已就绪，dry-run 全绿。
+2. 上架后把 README 的「尚未上架 npm」NOTE 换成真实安装说明，并补 npm 版本徽章（徽章要等真的能取到数才加，不留死图）；核对 unpkg / jsdelivr 两条 CDN 链接可用。
+3. 真实页面上的肉眼验收：先在 `demos/index.html` 的密集控制台案例上开「跟随」看一遍，再用 `demos/tune.html` 的面板在真实站点上调一轮参。
 
+
+---
+
+### 13.15 预览统一进 mockup 浏览器，参数收口到创造者模式（2026-11-08）
+
+用户四点要求：预览模板统一在一个 mockup 浏览器里演示并切换；去掉之前的顶栏改参数；统一为创造者模式改；参数全部暴露；同时优化创造者模式的前后端交互。并且明确「先等我是确定没问题了再推送发版」——所以这一批**只做本地提交，不 push、不 publish**。
+
+**为什么是 iframe。** `TourCam` 直接读写 `window.scrollTo / scrollY / innerHeight`，镜头跟随是照真视口写的。把案例内联进壳页的一个滚动 div 里，相机会去滚外层窗口、`position: fixed` 也会钉到错误的视口上，所以案例只能是 frame。frame 顺带把样式隔离也做实了：§13.11 那类「工具栏 `.bar` 规则串进案例，把柱条变成 fixed 块挡住点击」的事故，从根上没有土壤——顶栏整族删掉，`demos/demo.css` 里的 `body > .bar` 规则与 `body > #app { padding-top }` 一起清空。
+
+**改动清单。** `demos/index.html` 重写成 mockup 浏览器（窗口灯 + 标签页 + 前进/后退/重载 + 假域名地址栏 + 创造者模式开关 + 底部状态栏），配套 `demos/browser.ts` / `demos/browser.css`；`demos/main.ts`、`demos/shell.ts` 删除，五个案例页统一挂 `demos/creator.ts`（`tune({root:#app, open:true})`，案例自带默认值写在 `<body data-swarm>`，`?auto` 才自动起跑）；`demos/cdn.html` 收敛成一行 script 标签用 tune IIFE。
+
+**面板与引擎的交互按「一局」重建。** 蓝图在 `start()` 冻结，所以面板不再假装实时生效：改动行标蓝带 `·`，提示行写「N 项待生效 · 点『应用并重跑』」，应用后变「已与正在跑的这一局一致」；状态行下加 `built/total` 进度条（idle 灰、done 100%）；`Phase = idle|running|paused|done` 同时驱动暂停/跳过的可用性（只有跑着才能按）与外壳状态栏的圆点；有依赖的行自动灰掉并在 title 里写原因（设了目标时长→速度归估算器管；关掉复制盖章→每组复制灰）；底部三颗钮各管一段：复制配置 / 重置（回库默认值但不重跑）/ 恢复原状（跑中途 `destroy()` 并把页面原样交还）。`SwarmTuner` 相应多出 `reset()` / `restore()` 与 `status` / `phase` / `expanded` 三个只读口，外壳的状态栏镜像就靠它们（200ms 轮询，不是引擎回调，免得面板被外壳的生命周期绑住）。
+
+**「参数都暴露」做成了可测的几何。** 首版 15 行里有 4 行（施工线色、性能模式、跳过）藏在卡片内部滚动下面且没有任何线索。行高从 28px 压到 24px、`.fields` 上限从 46vh 提到 58vh，实测 1280/1100/1000/800 四档 `scrollHeight === clientHeight`，全部参数一屏看全；万一宿主更矮，`scrollbar-width:thin` + 可见滑块兜底。验收里 `入口: 顶栏 0 个 · 面板 15 行 全露` 就是这条断言。
+
+**测试自身的四处修正。** 一是 `page.waitForFunction(fn, {timeout})` 少传了 `arg` 位，options 被当成参数、超时静默退回默认 30s——原来那个「120s 等密集案例」其实一直没生效；现在统一 `fn, null, {timeout}`。二是 shadow root：Playwright 的选择器引擎会穿透 open shadow root，所以 `page.click('[data-apply]')` 直接可用，但 `page.evaluate(() => document.querySelector(...))` 穿不进去，状态读取必须走 `host.shadowRoot`。另外 evaluate 的函数体是序列化后在页面里执行的，Node 侧的辅助函数带不过去，所以每个 helper 里都得把 shadowRoot 写全。三是 `demos/cdn.html` 加载的是 `dist/` 里的 tune IIFE，改完 `src/tune/**` 不重新 build 就会红——新加的「面板 15 行不用滚动」断言第一次就是这么红的，报的是产物过期而不是代码坏了。四是这条链本身有洞：验收脚本一直硬吃 `5199` 上那个手工开着的 dev server，没人开着就整片连不上；更阴的是长跑的 vite 会把 `dist/` 缓存住，磁盘上已经是 `58vh`、`curl` 回来的还是 `46vh`，于是同一份代码在「我这边」绿、「门禁」红。现在 `tools/verify.mjs` 自己 spawn 一个 `vite --port 0`（`BROWSER=none`，否则每次验收都弹一个真浏览器），从它的 stdout 里读回地址——注意 vite 给横幅上了色，`Local:` 与 URL 之间夹着 ANSI 转义码，匹配前必须先把 `\x1b[…m` 抹掉。`npm run verify` 从此不再依赖任何环境里的手工作。
+
+**这一批已知的手工预览坑（不影响门禁）。** 5199 上那个 dev server 是我早期手工起的，它还在吐过期的 tune 产物；肉眼验面板时要先重启 `npm run dev`，否则看到的仍是旧行高。
+
+**一个真实的引擎边界（不是这一批引入的）。** 定速在默认 400 项这一档是准的：`targetDuration: 10` 实测 9.8s。把 `maxItems` 抬到 2000 吃下整页 440 项后，自然节奏 53.1s 而 10s 目标实测 19.9s。原因是 `estimateRun` 按条目线性计价，真实成本超线性（幽灵盒子越多，其余盒子的重排越贵）。这一批不动引擎：验收改成默认档按 ±35% 卡死、整页档只卡「显著快于自然速度」，并把偏差作为信息行报出来；README「节奏与性能」同步写了这条限制。真要收口，办法是跑中闭环校正（按 elapsed/progress 的比值持续调 `engine.speed`），代价是节奏会中途变——留给用户拍板。
+
+**mockup 浏览器场景（原 `shell-case` 换成 `mockup-browser @1280`）覆盖：** 初始标签/假域名/前进后退都禁用、载入即自动跑一局、状态栏按阶段镜像（要等 200ms 轮询追上，不能拿面板瞬时值比）、切密集案例后 URL 与标签同步、案例内 `.bar` 计算样式仍是 static 且顶栏残留 0、面板抬上限后建成数增加、定速压得下来、后退/前进真的回到上一个案例（历史栈两步时才启用）、创造者模式开关把卡片收成 fab 再展开、重新载入回到案例自带默认（iframe 语义，面板不擅自把改动写进 URL 或 storage）、切回落地页、零控制台报错。
+
+实测产物尺寸（面板加了进度条/依赖说明/两枚新按钮 + 行高压缩后）：tune es 62.83 kB（gzip 20.07）/ cjs 52.24（18.49）/ iife 52.27（18.51）；主包不变 es 43.92（13.38）/ cjs 35.60 / iife 35.63。
+
+本批收口顺序：验收 18 场景全绿 → 本地一个 commit → 等本人肉眼确认「没问题」→ 才谈 push 与 `npm publish`（§13.14 的 1/2/3 步在那之后）。
 
 ---
 
