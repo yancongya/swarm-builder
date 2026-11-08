@@ -43,7 +43,11 @@ body {
   gap: 2px;
   padding: 6px 8px 0;
   background: var(--chrome);
+  /* 案例多了以后标签条自己横滚，而不是把整台窗口撑出横向滚动条。 */
+  overflow-x: auto;
+  scrollbar-width: none;
 }
+.tabs::-webkit-scrollbar { display: none; }
 .lights { display: flex; gap: 6px; padding: 0 10px 9px 4px; flex: 0 0 auto; }
 .lights i { width: 11px; height: 11px; border-radius: 50%; background: #3f3c36; }
 .lights i:nth-child(1) { background: #d2603f; }
@@ -147,6 +151,19 @@ body {
 }
 .creator[aria-pressed="true"]::before { background: var(--accent); }
 
+/* 仓库入口只占一颗图标钮的宽度：顶栏已经很挤，文字标签留给 hover。 */
+.nav .gh {
+  flex: 0 0 auto;
+  width: 27px; height: 27px;
+  display: grid; place-items: center;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  color: var(--dim);
+  text-decoration: none;
+}
+.nav .gh:hover { color: var(--ink); background: var(--chrome-3); border-color: var(--edge-soft); }
+.nav .gh svg { width: 15px; height: 15px; display: block; }
+
 .viewport { position: relative; min-height: 0; background: #fff; }
 .viewport iframe { display: block; width: 100%; height: 100%; border: 0; }
 
@@ -173,4 +190,16 @@ body {
 @media (max-width: 900px) {
   .tab { flex-basis: 96px; padding: 7px 8px; }
   .addr { font-size: 11px; }
+}
+
+/* 手机模式：断点与案例页的 760 对齐。窗口不再是一台桌面浏览器，而是一块手机屏——
+   标签条横滚、地址栏单独一行，剩下的按钮保持一颗钮的宽度，谁都不把文档撑出横向滚动。 */
+@media (max-width: 760px) {
+  .tabs { padding: 5px 6px 0; }
+  .lights { display: none; }
+  .tab { flex: 0 0 auto; padding: 6px 9px; font-size: 11.5px; }
+  .nav { flex-wrap: wrap; gap: 5px; padding: 6px 8px; }
+  .nav .addr { order: 5; flex: 1 1 100%; font-size: 11px; }
+  .creator { padding: 0 10px; font-size: 11.5px; }
+  .statusbar { padding: 4px 8px; gap: 8px; font-size: 10.5px; }
 }

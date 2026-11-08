@@ -39,10 +39,10 @@ const BASE = process.env.BASE ?? owned?.url;
 if (!BASE) throw new Error('没有可用的 BASE');
 process.on('exit', () => owned?.child.kill());
 
-const PAGES = ['simple', 'landing', 'dark-ui', 'cdn'];
+const PAGES = ['home', 'simple', 'landing', 'dark-ui', 'cdn'];
 const EXPECTED_MEDIA = { landing: 5, 'dark-ui': 1 };
-const EXPECTED_COPIES = { simple: 3, landing: 9, 'dark-ui': 29 };
-const EXPECTED_GUIDES = { simple: 3, landing: 5 };
+const EXPECTED_COPIES = { home: 12, simple: 3, landing: 9, 'dark-ui': 29 };
+const EXPECTED_GUIDES = { home: 12, simple: 3, landing: 5 };
 const WIDTHS = [1280, 800];
 const OUT = new URL('../.shots/', import.meta.url).pathname.replace(/^\/(\w:)/, '$1');
 
@@ -965,23 +965,33 @@ for (const width of WIDTHS) {
 
   const problems = [];
   // 壳页自己开跑：mockup 浏览器载入案例后直接触发一局，不需要再去点顶栏。
+  // 第一页是产品自己的说明页——它同时也是 README 之外的一份「它到底能做什么」。
   const first = await chromeShape();
   const firstFrame = await frameShape();
-  if (first.tab !== 'simple' || first.case_ !== 'simple') problems.push(`初始标签页不对: ${JSON.stringify(first)}`);
-  if (firstFrame.demo !== 'simple') problems.push(`第一个案例内容是 ${firstFrame.demo}`);
-  if (first.url !== 'https://swarm.demo') problems.push(`地址栏显示 ${first.url}`);
+  if (first.tab !== 'home' || first.case_ !== 'home') problems.push(`初始标签页不对: ${JSON.stringify(first)}`);
+  if (firstFrame.demo !== 'home') problems.push(`第一个案例内容是 ${firstFrame.demo}`);
+  if (first.url !== 'https://swarm-builder.dev') problems.push(`地址栏显示 ${first.url}`);
   if (first.back !== true || first.fwd !== true) problems.push('首次进入时前进/后退应该都禁用');
-  await waitFrameDone(30000);
-  const simpleDone = await frameShape();
-  if (simpleDone.built < 20) problems.push(`简单页只建成 ${simpleDone.built} 项`);
+  await waitFrameDone(60000);
+  const homeDone = await frameShape();
+  if (homeDone.built < 120) problems.push(`产品说明页只建成 ${homeDone.built} 项`);
   // 顶层状态栏要如实镜像面板：用户不用展开面板也知道在跑什么。它是 200ms 轮询，
   // 所以等它追上，而不是拿面板那一瞬间的值去比。
   await page.waitForFunction(() => document.querySelector('[data-statusbar]').dataset.phase === 'done',
     null, { timeout: 5000 }).catch(() => {});
   const mirror = await chromeShape();
   if (mirror.phase !== 'done') problems.push(`跑完后状态栏阶段是 ${mirror.phase}`);
-  if (!mirror.hint.includes('简单页基准') || !mirror.hint.includes('完成')) {
+  if (!mirror.hint.includes('产品说明页') || !mirror.hint.includes('完成')) {
     problems.push(`状态栏没有镜像面板进度：${JSON.stringify(mirror.hint)}`);
+  }
+  // 说明页顶栏的 GitHub 入口是真链接：新标签打开，且不把 referrer 带出去。
+  const gh = await page.evaluate(() => {
+    const el = document.querySelector('[data-github]');
+    return el ? { href: el.href, target: el.target, rel: el.rel } : null;
+  });
+  if (!gh || !gh.href.startsWith('https://github.com/')) problems.push(`顶栏没有可用的 GitHub 链接: ${JSON.stringify(gh)}`);
+  if (gh && (gh.target !== '_blank' || !gh.rel.includes('noreferrer'))) {
+    problems.push(`GitHub 链接没有在新标签打开并屏蔽 referrer: ${JSON.stringify(gh)}`);
   }
 
   // 切密集控制台：iframe 隔离案例样式，案例里的 .bar 不该再被任何全局规则命中。
@@ -1028,13 +1038,13 @@ for (const width of WIDTHS) {
   if (pacedSeconds > openSeconds * 0.6) problems.push(`定速压得不够：自然 ${openSeconds}s → 目标 10s 实测 ${pacedSeconds}s`);
   await page.screenshot({ path: `${OUT}browser-console-paced.png` });
 
-  // 后退/前进：此刻历史是 simple → console，退一步应回到简单页。
+  // 后退/前进：此刻历史是 home → console，退一步应回到第一页。
   if ((await chromeShape()).back !== false) problems.push('已有两步历史时后退仍然禁用');
   await page.click('[data-back]');
   await page.waitForFunction(() => document.querySelector('[data-frame]').contentDocument
-    .body?.dataset.demo === 'simple', null, { timeout: 15000 });
+    .body?.dataset.demo === 'home', null, { timeout: 15000 });
   const wentBack = await chromeShape();
-  if (wentBack.tab !== 'simple' || wentBack.fwd !== false) problems.push(`后退后外壳不对: ${JSON.stringify(wentBack)}`);
+  if (wentBack.tab !== 'home' || wentBack.fwd !== false) problems.push(`后退后外壳不对: ${JSON.stringify(wentBack)}`);
   await page.click('[data-fwd]');
   await page.waitForFunction(() => document.querySelector('[data-frame]').contentDocument
     .body?.dataset.demo === 'console', null, { timeout: 15000 });
@@ -1068,12 +1078,35 @@ for (const width of WIDTHS) {
     .body?.dataset.demo === 'landing', null, { timeout: 15000 });
   await waitFrameDone(60000);
   const back = await frameShape();
-  if (errors.length) problems.push(`控制台报错 ${errors.length} 条: ${errors[0]}`);
   await page.screenshot({ path: `${OUT}browser-landing.png` });
+
+  // 全部预设都要「音效 + 镜头跟随」开着。查的是面板上真正打勾的控件，
+  // 不是 HTML 里那串 data-swarm——字符串写了但没接进配置也算不过。
+  const presets = [];
+  for (const [key, demo] of [
+    ['home', 'home'], ['simple', 'simple'], ['console', 'console'], ['landing', 'landing'],
+    ['dark-ui', 'blender'], ['tall', 'tall'], ['tune', 'tune'],
+  ]) {
+    await page.click(`.tab[data-key="${key}"]`);
+    await page.waitForFunction((d) => document.querySelector('[data-frame]').contentDocument
+      .body?.dataset.demo === d, demo, { timeout: 15000 });
+    await page.waitForTimeout(300);
+    const on = await page.evaluate(() => {
+      const sr = document.querySelector('[data-frame]').contentDocument
+        .querySelector('[data-sb-chrome]')?.shadowRoot;
+      const checked = (k) => sr?.querySelector(`[data-key="${k}"]`)?.checked ?? null;
+      return { sound: checked('sound'), tour: checked('tour') };
+    });
+    if (on.sound !== true || on.tour !== true) problems.push(`${key} 的预设没同时开音效/跟随: ${JSON.stringify(on)}`);
+    presets.push(`${key} 音效=${on.sound} 跟随=${on.tour}`);
+  }
+
+  if (errors.length) problems.push(`控制台报错 ${errors.length} 条: ${errors[0]}`);
 
   report('mockup-browser @1280', problems, [
     `外壳: 标签 ${first.tab} · 地址 ${first.url} · 后退/前进初始 ${first.back}/${first.fwd}`,
-    `简单页: ${simpleDone.built} 项 · 状态栏 ${mirror.phase} · ${mirror.hint}`,
+    `GitHub 入口: ${gh ? `${gh.target} ${gh.rel} ${gh.href}` : '缺失'}`,
+    `产品说明页: ${homeDone.built} 项 · 状态栏 ${mirror.phase} · ${mirror.hint}`,
     `密集案例: 默认上限 ${natural.built} 项 · 墙钟 ${(naturalMs / 1000).toFixed(1)}s · ${natural.status}`,
     `面板抬上限: ${opened.built} 项 · 自然节奏 ${openSeconds}s`,
     `面板定速 10s: ${paced.built} 项 · 实测 ${pacedSeconds}s（估算器按条目线性计价，整页规模会低估，见 plan §13.15）`,
@@ -1081,6 +1114,7 @@ for (const width of WIDTHS) {
     `后退/前进: ${wentBack.tab}(fwd=${wentBack.fwd}) → ${wentFwd.tab}(fwd=${wentFwd.fwd})`,
     `创造者模式: 关=${closed.open} 开=${reopened.open} · 重载回到默认 ${reloaded.built} 项`,
     `切回: landing · ${back.status}`,
+    `预设: ${presets.join(' · ')}`,
   ]);
   await ctx.close();
 }
@@ -1693,6 +1727,150 @@ for (const width of WIDTHS) {
     `页面 ${shape.docHeight}px · 视口 ${shape.viewport}px · 默认 tour=${shape.tour}`,
     `镜头: 最深 ${maxScroll}px · 停下再起步 ${bursts} 次 · ${followed} 次采样里正在建的元素在视野内`,
     `收尾: ${settled.status} · 回到 ${settled.y}px`,
+  ]);
+  await ctx.close();
+}
+
+// ---------------------------------------------------------------------------
+// 场景 22：手机模式（390×740）——每一页都不许把文档撑出横向滚动，
+// 壳的标签条自己横滚、地址栏换行、GitHub 入口在，面板 18 行不滚动也全露。
+// 断点定在 760：验收矩阵的 @800 一档仍是桌面版，它锁的建成数不用跟着改。
+// ---------------------------------------------------------------------------
+{
+  const PHONE = ['home', 'simple', 'console', 'landing', 'dark-ui', 'tall', 'tune'];
+  const problems = [];
+  const lines = [];
+  const ctx = await browser.newContext({ viewport: { width: 390, height: 740 } });
+
+  for (const name of PHONE) {
+    const page = await ctx.newPage();
+    const errors = [];
+    page.on('pageerror', (err) => errors.push(String(err)));
+    await page.goto(`${BASE}/demos/${name}.html`, { waitUntil: 'load' });
+    await page.waitForFunction(() => document.querySelector('[data-sb-chrome]') !== null, null, { timeout: 20000 });
+    const shape = await page.evaluate(() => {
+      const sr = document.querySelector('[data-sb-chrome]').shadowRoot;
+      const fields = sr.querySelector('.fields');
+      const card = sr.querySelector('.card');
+      const box = card?.getBoundingClientRect();
+      return {
+        inner: window.innerWidth,
+        innerH: window.innerHeight,
+        doc: document.documentElement.scrollWidth,
+        cardRight: box ? Math.round(box.right) : 0,
+        cardBottom: box ? Math.round(box.bottom) : 0,
+        scroll: fields ? fields.scrollHeight : 0,
+        client: fields ? fields.clientHeight : 0,
+        widest: (() => {
+          let best = null;
+          for (const el of document.querySelectorAll('body *')) {
+            const r = el.getBoundingClientRect();
+            if (!best || r.right > best.right) {
+              best = { tag: el.tagName, cls: String(el.className?.toString?.() ?? '').slice(0, 28), right: Math.round(r.right) };
+            }
+          }
+          return best;
+        })(),
+      };
+    });
+    if (shape.doc > shape.inner + 1) {
+      problems.push(`${name} 在手机上撑出横向滚动：文档 ${shape.doc}px > 视口 ${shape.inner}px（最右 ${JSON.stringify(shape.widest)}）`);
+    }
+    // 面板自己也不许伸出屏幕：它是唯一的改参数入口。
+    if (shape.cardRight > shape.inner + 1) problems.push(`${name} 的面板伸出屏幕右沿: ${shape.cardRight}px`);
+    if (shape.cardBottom > shape.innerH + 1) problems.push(`${name} 的面板伸出屏幕下沿: ${shape.cardBottom}/${shape.innerH}px`);
+    if (shape.scroll > shape.client + 1) problems.push(`${name} 的参数列表要滚动才看得全（${shape.scroll}/${shape.client}）`);
+    if (errors.length) problems.push(`${name} 报错 ${errors.length} 条: ${errors[0]}`);
+    lines.push(`${name}: 文档 ${shape.doc}/${shape.inner} · 面板右下 ${shape.cardRight}/${shape.cardBottom} · 参数 ${shape.scroll}/${shape.client}`);
+    if (name === 'home' || name === 'console') await page.screenshot({ path: `${OUT}mobile-${name}.png` });
+    await page.close();
+  }
+
+  // 壳在手机上：不溢出 + GitHub 入口 + 标签条横滚而不是撑宽窗口 + 施工中文档仍不撑宽。
+  const page = await ctx.newPage();
+  const errors = [];
+  page.on('pageerror', (err) => errors.push(String(err)));
+  await page.goto(`${BASE}/demos/index.html`, { waitUntil: 'load' });
+  await page.waitForFunction(() => document.querySelector('[data-frame]')?.contentDocument
+    ?.querySelector('[data-sb-chrome]') !== null, null, { timeout: 20000 });
+  const shell = await page.evaluate(() => {
+    const gh = document.querySelector('[data-github]');
+    const tabs = document.querySelector('[data-tabs]');
+    const active = document.querySelector('.tab[aria-selected="true"]');
+    const rect = (el) => (el ? Math.round(el.getBoundingClientRect().right) : 0);
+    // 壳里的案例视口比手机屏幕矮一截（标签条 + 顶栏 + 状态栏都要占高度），
+    // 面板那一屏参数到底装得下，得以 iframe 自己的 innerHeight 为准。
+    const frameEl = document.querySelector('[data-frame]');
+    const doc = frameEl.contentDocument;
+    const sr = doc?.querySelector('[data-sb-chrome]')?.shadowRoot;
+    const fields = sr?.querySelector('.fields');
+    const cardBox = sr?.querySelector('.card')?.getBoundingClientRect();
+    return {
+      inner: window.innerWidth,
+      doc: document.documentElement.scrollWidth,
+      tabs: { scroll: tabs.scrollWidth, client: tabs.clientWidth },
+      activeRight: rect(active),
+      gh: gh ? { href: gh.href, target: gh.target, rel: gh.rel, right: rect(gh) } : null,
+      navRows: Math.round(document.querySelector('.nav').getBoundingClientRect().height),
+      panel: fields && cardBox
+        ? {
+          scroll: fields.scrollHeight,
+          client: fields.clientHeight,
+          bottom: Math.round(cardBox.bottom),
+          innerH: Math.round(doc.defaultView.innerHeight),
+        }
+        : null,
+    };
+  });
+  if (shell.doc > shell.inner + 1) problems.push(`壳在手机上撑出横向滚动：${shell.doc}px > ${shell.inner}px`);
+  if (!(shell.tabs.scroll > shell.tabs.client)) problems.push('标签条没有横向滚动起来，说明它把窗口撑宽了');
+  if (shell.activeRight > shell.inner + 1) problems.push(`当前标签页伸出屏幕: ${shell.activeRight}px`);
+  if (shell.navRows > 90) problems.push(`顶栏在手机上挤成了 ${shell.navRows}px 高`);
+  if (!shell.gh) problems.push('壳的顶栏没有 GitHub 入口');
+  if (!shell.panel) problems.push('壳里的案例页没有创造者模式面板');
+  else {
+    if (shell.panel.scroll > shell.panel.client + 1) {
+      problems.push(`壳里（案例视口只有 ${shell.panel.innerH}px 高）参数列表要滚动才看得全：${shell.panel.scroll}/${shell.panel.client}`);
+    }
+    if (shell.panel.bottom > shell.panel.innerH + 1) {
+      problems.push(`壳里的面板伸出案例视口：${shell.panel.bottom}/${shell.panel.innerH}`);
+    }
+  }
+  // 施工中最容易出问题：光标箭头和名字标签贴着右边缘时会不会撑宽文档。
+  const during = [];
+  for (let i = 0; i < 8; i++) {
+    during.push(await page.evaluate(() => {
+      const doc = document.querySelector('[data-frame]').contentDocument;
+      return doc.documentElement.scrollWidth - doc.defaultView.innerWidth;
+    }));
+    await page.waitForTimeout(500);
+  }
+  const worst = Math.max(...during);
+  if (worst > 1) problems.push(`施工中文档被撑宽了 ${worst}px（光标层的装饰伸出了画框）`);
+  // 密集页同样走一遍：条目多，右边缘的光标更多。
+  await page.click('.tab[data-key="console"]');
+  await page.waitForFunction(() => document.querySelector('[data-frame]').contentDocument
+    .body?.dataset.demo === 'console', null, { timeout: 15000 });
+  const dense = [];
+  for (let i = 0; i < 8; i++) {
+    dense.push(await page.evaluate(() => {
+      const doc = document.querySelector('[data-frame]').contentDocument;
+      return doc.documentElement.scrollWidth - doc.defaultView.innerWidth;
+    }));
+    await page.waitForTimeout(500);
+  }
+  const worstDense = Math.max(...dense);
+  if (worstDense > 1) problems.push(`密集页施工中文档被撑宽了 ${worstDense}px`);
+  if (errors.length) problems.push(`壳报错 ${errors.length} 条: ${errors[0]}`);
+  await page.screenshot({ path: `${OUT}mobile-shell.png` });
+
+  report('mobile @390', problems, [
+    `案例页: ${lines.length} 页全部量过，最宽的一格见 .shots/mobile-*.png`,
+    ...lines,
+    `壳: 文档 ${shell.doc}/${shell.inner} · 标签条 ${shell.tabs.scroll}/${shell.tabs.client}（横滚）· 顶栏 ${shell.navRows}px`,
+    `壳里的面板: 案例视口 ${shell.panel?.innerH ?? 0}px 高 · 参数 ${shell.panel ? `${shell.panel.scroll}/${shell.panel.client}` : '缺失'} · 卡片底边 ${shell.panel?.bottom ?? 0}`,
+    `GitHub: ${shell.gh ? `${shell.gh.href} ${shell.gh.target}/${shell.gh.rel}` : '缺失'}`,
+    `施工中溢出: 说明页最多 ${worst}px · 密集页最多 ${worstDense}px`,
   ]);
   await ctx.close();
 }

@@ -140,3 +140,32 @@
 }
 .page-console .foot .col, .page-console .foot div > div { padding: 3px 0; color: #5b6675; }
 .page-console .foot .fine { color: #93a0b1; font-size: 11px; align-self: end; }
+
+/* 手机上这套三列控制台装不下：左右两栏收到主列下面，六列表格只留能读的那三列。
+   断点与 demo.css 保持同一个 760，验收矩阵的 @800 一档仍是桌面版。 */
+@media (max-width: 760px) {
+  .page-console { font-size: 12.5px; }
+  .page-console .appbar { flex-wrap: wrap; gap: 8px 12px; padding: 8px 12px; }
+  .page-console .topnav { margin-left: 0; gap: 12px; flex-wrap: wrap; }
+  .page-console .search { width: 100%; margin-left: 0; }
+  .page-console .layout { grid-template-columns: minmax(0, 1fr); }
+  .page-console .side { border-right: 0; border-bottom: 1px solid #e2e7f0; }
+  .page-console .rail { padding: 16px 18px; border-top: 1px solid #e2e7f0; }
+  .page-console .main { padding: 14px 12px; }
+  .page-console h1 { font-size: 20px; }
+  .page-console .h-row { flex-wrap: wrap; gap: 10px; }
+  .page-console .tabs { flex-wrap: wrap; }
+  .page-console .legend { flex-wrap: wrap; gap: 6px 10px; }
+  .page-console .kpis { grid-template-columns: repeat(2, 1fr); gap: 10px; }
+  .page-console .split { grid-template-columns: minmax(0, 1fr); gap: 0; }
+  .page-console .form { grid-template-columns: minmax(0, 1fr); }
+  .page-console .form label.wide { grid-column: auto; }
+  .page-console .foot { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; padding: 16px; }
+  .page-console .chart { gap: 4px; height: 120px; }
+  .page-console .pager { flex-wrap: wrap; }
+  .page-console table.grid { font-size: 11.5px; }
+  .page-console table.grid th, .page-console table.grid td { padding: 5px 5px; }
+  .page-console table.grid :is(th, td):nth-child(3),
+  .page-console table.grid :is(th, td):nth-child(4),
+  .page-console table.grid :is(th, td):nth-child(5) { display: none; }
+}

@@ -2,6 +2,10 @@ export const LIB_STYLE_ID = 'swarm-builder-style';
 
 export const CSS = `
 .sb-overlay{position:absolute;left:0;top:0;z-index:2147483000;pointer-events:none;
+  /* 施工层不该改变页面自身的滚动尺寸：光标箭头和标签在右边缘会伸出画框，手机上就是
+     一条闪出来的横向滚动条。clip 只裁不滚（hidden 会顺带把另一轴也变成滚动容器），
+     4px 余量留给带边框的 root——画框比 border box 短一个左边框宽。 */
+  overflow-x:clip;overflow-clip-margin:4px;
   font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;-webkit-font-smoothing:antialiased;
   --sb-ghost:rgba(148,155,168,.22);--sb-edge:rgba(255,255,255,.5);--sb-copy-edge:rgba(147,165,79,.9)}
 .sb-overlay[data-sb-theme="light"]{--sb-ghost:rgba(100,116,139,.2);--sb-edge:rgba(15,23,42,.55);
@@ -35,6 +39,9 @@ export const CSS = `
   font-size:10px;line-height:14px;white-space:nowrap;background:rgba(11,13,16,.82);color:#fff;
   display:none}
 .sb-cursor.is-dragging .sb-badge{display:block}
+/* 贴页面右边缘时把标签与徽章翻到光标左侧，半截伸出画框既读不了也会撑出横向滚动。 */
+.sb-cursor[data-flip="left"] .sb-name{left:auto;right:14px}
+.sb-cursor[data-flip="left"] .sb-badge{left:auto;right:16px}
 .sb-ghost{position:absolute;left:0;top:0;width:14px;height:14px;margin:-7px 0 0 -7px;
   border:1px solid currentColor;border-radius:2px;display:none}
 .sb-cursor.is-dragging .sb-ghost{display:block}

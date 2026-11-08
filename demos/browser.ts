@@ -9,6 +9,7 @@ interface Case {
 }
 
 const CASES: Case[] = [
+  { key: 'home', title: '产品说明页', href: './home.html', origin: 'https://swarm-builder.dev' },
   { key: 'simple', title: '简单页基准', href: './simple.html', origin: 'https://swarm.demo' },
   { key: 'console', title: '密集控制台', href: './console.html', origin: 'https://orbit.demo/console' },
   { key: 'landing', title: '深色落地页', href: './landing.html', origin: 'https://nova.demo' },
@@ -37,7 +38,8 @@ const reloadBtn = need<HTMLButtonElement>('[data-reload]');
 
 const params = new URLSearchParams(location.search);
 const fromUrl = params.get('case') ?? '';
-const stack: string[] = [CASES.some((c) => c.key === fromUrl) ? fromUrl : 'simple'];
+// 第一个案例就是打开时看到的那一页：预设页排在 CASES 最前面，不必再抄一遍 key。
+const stack: string[] = [CASES.some((c) => c.key === fromUrl) ? fromUrl : (CASES[0] as Case).key];
 let cursor = 0;
 let generation = 0;
 let tuner: SwarmTuner | null = null;

@@ -138,8 +138,8 @@ header .sp{flex:1}
 .meter{height:2px;background:var(--well);overflow:hidden}
 .meter i{display:block;height:100%;width:0;background:var(--accent);transition:width .18s linear}
 :host([data-phase="idle"]) .meter i{background:var(--line)}
-/* 17 行 × 24px 加表头表脚约 580px，88vh 在 700px 高的宿主里还能全露；
-   再矮就交给这根滚动条——滚动条必须看得见，不然参数等于没暴露。
+/* 18 行 × 24px 加表头表脚约 580px。矮宿主先按下面的高度分档压缩行距，把 18 行留在
+   一屏里；压到极限还装不下才交给这根滚动条——滚动条必须看得见，不然参数等于没暴露。
    拖动右下角的把手可以把面板拉高，滚动条随之消失。 */
 .fields{flex:1 1 auto;min-height:0;padding:4px 10px;overflow-y:auto;border-top:1px solid var(--line);scrollbar-width:thin}
 .fields::-webkit-scrollbar{width:8px}
@@ -188,6 +188,29 @@ header{cursor:move;user-select:none;touch-action:none}
 .grip{position:absolute;right:3px;bottom:3px;width:14px;height:14px;cursor:nwse-resize;touch-action:none;
   border-right:2px solid var(--line);border-bottom:2px solid var(--line);border-bottom-right-radius:11px}
 .grip:hover{border-color:var(--accent)}
+/* 矮宿主（手机竖屏、半屏窗口）：18 行仍然要一屏全露，所以按视口高度分档压缩
+   表头/状态/脚注/按钮的行距，而不是把参数藏进滚动条里。 */
+@media (max-height: 780px) {
+  header{padding:7px 10px}
+  .status{padding:5px 10px 4px;min-height:22px}
+  .row{padding:1px 0}
+  .note{padding:5px 10px;min-height:24px}
+  footer{padding:7px 10px}
+  .util{padding:0 10px 7px}
+}
+/* 再矮一档：mockup 浏览器在手机上给案例留的视口只有 ~607px，88vh 装不下上面那套
+   行距，所以这里连字号、控件内边距和每行的上下留白一起收，让 18 行仍然不用滚动。 */
+@media (max-height: 660px) {
+  header{padding:5px 10px}
+  .status{padding:3px 10px 2px;min-height:20px}
+  .fields{padding:2px 10px}
+  .row{padding:0;font-size:11px}
+  input[type=range]{height:14px}
+  input[type=number],input[type=text],select{padding:1px 5px}
+  .note{padding:4px 10px;min-height:20px}
+  footer{padding:5px 10px}
+  .util{padding:0 10px 5px}
+}
 `;
 
 export type Phase = 'idle' | 'running' | 'paused' | 'done';
