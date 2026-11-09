@@ -24,7 +24,11 @@ class DrawGuideAction implements Action {
   ) {}
 
   begin(ctx: RunContext): void {
-    ctx.sound?.play('guide');
+    // 参考线只在有几何的事件上发声：竖线报它的 x，横线报起点，配乐据此选声部与声像。
+    const { axis, pos, from, to } = this.guide;
+    ctx.sound?.play('guide', axis === 'x'
+      ? { kind: 'guide', x: pos, y: from, width: 0, height: to - from }
+      : { kind: 'guide', x: from, y: pos, width: to - from, height: 0 });
     this.el.style.opacity = `${Overlay.GUIDE_OPACITY}`;
   }
 

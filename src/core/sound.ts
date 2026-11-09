@@ -1,4 +1,4 @@
-export type SoundEvent = 'type' | 'draw' | 'stamp' | 'guide';
+export type SoundEvent = 'type' | 'draw' | 'stamp' | 'guide' | 'snap' | 'grow';
 
 interface Voice {
   wave: OscillatorType;
@@ -16,6 +16,8 @@ const VOICES: Record<SoundEvent, Voice> = {
   draw: { wave: 'triangle', from: 300, to: 760, dur: 0.12, gain: 0.08, gap: 0.07 },
   stamp: { wave: 'sine', from: 680, to: 230, dur: 0.16, gain: 0.12, gap: 0.06 },
   guide: { wave: 'sine', from: 1180, to: 1120, dur: 0.09, gain: 0.06, gap: 0.06 },
+  snap: { wave: 'triangle', from: 2300, to: 1300, dur: 0.05, gain: 0.05, gap: 0.05 },
+  grow: { wave: 'sine', from: 520, to: 940, dur: 0.09, gain: 0.05, gap: 0.04 },
 };
 
 /**

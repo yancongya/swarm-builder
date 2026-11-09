@@ -1,6 +1,7 @@
 import { chromium } from 'playwright';
 import { mkdirSync } from 'node:fs';
 import { spawn } from 'node:child_process';
+import { createServer } from 'node:http';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
@@ -13,7 +14,8 @@ async function startServer() {
   const child = spawn(process.execPath, ['node_modules/vite/bin/vite.js', '--port', '0', '--host', '127.0.0.1'], {
     cwd: ROOT,
     // vite.config.ts 里写了 open：不关掉的话每次跑验收都会弹一个真浏览器。
-    env: { ...process.env, BROWSER: 'none' },
+    // SB_VERIFY 让那台服务器关掉 HMR：整页重载是广播的，中途来一次就把正在跑的那一局打断。
+    env: { ...process.env, BROWSER: 'none', SB_VERIFY: '1' },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
   process.on('exit', () => { try { child.kill(); } catch { /* 已经走了 */ } });
@@ -67,13 +69,16 @@ function report(title, problems, lines) {
 // 点击可以放心交给 Playwright——它的选择器引擎会穿透 open shadow root——
 // 但写控件值必须自己派发 input 事件。
 // ---------------------------------------------------------------------------
+// 两处读取都对 `[data-sb-chrome]` 用了可选链：dev server 中途广播一次整页重载是真实存在的
+// （第一次 import 某个还没进依赖图的 /src 模块、或 dist 产物刚被重写），那一瞬间面板还没挂回来。
+// 读成空串就是「还没跑完」，循环继续轮询；面板真的一直不出现，照样会在 deadline 上判红。
 const readStatus = (page) => page.evaluate(
-  () => document.querySelector('[data-sb-chrome]').shadowRoot.querySelector('[data-status]')?.textContent ?? '',
+  () => document.querySelector('[data-sb-chrome]')?.shadowRoot?.querySelector('[data-status]')?.textContent ?? '',
 );
 
 const waitDone = (page, ms) => page.waitForFunction(
-  () => document.querySelector('[data-sb-chrome]').shadowRoot
-    .querySelector('[data-status]')?.textContent.startsWith('完成'),
+  () => document.querySelector('[data-sb-chrome]')?.shadowRoot
+    ?.querySelector('[data-status]')?.textContent.startsWith('完成'),
   null,
   { timeout: ms, polling: 200 },
 );
@@ -676,6 +681,7 @@ for (const width of WIDTHS) {
         let frames = 0;
         let crowded = 0;
         let near = 0;
+        let near90 = 0;
         let minSum = 0;
         let minSeen = Infinity;
         let previous = null;
@@ -693,14 +699,19 @@ for (const width of WIDTHS) {
           previous = new Map(points.map((p) => [p.el, { x: p.x, y: p.y }]));
           if (moving.length > 1) {
             let min = Infinity;
+            let inside = 0;
             for (let i = 0; i < moving.length; i++) {
               for (let j = i + 1; j < moving.length; j++) {
-                min = Math.min(min, Math.hypot(moving[i].x - moving[j].x, moving[i].y - moving[j].y));
+                const d = Math.hypot(moving[i].x - moving[j].x, moving[i].y - moving[j].y);
+                min = Math.min(min, d);
+                // 90px 是 dodge 的作用半径：这一列数的是「它有没有活可干」。
+                if (d < 90) inside++;
               }
             }
             frames++;
             minSum += min;
             minSeen = Math.min(minSeen, min);
+            if (inside > 0) near90++;
             if (min < 18) crowded++;
             if (min < 40) near++;
           }
@@ -720,6 +731,7 @@ for (const width of WIDTHS) {
               frames,
               crowdedFrames: crowded,
               nearFrames: near,
+              near90Frames: near90,
               avgMin: Math.round(minSum / Math.max(1, frames)),
               minSeen: Math.round(minSeen),
             });
@@ -736,14 +748,24 @@ for (const width of WIDTHS) {
   if (off.built !== on.built) problems.push(`开避让后建成 ${on.built}/${off.built} 项`);
   // Two cursors converging on one coordinate is the layout, not a steering
   // failure, so the honest target is the near-miss frames, not the overlap.
-  if (on.nearFrames > off.nearFrames) problems.push(`同行擦过帧变多了：${off.nearFrames} → ${on.nearFrames}`);
+  //
+  // 而且这条只能测「不许变糟」：dodge 在落点前那 1/5 段被 ease 归零，光标终究要落在
+  // 自己被派到的那个坐标上，所以「擦过几次」本来就不归避让管。同一份代码连跑六遍，
+  // 开与关都是 138/139 帧里 10 帧擦过——差值是 ±1 帧的抖动，不是效果。给 2 帧容差，
+  // 真退化了（擦过翻倍）照样红。
+  if (on.nearFrames > off.nearFrames + 2) problems.push(`同行擦过帧明显变多：${off.nearFrames} → ${on.nearFrames}`);
+  if (on.crowdedFrames > off.crowdedFrames + 2) problems.push(`<18px 重叠帧明显变多：${off.crowdedFrames} → ${on.crowdedFrames}`);
+  // 反向兜底：开了避让却连平均最近距离和采样帧数都一像素不动，那是 dodge 没参与运算。
+  if (on.frames === off.frames && on.avgMin === off.avgMin) {
+    problems.push(`避让开了却和关着一帧不差（${on.frames} 帧 / 平均最近 ${on.avgMin}px）：dodge 没参与运算`);
+  }
   if (Math.abs(on.durationMs - off.durationMs) > off.durationMs * 0.3) problems.push(`避让改变了节奏：${(off.durationMs / 1000).toFixed(1)}s → ${(on.durationMs / 1000).toFixed(1)}s`);
   if (errors.length) problems.push(`控制台报错 ${errors.length} 条: ${errors[0]}`);
 
   report('flocking @1280', problems, [
     `关闭: 同行帧=${off.frames} · <40px 擦过=${off.nearFrames}(${((off.nearFrames / Math.max(1, off.frames)) * 100).toFixed(0)}%) · <18px 重叠=${off.crowdedFrames} · 平均最近 ${off.avgMin}px · ${(off.durationMs / 1000).toFixed(1)}s`,
     `开启: 同行帧=${on.frames} · <40px 擦过=${on.nearFrames}(${((on.nearFrames / Math.max(1, on.frames)) * 100).toFixed(0)}%) · <18px 重叠=${on.crowdedFrames} · 平均最近 ${on.avgMin}px · ${(on.durationMs / 1000).toFixed(1)}s`,
-    `建成: ${on.built} 项`,
+    `建成: ${on.built} 项 · 这一条测「不许更挤」（±2 帧），两档的 90px 内相遇帧本来就同为 ${off.near90Frames}/${on.near90Frames}——擦过次数由派单决定，不由避让决定`,
   ]);
   await ctx.close();
 }
@@ -1120,6 +1142,170 @@ for (const width of WIDTHS) {
 }
 
 // ---------------------------------------------------------------------------
+// 场景 17b：自定义站点标签——标签条末尾的加号开新标签，输入地址就地重建
+// ---------------------------------------------------------------------------
+{
+  const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+  const page = await ctx.newPage();
+  const problems = [];
+
+  const shell = () => page.evaluate(() => {
+    const frame = document.querySelector('[data-frame]');
+    const sr = frame.contentDocument?.querySelector('[data-sb-chrome]')?.shadowRoot;
+    const q = new URLSearchParams(location.search);
+    const status = sr?.querySelector('[data-status]')?.textContent.trim() ?? '';
+    return {
+      tabs: document.querySelectorAll('.tab').length,
+      title: document.querySelector('.tab[aria-selected="true"] b')?.textContent ?? '',
+      closable: !!document.querySelector('.tab[aria-selected="true"] .close'),
+      url: document.querySelector('[data-url]').textContent,
+      hint: document.querySelector('[data-hint]').textContent,
+      case_: q.get('case'),
+      u: q.get('u'),
+      blank: document.querySelector('[data-blank]')?.hidden === false,
+      focused: document.activeElement?.hasAttribute('data-blank-input') ?? false,
+      srcdoc: frame.hasAttribute('srcdoc'),
+      status,
+      // 建成数从面板状态里读：跑完之后 .sb-item 那些幽灵盒已经撤了，数 DOM 会误判成 0。
+      built: Number((status.match(/完成 (\d+) 项/) ?? [])[1] ?? 0),
+      items: frame.contentDocument?.querySelectorAll('.sb-item').length ?? 0,
+      rows: sr?.querySelectorAll('.row').length ?? 0,
+    };
+  });
+  // 等重建出来的那一页跑完，而不是等旧文档残留的「完成」——外壳换 frame 是异步的，
+  // 只看状态文本会在上一页的结论上直接通过。
+  const waitRebuilt = (demo, ms) => page.waitForFunction(
+    ([d, t]) => {
+      const frame = document.querySelector('[data-frame]');
+      const sr = frame.contentDocument?.querySelector('[data-sb-chrome]')?.shadowRoot;
+      return frame.hasAttribute('srcdoc')
+        && frame.contentDocument?.body?.dataset.demo === d
+        && (sr?.querySelector('[data-status]')?.textContent.trim() ?? '').startsWith(t);
+    },
+    [demo, '完成'], { timeout: ms, polling: 200 },
+  );
+
+  await page.goto(`${BASE}/demos/index.html`, { waitUntil: 'load' });
+  await page.waitForFunction(() => document.querySelector('[data-frame]')?.contentDocument
+    ?.querySelector('[data-sb-chrome]') !== null, null, { timeout: 15000 });
+  const start = await shell();
+  if (start.tabs !== 7 || start.closable) problems.push(`预设标签条不对: ${start.tabs} 个，可关闭=${start.closable}`);
+
+  // 加号开新标签：语义和真浏览器一致——空白页 + 输入框自己拿到焦点。
+  await page.click('[data-newtab]');
+  await page.waitForTimeout(400);
+  const blank = await shell();
+  if (!blank.blank) problems.push('点加号没有打开空白新标签');
+  if (!blank.focused) problems.push('空白页的输入框没有自动聚焦');
+  if (blank.tabs !== 8 || !blank.closable) problems.push(`新标签没带上关闭钮: ${blank.tabs} 个 / closable=${blank.closable}`);
+
+  // javascript:/data: 会被写进同源 srcdoc，等于让外壳执行任意脚本，必须挡在门口。
+  await page.fill('[data-blank-input]', 'javascript:alert(1)');
+  await page.click('.blank-go');
+  await page.waitForTimeout(300);
+  const bad = await shell();
+  if (!bad.blank) problems.push('非法地址不该把页面换掉');
+  if (!bad.hint.includes('读不懂')) problems.push(`非法地址没给说明: ${bad.hint}`);
+  if (bad.u) problems.push(`非法地址被写进了 URL: ${bad.u}`);
+
+  // 同源页面：取 HTML → 剥脚本 → 同源 srcdoc 重建，参数面板照旧是唯一入口。
+  await page.fill('[data-blank-input]', './tune.html');
+  await page.click('.blank-go');
+  await waitRebuilt('tune', 60000);
+  const rebuilt = await shell();
+  if (!rebuilt.srcdoc) problems.push('同源自定义页没有走 srcdoc 重建');
+  if (rebuilt.built < 5) problems.push(`重建出来的页面只建成 ${rebuilt.built} 项（状态「${rebuilt.status}」）`);
+  if (!/tune\.html/.test(rebuilt.title)) problems.push(`标签名没跟着地址换: ${rebuilt.title}`);
+  if (!rebuilt.url.includes('/demos/tune.html')) problems.push(`地址栏没显示自定义地址: ${rebuilt.url}`);
+  if (!rebuilt.u?.endsWith('/demos/tune.html')) problems.push(`自定义地址没写回 URL: ${rebuilt.u}`);
+  if (rebuilt.rows === 0) problems.push('重建页里没有创造者模式面板');
+  await page.screenshot({ path: `${OUT}browser-custom.png` });
+
+  // 取不到的站点：诚实降级为直接嵌，状态条要把「读不到 DOM」说出来。
+  await page.evaluate(() => window.__browser.navigate(window.__browser.current(), 'http://127.0.0.1:1/nope'));
+  await page.waitForFunction(() => document.querySelector('[data-hint]').textContent.includes('读不到'),
+    null, { timeout: 25000 }).catch(() => {});
+  const framed = await shell();
+  if (!framed.hint.includes('读不到')) problems.push(`取不到的地址没有如实说明: ${framed.hint}`);
+  if (framed.srcdoc) problems.push('取不到的站点不该假装成 srcdoc 重建');
+
+  // 关掉自定义标签：回到预设轨道，历史与 URL 都不留孤儿。
+  await page.click('.tab[aria-selected="true"] .close');
+  await page.waitForTimeout(800);
+  const closed = await shell();
+  if (closed.tabs !== 7) problems.push(`关闭自定义标签后剩 ${closed.tabs} 个标签`);
+  if (closed.closable) problems.push('预设标签不该有关闭钮');
+  if (closed.u) problems.push(`关闭后 URL 还留着 u 参数: ${closed.u}`);
+
+  // ?u= 直达：分享链接和验收都不必先点加号再打字。
+  await page.goto(`${BASE}/demos/index.html?u=${encodeURIComponent('./simple.html')}`, { waitUntil: 'load' });
+  await waitRebuilt('simple', 60000);
+  const deep = await shell();
+  if (deep.tabs !== 8 || !deep.srcdoc) problems.push(`?u= 直达没开出重建标签: ${deep.tabs} 个 / srcdoc=${deep.srcdoc}`);
+  if (deep.case_ !== 'custom-1') problems.push(`?u= 直达后活动标签是 ${deep.case_}`);
+
+  report('custom-tab @1280', problems, [
+    `标签条: 预设 ${start.tabs} 个 · 加号后 ${blank.tabs} 个（空白页聚焦=${blank.focused}）`,
+    `非法地址: ${bad.hint}`,
+    `同源重建: ${rebuilt.title} · 建成 ${rebuilt.built} 项 · 面板 ${rebuilt.rows} 行 · 状态「${rebuilt.status}」`,
+    `取不到时: ${framed.hint}`,
+    `关闭后: ${closed.tabs} 个标签 · case=${closed.case_} · u=${closed.u ?? '（已清）'}`,
+    `?u= 直达: ${deep.title} · srcdoc=${deep.srcdoc} · 建成 ${deep.built} 项`,
+  ]);
+  await ctx.close();
+}
+
+// ---------------------------------------------------------------------------
+// 场景 17c：案例页铺满视口——纸色/工作台不许在屏幕边上留一条与页面不同的边
+// ---------------------------------------------------------------------------
+{
+  const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+  const page = await ctx.newPage();
+  const problems = [];
+  const notes = [];
+
+  const cover = () => page.evaluate(() => {
+    const root = document.querySelector('#app > div') || document.querySelector('#app');
+    const b = root.getBoundingClientRect();
+    return {
+      cls: root.className,
+      w: Math.round(b.width),
+      left: Math.round(b.left),
+      bottom: Math.round(b.bottom),
+      innerW: document.documentElement.clientWidth,
+      innerH: window.innerHeight,
+      docH: document.documentElement.scrollHeight,
+      bg: getComputedStyle(root).backgroundColor,
+    };
+  });
+
+  for (const [w, h] of [[1280, 900], [390, 740]]) {
+    await page.setViewportSize({ width: w, height: h });
+    for (const name of ['home', 'dark-ui', 'tall', 'console', 'landing']) {
+      await page.goto(`${BASE}/demos/${name}.html`, { waitUntil: 'load' });
+      await page.waitForTimeout(400);
+      const c = await cover();
+      const opaque = c.bg !== 'rgba(0, 0, 0, 0)' && c.bg !== 'transparent';
+      if (opaque && c.w < c.innerW - 1) problems.push(`${name} @${w} 两侧留了 ${c.innerW - c.w}px 与页面不同的边（${c.bg}）`);
+      if (opaque && c.docH <= c.innerH + 1 && c.bottom < c.innerH - 1) {
+        problems.push(`${name} @${w} 文档不足一屏，底部空了 ${c.innerH - c.bottom}px`);
+      }
+      notes.push(`${name}@${w} ${c.w}/${c.innerW}×${c.bottom}/${c.innerH}`);
+    }
+  }
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto(`${BASE}/demos/dark-ui.html`, { waitUntil: 'load' });
+  await page.waitForTimeout(500);
+  await page.screenshot({ path: `${OUT}fill-dark-ui-1280.png` });
+
+  report('case-fill @1280/@390', problems, [
+    `根元素宽/视口宽、底边/视口高: ${notes.join(' · ')}`,
+    'simple 是有意留窄的基准文章页（底色透明，边上不会露出另一种颜色），不进这条断言',
+  ]);
+  await ctx.close();
+}
+
+// ---------------------------------------------------------------------------
 // 场景 18：创造者模式嵌进「别人家的站点」（shadow DOM 隔离 + 导出片段 + chrome 不被遮）
 // ---------------------------------------------------------------------------
 {
@@ -1223,11 +1409,57 @@ for (const width of WIDTHS) {
   const hints = await page.evaluate(() => {
     const sr = document.querySelector('[data-sb-chrome]').shadowRoot;
     const noTip = (sel) => [...sr.querySelectorAll(sel)].filter((el) => !(el.dataset.tip ?? '').length).length;
-    return { rows: sr.querySelectorAll('.row').length, bare: noTip('.row'), buttons: noTip('header button,footer button,.util button,.grip,.orb'), title: sr.querySelectorAll('[title]').length };
+    return { rows: sr.querySelectorAll('.row').length, bare: noTip('.row'), buttons: noTip('header button,footer button,.util button,.grip,.orb,.group'), title: sr.querySelectorAll('[title]').length };
   });
   if (hints.bare > 0) problems.push(`${hints.bare} 行参数没有 hover 提示`);
   if (hints.buttons > 0) problems.push(`${hints.buttons} 个按钮没有 hover 提示`);
   if (hints.title > 0) problems.push(`还剩 ${hints.title} 处用原生 title：和自绘提示会撞成两个气泡`);
+
+  // 复刻开关那九行折在分组里。默认收起是因为手机那档不许出滚动条，但行必须留在 DOM 里：
+  // 上面「每个 DEFAULT_CONFIG 的键都有一行」靠的就是它，验收改值也靠它。
+  const fold = await page.evaluate(() => {
+    const sr = document.querySelector('[data-sb-chrome]').shadowRoot;
+    const rows = [...sr.querySelectorAll('.row[data-group="replica"]')];
+    const fold2 = sr.querySelector('[data-groupfold]');
+    return {
+      state: sr.querySelector('[data-fields]').dataset.replica,
+      expanded: fold2?.getAttribute('aria-expanded') ?? '',
+      tip: fold2?.dataset.tip ?? '',
+      label: fold2?.textContent ?? '',
+      rows: rows.length,
+      shown: rows.filter((el) => el.getBoundingClientRect().height > 0).length,
+      height: sr.querySelector('.fields').clientHeight,
+      scroll: sr.querySelector('.fields').scrollHeight,
+    };
+  });
+  if (fold.state !== 'closed' || fold.expanded !== 'false') problems.push(`复刻分组默认没收起：${fold.state}/${fold.expanded}`);
+  if (fold.rows !== 9) problems.push(`复刻开关应有 9 行，实际 ${fold.rows}`);
+  if (fold.shown !== 0) problems.push(`收起状态下还露出 ${fold.shown} 行复刻开关`);
+  if (!fold.tip.includes('默认关')) problems.push(`复刻分组没说明「关着时和原来一样」：${fold.tip.slice(0, 24)}`);
+  if (!fold.label.includes('已开 0')) problems.push(`分组标题没统计开了几项：${fold.label}`);
+  if (fold.scroll > fold.height + 1) problems.push(`收起时参数区就已经要滚了：${fold.scroll}/${fold.height}`);
+
+  await page.click('[data-groupfold]');
+  const opened = await page.evaluate(() => {
+    const sr = document.querySelector('[data-sb-chrome]').shadowRoot;
+    const rows = [...sr.querySelectorAll('.row[data-group="replica"]')];
+    return {
+      state: sr.querySelector('[data-fields]').dataset.replica,
+      expanded: sr.querySelector('[data-groupfold]').getAttribute('aria-expanded'),
+      shown: rows.filter((el) => el.getBoundingClientRect().height > 0).length,
+    };
+  });
+  if (opened.state !== 'open' || opened.expanded !== 'true') problems.push(`点了分组按钮没展开：${opened.state}/${opened.expanded}`);
+  if (opened.shown !== 9) problems.push(`展开后只露出 ${opened.shown} 行复刻开关`);
+
+  // 开关一旦离开默认值，分组标题要数得出来；数完收起，别让多出来的九行挤坏后面的卡片高度。
+  await setField(page, 'flight', 'live');
+  const counted = await page.evaluate(() => {
+    const sr = document.querySelector('[data-sb-chrome]').shadowRoot;
+    return sr.querySelector('[data-groupfold]').textContent;
+  });
+  if (!counted.includes('已开 1')) problems.push(`开了一项复刻开关后标题还是 ${counted}`);
+  await page.click('[data-groupfold]');
 
   // 提示是面板自己画的：立刻出现、字号受控，而且不能溢出视口。
   const rowBox = await page.evaluate(() => {
@@ -1355,6 +1587,7 @@ for (const width of WIDTHS) {
   const snippet = await page.evaluate(() => window.__tuner.snippet());
   if (!snippet.includes('agentCount: 12')) problems.push('导出片段没跟上面板改动');
   if (!snippet.includes("document.querySelector('#site')")) problems.push('导出片段的 root 选择器不对');
+  if (!snippet.includes("flight: 'live'")) problems.push('导出片段漏了收起分组里改过的那项复刻开关');
   if (snippet.includes('data-sb-chrome')) problems.push('导出片段把面板自己的 ignore 选择器带进了生产配置');
   if (!snippet.includes('swarm.start();')) problems.push('导出片段不是可直接运行的代码');
 
@@ -1427,10 +1660,14 @@ for (const width of WIDTHS) {
 
 // ---------------------------------------------------------------------------
 // 构建顺序 + 种子：长页面是唯一能把「从上到下」看出来的场景，所以跑在 tall.html 上。
-// 观测点是 DOM 里 item 的出现顺序（每个光标第一帧各认领一件，所以前 agentCount 件
-// 完全由排程决定，不受飞行时间影响——种子是否复现就看这前几件）。
-// 「自上而下」卡两条真实保证：6 个光标时开工的前 agentCount 件严格递增（第 i 个光标拿第 i 条
-// 横带，带 i 整条在带 i+1 上面）；1 个光标时整条创建序列单调往下（没有并发横带互相穿插）。
+// 观测点是 DOM 里 item 的出现顺序。注意这一列是「画出来」的时刻，不是「认领」的时刻：
+// 从认领到落 DOM 之间隔着光标飞行时间，所以同一个光标的第二件可能比隔壁的第一件先到。
+// 「自上而下」卡三条真实保证：6 个光标开工首轮就横跨 ≥1500px（光标铺在整页上，不是挤在一坨）；
+// 前两轮（前 12 件）六条横带全部有人开工；1 个光标时整条创建序列单调往下（没有并发横带互相穿插）。
+// 「落在几条带」不拿 y 值去等分——密集的一排里相邻两条带的开工线可以只差几个像素，等分必然
+// 把两条折成一条；这里直接问排程本身要 item → 带号 的映射，看这几件各属于哪条队列。
+// 前 6 件「到达 DOM 的先后」不卡：那一列里掺了飞行时间，改版式会让某条带的第一件晚到一步，
+// 而排程没变。带内 y 区间互不重叠这种确定性保证由 order-more 直接读排程队列来卡。
 // 全局创建顺序的 y 中位数不卡：6 条带同时在盖，前 1/4 和后 1/4 都横跨整页，那个指标恒不成立。
 // ---------------------------------------------------------------------------
 {
@@ -1441,7 +1678,36 @@ for (const width of WIDTHS) {
   page.on('pageerror', (err) => errors.push(String(err)));
   await page.goto(`${BASE}/demos/tall.html`, { waitUntil: 'load' });
 
-  const run = (options) => page.evaluate((opts) => {
+  // 带边界由排程自己给：同一份蓝图、同样的 agentCount，队列里第 i 条就是第 i 个光标的带。
+  // 键是 item id，正是 DOM 上 data-item 写的那个。
+  // 读映射另开一页：这几个 /src 模块在本页是第一次 import，vite 会顺带重新预打包依赖并整页
+  // 重载——发生在主页面上就是把下面那一串 run() 打断（Execution context was destroyed），
+  // 现象长得像引擎坏了，实际是测试撞上了开发服务器的一次冷启动。
+  const mapPage = await ctx.newPage();
+  await mapPage.goto(`${BASE}/demos/tall.html`, { waitUntil: 'load' });
+  await mapPage.evaluate(() => Promise.all([...document.images].map((i) => i.decode().catch(() => null))));
+  const readBands = () => mapPage.evaluate(async () => {
+    const { snapshot } = await import('/src/core/snapshot.ts');
+    const { normalizeOptions } = await import('/src/core/config.ts');
+    const { Scheduler } = await import('/src/core/scheduler.ts');
+    const opts = normalizeOptions({ maxItems: 400, agentCount: 6, order: 'rows' });
+    const bp = snapshot(document.querySelector('#app'), opts);
+    const map = {};
+    new Scheduler(bp, { agentCount: 6, order: 'rows', seed: 7, balance: false, cost: () => 1 })
+      .agentQueues.forEach((q, i) => q.forEach((it) => { if (map[it.id] === undefined) map[it.id] = i; }));
+    return map;
+  });
+  // 撞上一次重载就等它重载完再读一遍，第二次的 import 已经是热的了。
+  const bandOf = await readBands().catch(async () => {
+    await mapPage.goto(`${BASE}/demos/tall.html`, { waitUntil: 'load' });
+    await mapPage.evaluate(() => Promise.all([...document.images].map((i) => i.decode().catch(() => null))));
+    return readBands();
+  });
+  await mapPage.close();
+  // 主页再走一次：整页重载是广播给所有连接的客户端的，让它落在这一步而不是某一局施工中。
+  await page.goto(`${BASE}/demos/tall.html`, { waitUntil: 'load' });
+
+  const runOnce = (options) => page.evaluate((opts) => {
     document.querySelectorAll('.sb-overlay').forEach((el) => el.remove());
     document.querySelectorAll('.sb-hidden').forEach((el) => el.classList.remove('sb-hidden'));
     window.__seq = [];
@@ -1474,6 +1740,14 @@ for (const width of WIDTHS) {
     });
   }, options);
 
+  // 每一局都是「先清场、再重放」，所以中途被整页重载打断是可以补救的。dev server 会广播
+  // reload（这一页第一次 import /src 模块、或 dist 产物刚被重写），现象是 Execution context
+  // was destroyed——像引擎坏了，实际是这一局的观测者连着页面一起没了。
+  const run = async (options) => runOnce(options).catch(async () => {
+    await page.goto(`${BASE}/demos/tall.html`, { waitUntil: 'load' });
+    return runOnce(options);
+  });
+
   const sweepOf = (rec, tol) => {
     const seen = new Set();
     const ys = rec.filter((r) => !seen.has(r[0]) && (seen.add(r[0]), true)).map(([, y]) => y);
@@ -1498,9 +1772,17 @@ for (const width of WIDTHS) {
   const freeA = await run({ order: 'random', tour: false });
   const freeB = await run({ order: 'random', tour: false });
 
-  const span = (ys) => Math.round(ys[ys.length - 1] - ys[0]);
-  const ascending = (ys) => ys.every((y, i) => i === 0 || y > ys[i - 1]);
-  if (!ascending(rows.headYs)) problems.push(`自上而下不是「一条横带一个光标」：开工前 ${rows.headYs.length} 件 y=${rows.headYs.map(Math.round).join(' ')}`);
+  const span = (ys) => Math.round(Math.max(...ys) - Math.min(...ys));
+  // 前 agentCount 件「各落一条带」不是引擎的承诺：某条带头一件的父在更靠上的带里，
+  // 那一刻还没建成，take() 只能先别条带里挑一件 ready 的（不抢就干等，这是设计如此）。
+  // 画面层真正要保的是「每条带都在开工头两轮里有人盖起来」——迟到一步可以，整条带没人管不行。
+  // 带边界来自排程本身（纯函数，不受飞行时间影响），所以这里量的是分发归属，不是到达次序。
+  const firstBands = (list, n) => [...new Set(list.slice(0, n).map((id) => bandOf[id]).filter((b) => b !== undefined))];
+  const rowsBandOfHead = rows.head.map((id) => bandOf[id]);
+  const rowsBands = firstBands(rows.head, 6).length;
+  const rowsBandsTwoRounds = firstBands(rows.rec.map((r) => r[0]), 12).length;
+  if (rowsBandOfHead.some((b) => b === undefined)) problems.push(`开工的 6 件里有对不上排程队列的 id：${rows.head.join(' ')}`);
+  if (rowsBandsTwoRounds !== 6) problems.push(`两轮之后仍有横带没开工：前 12 件只落在 ${rowsBandsTwoRounds} 条带上（带号 ${firstBands(rows.rec.map((r) => r[0]), 12).join(' ')}）`);
   if (span(rows.headYs) < 1500) problems.push(`开工前 6 件只跨了 ${span(rows.headYs)}px，光标没铺到整页的各条带上`);
   if (soloSweep.ratio < 0.9) problems.push(`单光标自上而下不成立：${soloSweep.items} 件的 ${soloSweep.pairs} 对里回跳 ${Math.round((1 - soloSweep.ratio) * soloSweep.pairs)} 对，最大回跳 ${Math.round(soloSweep.worst)}px`);
   if (seedA.head.join(',') !== seedB.head.join(',')) problems.push(`同一颗种子排出的开工顺序不一样：${seedA.head.join(' ')} vs ${seedB.head.join(' ')}`);
@@ -1512,7 +1794,7 @@ for (const width of WIDTHS) {
   if (errors.length) problems.push(`控制台报错 ${errors.length} 条: ${errors[0]}`);
 
   report('order-seed @1280', problems, [
-    `自上而下（6 光标）: 开工 ${rows.headYs.length} 件 y=${rows.headYs.map(Math.round).join(' ')} · 跨 ${span(rows.headYs)}px · 一条带一个光标`,
+    `自上而下（6 光标）: 开工 ${rows.headYs.length} 件 y=${rows.headYs.map(Math.round).join(' ')} · 跨 ${span(rows.headYs)}px · 首轮铺开 ${rowsBands}/6 条带（带号 ${rowsBandOfHead.join(' ')}），两轮内 ${rowsBandsTwoRounds}/6 条带开工（到达先后掺飞行时间，不卡）`,
     `自上而下（1 光标）: ${soloSweep.items} 件 · 顺 ${soloSweep.pairs - Math.round((1 - soloSweep.ratio) * soloSweep.pairs)}/${soloSweep.pairs} 对（容 60px 回跳）· 最大回跳 ${Math.round(soloSweep.worst)}px`,
     `子树并行（6 光标）: 开工 ${group.headYs.map(Math.round).join(' ')} · 跨 ${span(group.headYs)}px · 对照，不卡门槛`,
     `种子 12345 两次开工: ${seedA.head.join(' ')} = ${seedB.head.join(' ')}`,
@@ -1570,14 +1852,30 @@ for (const width of WIDTHS) {
         return Math.max(...loads) / Math.min(...loads);
       };
       const orders = ['rows', 'cols', 'snake', 'depth', 'radial'];
-      const out = { items: bp.items.filter((i) => !i.consumed).length, width: bp.width, orders: {}, balance: {}, snakeEnds: [], depthMonotone: [], radialAsc: false, colsLikeRows: false };
+      // 一条队列里不许出现「子元素排在它的父前面」：那样子元素认领时父还没落地，
+      // take() 只能跳过它去后面拿，跑完再回头补——自上而下就变成来回跳。
+      const depsOk = (queues) => queues.every((q) => {
+        const inQueue = new Set(q.map((it) => it.id));
+        const claimed = new Set();
+        for (const it of q) {
+          if (it.blockers.some((b) => inQueue.has(b) && !claimed.has(b))) return false;
+          claimed.add(it.id);
+        }
+        return true;
+      });
+      const out = { items: bp.items.filter((i) => !i.consumed).length, width: bp.width, orders: {}, balance: {}, snakeEnds: [], depthMonotone: [], rowsDeps: false, colsDeps: false, radialAsc: false, colsLikeRows: false };
       for (const order of orders) {
         const queues = sched(order, false);
         out.orders[order] = {
           yAsc: asc(queues.map((q) => med(q, cy))),
+          // 横带族的承诺轴是顶边：带与带之间按 y 不重叠，各带的顶边中位数递增。
+          topAsc: asc(queues.map((q) => med(q, (i) => i.y))),
+          topContiguous: contiguous(queues, (i) => i.y),
           xContiguous: contiguous(queues, cx),
           yContiguous: contiguous(queues, cy),
         };
+        if (order === 'rows') out.rowsDeps = depsOk(queues);
+        if (order === 'cols') out.colsDeps = depsOk(queues);
         const weight = (it) => itemWeight(it, normalizeOptions({ maxItems: limit, order }));
         out.balance[order] = { off: spread(queues, weight), on: spread(sched(order, true), weight) };
       }
@@ -1595,12 +1893,15 @@ for (const width of WIDTHS) {
   const wide = await dist(`${BASE}/demos/dark-ui.html`, 200);
   if (wide.colsLikeRows) problems.push('dark-ui 明明有左右两栏，竖列却退回成了横带（沟检测没认出来）');
   if (!wide.orders.cols.xContiguous) problems.push('竖列带之间在 x 上互相重叠：光标分的不是一个个区域');
-  if (!wide.orders.rows.yAsc) problems.push('多栏页上 rows 的横带中位数不再递增（cols 的改动串到了 rows）');
+  if (!wide.orders.rows.topAsc) problems.push('多栏页上 rows 各带按顶边排不再递增（cols 的改动串到了 rows）');
+  if (!wide.rowsDeps) problems.push('多栏页 rows 的队列里存在子元素排在它自己的父前面');
 
   // 单栏页：没有沟就必须退回按 y 切，画面不能被竖着劈开。
   const tall = await dist(`${BASE}/demos/tall.html`, 400);
   if (!tall.colsLikeRows) problems.push('长页面是单栏，竖列没有退回成自上而下');
-  if (!tall.orders.cols.yContiguous) problems.push('长页面退回横带后带间仍然重叠');
+  if (!tall.orders.cols.topContiguous) problems.push('长页面退回横带后，带与带之间在顶边上仍然重叠');
+  if (!tall.rowsDeps) problems.push('长页面 rows 的队列里存在子元素排在它自己的父前面');
+  if (!tall.colsDeps) problems.push('长页面 cols 退回横带后队列里的父子序仍然倒着');
 
   // 蛇形：带内按 x 排，奇数带反走 → 首尾 x 差正负交替
   const flips = tall.snakeEnds.map((v) => (v > 0 ? 1 : -1));
@@ -1655,6 +1956,7 @@ for (const width of WIDTHS) {
   report('order-more @1280', problems, [
     `竖列（dark-ui ${wide.items} 件）: 按 x 切带互不重叠=${wide.orders.cols.xContiguous} · 与横带分布不同=${!wide.colsLikeRows}`,
     `竖列（长页面 ${tall.items} 件）: 单栏无沟 → 退回横带=${tall.colsLikeRows}`,
+    `横带族切分轴: 顶边（不是中线）· 队列内父先于子 rows=${tall.rowsDeps}/${wide.rowsDeps} cols 退横带=${tall.colsDeps} · 带间顶边不重叠=${tall.orders.cols.topContiguous}`,
     `蛇形: 首尾 x 差 ${tall.snakeEnds.map(Math.round).join(' ')} · 左右交替=${alternates}`,
     `逐层: 6 条队列深度单调=${tall.depthMonotone.filter(Boolean).length}/6 · 骨架先于叶子`,
     `由内向外: 各队列半径中位数递增=${tall.radialAsc}`,
@@ -1873,6 +2175,525 @@ for (const width of WIDTHS) {
     `施工中溢出: 说明页最多 ${worst}px · 密集页最多 ${worstDense}px`,
   ]);
   await ctx.close();
+}
+
+// ---------------------------------------------------------------------------
+// 场景 23：双语。中文是源语言，英文是启动时按「整节点」替换上去的，
+// 少一行字典就会在这里露出来——所以露馅判据不是「有没有 key」，而是
+// 「渲染后的 DOM 里还能不能找到中日韩文字」。
+// ---------------------------------------------------------------------------
+{
+  const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+
+  // 码点区间在页面里手写，不抄字面量：U+3000 是全角空格，抄进字符集会退化成
+  // 普通空格、把区间上界一路撑到整段 ASCII（上一批就是这么把所有字符串都判成中文的）。
+  const sweep = (page) => page.evaluate(() => {
+    const isCJK = (s) => {
+      for (const ch of s) {
+        const c = ch.codePointAt(0);
+        if ((c >= 0x3001 && c <= 0x303f) || (c >= 0x3400 && c <= 0x4dbf)
+          || (c >= 0x4e00 && c <= 0x9fff) || (c >= 0xff01 && c <= 0xffef)) return true;
+      }
+      return false;
+    };
+    const hits = new Set();
+    const walk = (n) => {
+      if (n.nodeType === 3) {
+        const t = (n.textContent ?? '').replace(/\s+/g, ' ').trim();
+        if (t && isCJK(t)) hits.add(t);
+        return;
+      }
+      if (n.nodeType === 1) {
+        if (n.tagName === 'STYLE' || n.tagName === 'SCRIPT') return;
+        for (const a of ['data-tip', 'title', 'aria-label', 'placeholder', 'alt']) {
+          const v = n.getAttribute?.(a);
+          if (v && isCJK(v)) hits.add(`${n.tagName.toLowerCase()}[${a}] ${v.replace(/\s+/g, ' ').trim()}`);
+        }
+        // 外壳的案例就在 iframe 里：它是一整份同源文档，语言有没有跟进去只能这样钻进去看。
+        const nested = n.tagName === 'IFRAME' ? (n.contentDocument ?? null) : null;
+        if (nested?.documentElement) {
+          walk(nested.documentElement);
+          const inner = nested.querySelector('[data-sb-chrome]');
+          if (inner?.shadowRoot) walk(inner.shadowRoot);
+        }
+      }
+      for (const c of Array.from(n.childNodes ?? [])) walk(c);
+    };
+    walk(document.documentElement);
+    const host = document.querySelector('[data-sb-chrome]');
+    if (host?.shadowRoot) walk(host.shadowRoot);
+    return {
+      lang: window.__sbI18n?.lang,
+      missed: window.__sbI18n?.missed ?? [],
+      cjk: [...hits],
+      status: host?.shadowRoot?.querySelector('[data-status]')?.textContent ?? '',
+    };
+  });
+
+  const problems = [];
+  const lines = [];
+  for (const name of ['home', 'simple', 'landing', 'dark-ui', 'tall', 'console', 'tune', 'cdn']) {
+    const page = await ctx.newPage();
+    const errors = [];
+    page.on('pageerror', (err) => errors.push(String(err)));
+    await page.goto(`${BASE}/demos/${name}.html?lang=en`, { waitUntil: 'load' });
+    await page.waitForFunction(() => document.querySelector('[data-sb-chrome]') !== null, null, { timeout: 20000 });
+    // 跑完才判：状态行、「已继续」这类提示、完成后的丢弃计数都是运行过程中才写进面板的。
+    await setField(page, 'speed', 8);
+    await page.click('[data-apply]');
+    await page.waitForFunction(
+      () => document.querySelector('[data-sb-chrome]').shadowRoot
+        .querySelector('[data-status]')?.textContent.startsWith('Done'),
+      null, { timeout: 90000, polling: 200 },
+    ).catch(() => {});
+    const got = await sweep(page);
+    if (got.lang !== 'en') problems.push(`${name}: 语言键是 ${got.lang}，?lang=en 没生效`);
+    if (got.missed.length) problems.push(`${name}: 字典漏 ${got.missed.length} 条：${got.missed.slice(0, 3).join(' / ')}`);
+    if (got.cjk.length) problems.push(`${name}: 页面上还露着 ${got.cjk.length} 处中文：${got.cjk.slice(0, 3).join(' / ')}`);
+    if (!got.status.startsWith('Done')) problems.push(`${name}: 英文状态行没跑到头：${got.status}`);
+    if (errors.length) problems.push(`${name} 报错 ${errors.length} 条: ${errors[0]}`);
+    lines.push(`${name}: 命中 ${got.missed.length ? '漏' + got.missed.length : '全译'} · 露中文 ${got.cjk.length} · ${got.status}`);
+    if (name === 'home') await page.screenshot({ path: `${OUT}i18n-home.png` });
+    await page.close();
+  }
+
+  // 外壳同样要跟着走：标签名、地址栏、状态栏，还有 iframe 里那一页。
+  const page = await ctx.newPage();
+  await page.goto(`${BASE}/demos/index.html?case=simple&lang=en`, { waitUntil: 'load' });
+  await page.waitForFunction(() => document.querySelector('[data-frame]')?.contentDocument
+    ?.querySelector('[data-sb-chrome]') !== null, null, { timeout: 20000 });
+  // 元信息行只在施工中存在（「N 个盒子在画」），跑完就清空了，所以趁在飞的时候取样；
+  // 等 Done 之后再读会读到空串，那是设计如此，不是 bug。
+  const metaSeen = await page.waitForFunction(() => {
+    const text = (document.querySelector('[data-meta]')?.textContent ?? '').replace(/\s+/g, ' ').trim();
+    return text.length > 0 ? text : false;
+  }, null, { timeout: 30000, polling: 100 }).then((h) => h.jsonValue()).catch(() => '');
+  await page.waitForFunction(() => (document.querySelector('[data-frame]').contentDocument
+    .querySelector('[data-sb-chrome]')?.shadowRoot
+    .querySelector('[data-status]')?.textContent ?? '').startsWith('Done'), null, { timeout: 90000 }).catch(() => {});
+  const shell = await page.evaluate(() => {
+    const doc = document.querySelector('[data-frame]').contentDocument;
+    const flat = (el) => (el?.textContent ?? '').replace(/\s+/g, ' ').trim();
+    return {
+      tab: flat(document.querySelector('.tab[aria-selected="true"]')),
+      hint: flat(document.querySelector('[data-hint]')),
+      frameLang: doc.documentElement.lang,
+      frameStatus: flat(doc.querySelector('[data-sb-chrome]')?.shadowRoot?.querySelector('[data-status]')),
+    };
+  });
+  const shellSweep = await sweep(page);
+  if (shell.frameLang !== 'en') problems.push(`壳里的案例页语言还是 ${shell.frameLang}：?lang= 没传进 iframe`);
+  if (shellSweep.cjk.length) problems.push(`壳（连着 iframe 里那一页和它的面板）还露着 ${shellSweep.cjk.length} 处中文：${shellSweep.cjk.slice(0, 4).join(' / ')}`);
+  if (!/^[A-Za-z]/.test(shell.tab) || !shell.tab.length) problems.push(`活动标签名没跟着换：${shell.tab}`);
+  if (!shell.frameStatus.startsWith('Done')) problems.push(`壳里的案例没走英文：${shell.frameStatus}`);
+  if (!metaSeen.length) problems.push('壳的元信息行空了');
+  await page.screenshot({ path: `${OUT}i18n-shell.png` });
+  await page.close();
+
+  report('i18n @1280', problems, [
+    `案例页: ${lines.join(' · ')}`,
+    `外壳: 标签「${shell.tab}」· 状态栏「${shell.hint}」· 施工中元信息「${metaSeen}」· iframe lang=${shell.frameLang}`,
+    '中文仍是源语言：字典按整节点替换，默认档留在中文，验收矩阵其余场景因此不必跟着改断言',
+  ]);
+  await ctx.close();
+}
+
+// ---------------------------------------------------------------------------
+// 场景 24：第三方网页。跨源 fetch 读不到正文（没有 Access-Control-Allow-Origin
+// 就直接抛），以前外壳遇到这个异常只是安静地把页面原样嵌进去——用户看到的
+// 就是「我输了地址，它只给我打开了一个普通网页」。现在按 直连 → 同源转发 → 诚实降级
+// 三级走，转发口是 dev server 上的 /__page。这里用第二个本地端口当「别人的站点」，
+// 它和外壳同源不同端口、且不带任何 CORS 头，正好复现真实失败路径而不依赖外网。
+//
+// 这一页故意做成「又长又懒」：图片全在折叠线以下、带 loading=lazy，正文高过两屏。
+// 那是用户报的两个症状的源头——单次采集只看见第一屏，下面的盒子内框是 0×0 被丢掉，
+// 页面塌成一屏就滚不动；图片没下载完就抓拍，重建出来全是空槽。
+// ---------------------------------------------------------------------------
+{
+  const PNG = Buffer.from(
+    'iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAYAAACqaXHeAAAAeUlEQVR42u3BMQEAAADCoPVPbQwfoAAAAAAAAAAAAAAAAAAAAIC3YbIP'
+    + 'AAB2ZUBJZ29yYXl0aGVhZGVyAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAADoTqdpAAAAAXNSR0IArs4c6QAAAARnQU1'
+    + 'BAACxjwv8YQUAAAAJcEhZcwAAEnQAABJ0Ad5mH3gAAABZSURBVHhe7cEBDQAAAMIg/nbZDgbgvQcAAAAAALw1QAsQDdACxAK0ALEArUAsQCsQC'
+    + '9AKxAK0ArEArUAsQCsQC9AKxAK0ArEArUAsQCsQC9AKxAK0ArEArUAsQCsQC9AKxAK0ArEArUAsQCsQC9AKfD1oegABzGJp9QAAAABJRU5ErkJg'
+    + 'gg==', 'base64');
+  const foreign = createServer((req, res) => {
+    if (req.url.startsWith('/img/')) {
+      res.writeHead(200, { 'content-type': 'image/png', 'cache-control': 'no-store' });
+      res.end(PNG);
+      return;
+    }
+    res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+    res.end(`<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><title>外部站点</title>
+<style>body{margin:0;background:#f4f1ea;color:#1c1b18;font:14px/1.6 system-ui}#app{padding:40px}h1{font-size:34px}
+.grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-top:24px}.b{height:96px;border-radius:10px;background:#e3ddd0}
+.strip{margin-top:28px}.strip img{display:block;width:100%;height:120px;object-fit:cover;background:#d8d2c4}
+.tail{margin-top:28px;height:120px;border-radius:10px;background:#cfc8b8}</style>
+</head><body data-demo="relay"><main id="app"><h1>来自另一个源的页面</h1><p>它没有给出任何 Access-Control-Allow-Origin，所以浏览器不让外壳直连读它。</p>
+<div class="grid">${'<div class="b"></div>'.repeat(8)}</div>
+${'<div class="strip"><img loading="lazy" width="320" height="120" src="/img/x.png" alt="远处的一张图"></div>'.repeat(10)}
+<div class="tail">页脚：要滚两屏才看得见这句话</div></main></body></html>`);
+  });
+  await new Promise((resolve) => foreign.listen(0, '127.0.0.1', resolve));
+  const FOREIGN = `http://127.0.0.1:${foreign.address().port}/`;
+
+  const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+  const page = await ctx.newPage();
+  const problems = [];
+
+  // 先确认「外部站点」真的是跨源不可读：这一条不成立，下面那条通过就毫无意义。
+  const direct = await page.goto(`${BASE}/demos/index.html`, { waitUntil: 'load' })
+    .then(() => page.evaluate(async (url) => {
+      try {
+        const r = await fetch(url);
+        return { ok: true, status: r.status };
+      } catch (err) {
+        return { ok: false, why: String(err instanceof Error ? err.message : err) };
+      }
+    }, FOREIGN));
+
+  const relay = await page.evaluate(async (url) => {
+    const r = await fetch(`${location.origin}/__page?url=${encodeURIComponent(url)}`);
+    return { status: r.status, html: await r.text(), final: r.headers.get('x-relay-final-url') ?? '' };
+  }, FOREIGN);
+  const refused = await page.evaluate(async () => {
+    const r = await fetch(`${location.origin}/__page?url=${encodeURIComponent('javascript:alert(1)')}`);
+    return { status: r.status, body: (await r.text()).slice(0, 40) };
+  });
+
+  await page.goto(`${BASE}/demos/index.html?u=${encodeURIComponent(FOREIGN)}`, { waitUntil: 'load' });
+  await page.waitForFunction(() => {
+    const frame = document.querySelector('[data-frame]');
+    return frame.hasAttribute('srcdoc')
+      && frame.contentDocument?.body?.dataset.demo === 'relay'
+      && (frame.contentDocument.querySelector('[data-sb-chrome]')?.shadowRoot
+        .querySelector('[data-status]')?.textContent ?? '').startsWith('完成');
+  }, null, { timeout: 60000, polling: 200 }).catch(() => {});
+  const rebuilt = await page.evaluate(() => {
+    const frame = document.querySelector('[data-frame]');
+    const doc = frame.contentDocument;
+    const sr = doc?.querySelector('[data-sb-chrome]')?.shadowRoot;
+    const status = sr?.querySelector('[data-status]')?.textContent.trim() ?? '';
+    const imgs = [...(doc?.querySelectorAll('#app img') ?? [])];
+    return {
+      srcdoc: frame.hasAttribute('srcdoc'),
+      url: document.querySelector('[data-url]').textContent,
+      hint: document.querySelector('[data-hint]').textContent,
+      status,
+      built: Number((status.match(/完成 (\d+) 项/) ?? [])[1] ?? 0),
+      rows: sr?.querySelectorAll('.row').length ?? 0,
+      title: doc?.title ?? '',
+      lang: doc?.documentElement.lang ?? '',
+      host: doc?.querySelector('#app h1')?.textContent ?? '',
+      // 缺图的症状是「槽位是空的」：图元素在，但一张都没解码。
+      imgs: imgs.length,
+      loaded: imgs.filter((i) => i.complete && i.naturalWidth > 0).length,
+      // 塌页的症状是「滚不动」：页高被 0×0 的丢件吃掉，一屏就到底。
+      page: doc?.documentElement.scrollHeight ?? 0,
+      vh: doc?.documentElement.clientHeight ?? 0,
+      // 开局脚本里没带 pre-scroll，就等于这一页根本没做预滚动采集。
+      scan: (doc?.querySelector('script[type=module]')?.textContent ?? '').includes("scan: 'pre-scroll'"),
+    };
+  });
+  // 「不能上下滚动」要正面量一次：把内框滚到 800，读回来。塌页的另一种死法是
+  // overflow 被谁锁住——页高够，但 scrollTop 死活不动，这条能把它和塌页分开。
+  const scrolls = await page.evaluate(() => {
+    const doc = document.querySelector('[data-frame]').contentDocument;
+    const se = doc.scrollingElement ?? doc.documentElement;
+    se.scrollTop = 800;
+    return { got: Math.round(se.scrollTop), max: se.scrollHeight - se.clientHeight };
+  });
+  await page.screenshot({ path: `${OUT}relay-remote.png` });
+
+  if (direct.ok) problems.push(`「外部站点」竟然直连读得到（status ${direct.status}）——这一场景没在测跨源`);
+  if (relay.status !== 200 || !relay.html.includes('来自另一个源的页面')) problems.push(`同源转发没取到正文：${relay.status} ${relay.html.slice(0, 60)}`);
+  if (!relay.final.startsWith('http')) problems.push(`转发口没回最终地址：${relay.final}`);
+  if (refused.status !== 400) problems.push(`转发口没有拒绝非 http(s) 地址：${refused.status} ${refused.body}`);
+  if (!rebuilt.srcdoc) problems.push(`跨源页面仍然只是原样嵌：${rebuilt.hint}`);
+  if (rebuilt.built < 5) problems.push(`跨源页面重建只建成 ${rebuilt.built} 项（状态「${rebuilt.status}」）`);
+  if (rebuilt.rows === 0) problems.push('跨源重建出来的页面没有创造者模式面板');
+  if (!rebuilt.url.includes('127.0.0.1')) problems.push(`地址栏没显示第三方地址: ${rebuilt.url}`);
+  if (!rebuilt.host.includes('来自另一个源的页面')) problems.push(`重建的不是取回来的那一页：${rebuilt.host}`);
+  if (rebuilt.lang !== 'zh') problems.push(`srcdoc 的 lang 没跟着外壳走：${rebuilt.lang}`);
+  if (!rebuilt.scan) problems.push('第三方页那局没带 scan: pre-scroll（用户报的缺图 + 滚不动就是它没开）');
+  if (rebuilt.imgs === 0) problems.push('外部页夹具里没有图，这一场景没在测缺图');
+  if (rebuilt.loaded !== rebuilt.imgs) problems.push(`第三方页还缺图：${rebuilt.imgs} 张里只解码了 ${rebuilt.loaded} 张`);
+  if (rebuilt.page < rebuilt.vh + 400) problems.push(`重建完的第三方页塌成一屏了：页高 ${rebuilt.page} / 视口 ${rebuilt.vh}`);
+  if (scrolls.got < 700) problems.push(`第三方页仍然滚不动：让它滚到 800，实际停在 ${scrolls.got}（可滚余量 ${scrolls.max}）`);
+
+  report('remote-rebuild @1280', problems, [
+    `跨源前提: 直连 ${direct.ok ? '竟然成功' : `失败（${direct.why.slice(0, 40)}…）`}`,
+    `转发口: /__page ${relay.status} · ${relay.html.length} 字节 · 最终地址 ${relay.final || '（无）'} · 非 http 地址 ${refused.status}`,
+    `重建: srcdoc=${rebuilt.srcdoc} · 建成 ${rebuilt.built} 项 · 面板 ${rebuilt.rows} 行 · 标题「${rebuilt.title}」· lang=${rebuilt.lang}`,
+    `懒图与页高: 图 ${rebuilt.loaded}/${rebuilt.imgs} 已解码 · 页高 ${rebuilt.page}（视口 ${rebuilt.vh}）· 开局脚本 scan=${rebuilt.scan} · 实滚 scrollTop=${scrolls.got}/${scrolls.max}`,
+    `地址栏: ${rebuilt.url}`,
+    '静态托管上没有这个转发口：仍然诚实降级为直接嵌，并说明「读不到 DOM」',
+  ]);
+  await ctx.close();
+  await new Promise((resolve) => foreign.close(resolve));
+}
+
+// ---------------------------------------------------------------------------
+// 场景 25：代码块读得清。上一版 `.page-home li code` 把 <pre><code> 一起命中了，
+// 于是终端样式的深色块里被刷出一条条米色横杠，字和底同色——用户看到的是「白横条」。
+// 光看 CSS 选不出来（选择器对不对要落到计算样式上），这里直接量对比度。
+// ---------------------------------------------------------------------------
+{
+  const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+  const page = await ctx.newPage();
+  await page.goto(`${BASE}/demos/home.html`, { waitUntil: 'load' });
+  await page.waitForTimeout(300);
+  const codes = await page.evaluate(() => {
+    const lum = (c) => {
+      const [r, g, b] = c.match(/[\d.]+/g).map(Number).map((v) => {
+        const s = v / 255;
+        return s <= 0.04045 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
+      });
+      return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+    };
+    const opaqueOver = (el) => {
+      for (let n = el; n; n = n.parentElement) {
+        const bg = getComputedStyle(n).backgroundColor;
+        if (bg && !/rgba\(.*,\s*0\)$/.test(bg) && bg !== 'transparent') return { bg, from: n.tagName.toLowerCase() + (n.className ? '.' + String(n.className).split(' ')[0] : '') };
+      }
+      return { bg: 'rgba(0, 0, 0, 0)', from: 'none' };
+    };
+    const ratio = (a, b) => {
+      const [x, y] = [lum(a), lum(b)].sort((m, n) => n - m);
+      return (x + 0.05) / (y + 0.05);
+    };
+    const measure = (el) => {
+      const cs = getComputedStyle(el);
+      const back = opaqueOver(el);
+      return {
+        text: (el.textContent ?? '').replace(/\s+/g, ' ').trim().slice(0, 22),
+        color: cs.color,
+        own: cs.backgroundColor,
+        back: back.bg,
+        backFrom: back.from,
+        contrast: Math.round(ratio(cs.color, back.bg === 'rgba(0, 0, 0, 0)' ? 'rgb(255,255,255)' : back.bg) * 100) / 100,
+      };
+    };
+    const blockCode = [...document.querySelectorAll('.page-home pre code')].map(measure);
+    const inlineCode = [...document.querySelectorAll('.page-home :not(pre) > code')].map(measure);
+    const pre = [...document.querySelectorAll('.page-home pre')].map((el) => {
+      const cs = getComputedStyle(el);
+      return { bg: cs.backgroundColor, color: cs.color };
+    });
+    return { blockCode, inlineCode, pre };
+  });
+
+  const problems = [];
+  for (const m of codes.blockCode) {
+    // 「白色横条」的成因就是这条：pre 里的 code 被刷成了和正文底色同族的浅底。
+    if (m.own !== 'rgba(0, 0, 0, 0)' && m.own !== 'transparent') problems.push(`代码块里的 <code> 仍自带底色（${m.own}），会把深色块刷成横条：「${m.text}」`);
+    if (m.contrast < 4.5) problems.push(`代码块文字对比度只有 ${m.contrast}:1：「${m.text}」${m.color} on ${m.back}(${m.backFrom})`);
+  }
+  if (codes.blockCode.length < 3) problems.push(`代码块只找到 ${codes.blockCode.length} 段，说明页的示例可能被删空了`);
+  for (const m of codes.inlineCode) {
+    if (m.contrast < 4.5) problems.push(`行内代码对比度只有 ${m.contrast}:1：「${m.text}」${m.color} on ${m.back}(${m.backFrom})`);
+  }
+  const darkPre = codes.pre.every((p) => {
+    const [r, g, b] = p.bg.match(/[\d.]+/g).map(Number);
+    return (r + g + b) / 3 < 90;
+  });
+  if (!darkPre) problems.push(`终端块底色不再是深色：${codes.pre.map((p) => p.bg).join(' / ')}`);
+
+  report('code-ink @1280', problems, [
+    `深色代码块 ${codes.pre.length} 个（底色 ${codes.pre[0]?.bg ?? '无'}）· 块内 <code> 自带底色的有 ${codes.blockCode.filter((m) => m.own !== 'rgba(0, 0, 0, 0)' && m.own !== 'transparent').length} 个`,
+    `块内对比度: ${codes.blockCode.map((m) => m.contrast).join(' ')}（门槛 4.5:1）`,
+    `行内代码 ${codes.inlineCode.length} 处，最低对比度 ${Math.min(...codes.inlineCode.map((m) => m.contrast))}:1`,
+    '修复本身是把 `.page-home li code` 收窄成 `:not(pre) > code`：横条是被选错的规则刷出来的，不是配色问题',
+  ]);
+  await ctx.close();
+}
+
+// ---------------------------------------------------------------------------
+// 场景 26：复刻参考实现的九个开关。
+// 判据不是「代码写了没」，而是每局跑完交回来的观测数：默认关着时一个像素的姿态、
+// 一个多余的光标、一声多余的混响都不许出现；打开以后必须看见它 promised 的那件事。
+{
+  const MEASURE = (options) => new Promise((resolve) => {
+    for (const el of document.querySelectorAll('.sb-overlay')) el.remove();
+    for (const el of document.querySelectorAll('.sb-hidden')) el.classList.remove('sb-hidden');
+    // 计数器每局清零：不然上一局的混响会记到下一局头上，「只出点击声不建混响」永远红。
+    window.__audio = { contexts: 0, convolver: 0, filters: 0, comps: 0, voices: 0 };
+    const m = { tilt: 0, press: 0, cursors: 0, scroll: 0 };
+    let raf = 0;
+    const finish = (extra) => {
+      cancelAnimationFrame(raf);
+      resolve({
+        ...m,
+        ...window.__audio,
+        ...extra,
+        page: document.querySelector('#app').scrollHeight,
+        vh: window.innerHeight,
+      });
+    };
+    const sample = () => {
+      const list = [...document.querySelectorAll('.sb-cursor')];
+      for (const el of list) {
+        if (el.hidden) continue;
+        // --tilt 带单位，直接 Number() 会得到 NaN，于是「有没有歪过」永远读成 0。
+        m.tilt = Math.max(m.tilt, Math.abs(Number((el.style.getPropertyValue('--tilt') || '0').replace('deg', '')) || 0));
+        m.press = Math.max(m.press, Number(el.style.getPropertyValue('--press') || 0) || 0);
+      }
+      m.cursors = Math.max(m.cursors, list.filter((el) => !el.hidden).length);
+      m.scroll = Math.max(m.scroll, window.scrollY);
+      raf = requestAnimationFrame(sample);
+    };
+    raf = requestAnimationFrame(sample);
+    const swarm = new window.SwarmBuilder({
+      root: document.querySelector('#app'),
+      agentCount: 6,
+      speed: 2,
+      order: 'group',
+      seed: 7,
+      sound: false,
+      tour: false,
+      ...options,
+      onComplete: (r) => finish({ built: r.built, dropped: r.dropped, ms: Math.round(r.durationMs) }),
+    });
+    swarm.start();
+    setTimeout(() => finish({ built: -1, dropped: -1, ms: -1 }), 60000);
+  });
+
+  const audioHook = () => {
+    window.__audio = { contexts: 0, convolver: 0, filters: 0, comps: 0, voices: 0 };
+    const Real = window.AudioContext;
+    window.AudioContext = class extends Real {
+      constructor(...args) { super(...args); window.__audio.contexts++; }
+      createConvolver() { window.__audio.convolver++; return super.createConvolver(); }
+      createBiquadFilter() { window.__audio.filters++; return super.createBiquadFilter(); }
+      createDynamicsCompressor() { window.__audio.comps++; return super.createDynamicsCompressor(); }
+    };
+    const create = Real.prototype.createOscillator;
+    Real.prototype.createOscillator = function () { window.__audio.voices++; return create.apply(this, arguments); };
+  };
+
+  const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+  const page = await ctx.newPage();
+  const errors = [];
+  page.on('pageerror', (err) => errors.push(String(err)));
+  await page.goto(`${BASE}/demos/tall.html`, { waitUntil: 'load' });
+  await page.waitForFunction(() => typeof window.SwarmBuilder === 'function', null, { timeout: 20000 });
+  await page.evaluate(audioHook);
+
+  const once = (options) => page.evaluate(MEASURE, options);
+  const base = await once({});
+  const flight = await once({ flight: 'live', pointer: 'repel' });
+  const gated = await once({ tour: true, trigger: 'scroll', pick: 'live' });
+  const crew = await once({ agents: 'auto', tour: true, trigger: 'scroll', pick: 'live' });
+  const score = await once({ sound: true, score: 'generative' });
+  const clicks = await once({ sound: true });
+  const fast = await once({ adaptiveSpeed: true });
+
+  // 减动效那一档要在真的声明了 prefers-reduced-motion 的上下文里跑，库读的是媒体查询。
+  const rctx = await browser.newContext({ viewport: { width: 1280, height: 900 }, reducedMotion: 'reduce' });
+  const rpage = await rctx.newPage();
+  rpage.on('pageerror', (err) => errors.push(String(err)));
+  await rpage.goto(`${BASE}/demos/tall.html`, { waitUntil: 'load' });
+  await rpage.waitForFunction(() => typeof window.SwarmBuilder === 'function', null, { timeout: 20000 });
+  await rpage.evaluate(audioHook);
+  const skipped = await rpage.evaluate(MEASURE, { reducedMotion: 'skip' });
+  const kept = await rpage.evaluate(MEASURE, {});
+
+  const problems = [];
+  const named = [['默认', base], ['待时飞行', flight], ['逐段解锁', gated], ['动态班组', crew],
+    ['生成式配乐', score], ['只有点击', clicks], ['积压提速', fast], ['减动效交还', skipped], ['减动效照跑', kept]];
+  for (const [name, r] of named) if (r.built < 0) problems.push(`${name} 那局 60 秒没跑完`);
+
+  if (base.tilt > 0 || base.press > 0) problems.push(`开关全关着却写了姿态：倾角 ${base.tilt.toFixed(1)}° 按下 ${base.press.toFixed(2)}`);
+  if (base.cursors !== 6) problems.push(`默认人数是 ${base.cursors}，应为 agentCount 给的 6`);
+  if (base.contexts !== 0) problems.push(`开关全关着那局建了 ${base.contexts} 个 AudioContext`);
+  if (flight.tilt <= 0) problems.push('flight:live 下箭头从未朝行进方向歪过');
+  if (flight.cursors !== 6) problems.push(`待时飞行把人数从 6 变成 ${flight.cursors}`);
+
+  const bottom = gated.page - gated.vh;
+  if (gated.scroll < bottom - 4) problems.push(`逐段解锁只滚到 ${Math.round(gated.scroll)}，页底在 ${bottom}：下一屏永远不解锁`);
+  if (gated.cursors !== 6) problems.push(`人数固定那局峰值 ${gated.cursors}，不该超过 6`);
+  if (crew.cursors <= 6) problems.push(`agents:auto 那局峰值 ${crew.cursors}，没招过班底以外的人`);
+  if (crew.scroll < bottom - 4) problems.push(`动态班组那局只滚到 ${Math.round(crew.scroll)}`);
+
+  // 配乐和点击声的分界不在「有没有发声」，在图里那些只有配乐才会建的节点：
+  // 房间混响（convolver）、每声部的带通（biquad）、总线的压限（compressor）。
+  if (score.convolver === 0) problems.push('生成式配乐没有创建 ConvolverNode（房间混响是它的一部分）');
+  if (score.comps !== 1) problems.push(`生成式配乐那局建了 ${score.comps} 个压限器，应为总线上那 1 个`);
+  if (score.filters === 0) problems.push('生成式配乐没有创建 BiquadFilterNode（每声部的带通是它的一部分）');
+  if (score.voices === 0) problems.push('生成式配乐那局一次都没发声');
+  if (clicks.convolver !== 0 || clicks.filters !== 0 || clicks.comps !== 0) {
+    problems.push(`只出点击声那局多建了节点：混响 ${clicks.convolver} / 带通 ${clicks.filters} / 压限 ${clicks.comps}`);
+  }
+  if (clicks.voices === 0) problems.push('只有点击声那局一次都没发声');
+  if (score.contexts === 0 || clicks.contexts === 0) problems.push(`sound 开着却没建 AudioContext：配乐 ${score.contexts} / 点击 ${clicks.contexts}`);
+  if (base.convolver !== 0 || base.voices !== 0) problems.push(`音都关着那局却碰了音频图：混响 ${base.convolver} 发声 ${base.voices}`);
+
+  if (fast.built !== base.built) problems.push(`积压提速那局建成 ${fast.built} 项，默认那局 ${base.built} 项`);
+  if (fast.ms * 1.4 > base.ms) problems.push(`积压提速只把 ${base.ms}ms 压到 ${fast.ms}ms，要求至少快四成`);
+
+  if (skipped.built !== 0 || skipped.cursors !== 0) problems.push(`减动效直接交还那局建成 ${skipped.built} 项、亮过 ${skipped.cursors} 个光标`);
+  if (skipped.ms > 200) problems.push(`减动效交还那局耗时 ${skipped.ms}ms，应该几乎为 0`);
+  if (kept.built <= 0) problems.push(`减动效但照跑那局没建东西（建成 ${kept.built}）：默认档不该被媒体查询改变`);
+  const hidden = await rpage.evaluate(() => document.querySelectorAll('.sb-hidden').length);
+  if (hidden !== 0) problems.push(`交还以后还有 ${hidden} 个元素带着 sb-hidden`);
+
+  if (errors.length) problems.push(`报错 ${errors.length} 条：${errors[0]}`);
+  report('replica @1280', problems, [
+    `默认: 倾角=${base.tilt.toFixed(1)}° 峰值人数=${base.cursors} 混响=${base.convolver} 耗时=${base.ms}ms`,
+    `待时飞行: 倾角=${flight.tilt.toFixed(1)}° 按下=${flight.press.toFixed(2)} 峰值人数=${flight.cursors}`,
+    `逐段解锁: 滚到 ${Math.round(gated.scroll)}/${bottom} 峰值人数=${gated.cursors} 耗时=${gated.ms}ms`,
+    `动态班组: 峰值人数=${crew.cursors}（下限 6）滚到 ${Math.round(crew.scroll)} 耗时=${crew.ms}ms`,
+    `配乐: 混响=${score.convolver} 带通=${score.filters} 压限=${score.comps} 发声=${score.voices} · 只有点击: 混响=${clicks.convolver} 带通=${clicks.filters} 发声=${clicks.voices}`,
+    `积压提速: ${base.ms}ms → ${fast.ms}ms（建成 ${base.built}/${fast.built}）`,
+    `减动效: skip 建成 ${skipped.built} 项耗时 ${skipped.ms}ms · run 建成 ${kept.built} 项`,
+  ]);
+  await rctx.close();
+  await ctx.close();
+}
+
+// ---------------------------------------------------------------------------
+// 场景 27：面板高度分档不许有死区——18 行在 640 到 900 的宿主里都得一行不滚
+// ---------------------------------------------------------------------------
+{
+  const problems = [];
+  const notes = [];
+  for (const h of [900, 800, 700, 640]) {
+    const ctx = await browser.newContext({ viewport: { width: 1280, height: h } });
+    const page = await ctx.newPage();
+    await page.goto(`${BASE}/demos/index.html`, { waitUntil: 'load' });
+    await page.waitForFunction(
+      () => document.querySelector('[data-frame]')?.contentDocument?.querySelector('[data-sb-chrome]')?.shadowRoot?.querySelector('[data-fields]'),
+      null, { timeout: 20000 },
+    );
+    const m = await page.evaluate(() => {
+      const doc = document.querySelector('[data-frame]').contentDocument;
+      const sr = doc.querySelector('[data-sb-chrome]').shadowRoot;
+      const card = sr.querySelector('.card').getBoundingClientRect();
+      const fields = sr.querySelector('[data-fields]');
+      const rows = [...sr.querySelectorAll('.row')].filter((el) => el.getBoundingClientRect().height > 0).length;
+      const vh = doc.documentElement.clientHeight;
+      return {
+        vh,
+        tier: vh <= 598 ? 'T3' : vh <= 712 ? 'T2' : vh <= 780 ? 'T1' : 'T0',
+        rows,
+        content: fields.scrollHeight,
+        client: fields.clientHeight,
+        chrome: Math.round(card.height - fields.clientHeight),
+        bottom: Math.round(card.bottom),
+      };
+    });
+    // 分档压缩的唯一目的：常驻 18 行不交给滚动条。滚 1px 也算没铺开。
+    if (m.content > m.client + 1) problems.push(`宿主高 ${h}（案例视口 ${m.vh}，${m.tier} 档）18 行滚了 ${m.content - m.client}px：${m.content}/${m.client}`);
+    if (m.rows !== 18) problems.push(`宿主高 ${h} 收起分组后露出 ${m.rows} 行，应为 18`);
+    if (m.bottom > m.vh + 1) problems.push(`宿主高 ${h} 面板底边 ${m.bottom} 掉到案例视口 ${m.vh} 外面`);
+    notes.push(`${h}px 宿主 → 案例视口 ${m.vh} · ${m.tier} · 常驻 ${m.rows} 行 ${m.content}/${m.client} · 卡外框 ${m.chrome}px`);
+    await ctx.close();
+  }
+
+  report('panel-fit @1280', problems, [
+    notes.join(' · '),
+    '档界取的是「上一档装不下的那一刻」：实测各档需求 774/713/599/524，所以边界写在 780/712/598——留死区就会滚 3~42px',
+    '案例视口低于 ~524px（宿主不足 640）才是交给可见滚动条的区间，面板可以用右下角把手拉大',
+  ]);
 }
 
 await browser.close();

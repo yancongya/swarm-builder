@@ -26,6 +26,8 @@ interface WalkState {
   groupSeq: number;
   dropped: number;
   limit: number;
+  /** 预滚动采集才编号：按绘制序排，后盖的压在先盖的上面。 */
+  strict: boolean;
 }
 
 /**
@@ -34,12 +36,23 @@ interface WalkState {
  */
 export function snapshot(root: HTMLElement, options: NormalizedOptions): Blueprint {
   const rootRect = root.getBoundingClientRect();
-  const state: WalkState = { items: [], candidates: [], idSeq: 0, groupSeq: 0, dropped: 0, limit: options.maxItems };
+  const strict = options.scan === 'pre-scroll';
+  const state: WalkState = {
+    items: [],
+    candidates: [],
+    idSeq: 0,
+    groupSeq: 0,
+    dropped: 0,
+    limit: options.maxItems,
+    strict,
+  };
 
   for (const child of Array.from(root.children)) {
     if ((child as HTMLElement).classList?.contains('sb-overlay')) continue;
-    walk(child as HTMLElement, rootRect, [], 0, state, options, state.groupSeq++, false);
+    walk(child as HTMLElement, rootRect, [], 0, state, options, state.groupSeq++, false, 0);
   }
+
+  if (strict) state.items.sort((a, b) => (a.z ?? 0) - (b.z ?? 0));
 
   const backdrop = takeBackdrop(state.items, rootRect.width * rootRect.height);
   const blueprint: Blueprint = {
@@ -135,8 +148,9 @@ function walk(
   options: NormalizedOptions,
   group: number,
   insideFixed: boolean,
+  parentTop: number,
 ): void {
-  if (!isVisible(el) || shouldIgnore(el, options.ignore)) return;
+  if (!isVisible(el, options.scan === 'pre-scroll') || shouldIgnore(el, options.ignore)) return;
 
   const rect = el.getBoundingClientRect();
   if (rect.width < 2 || rect.height < 2) return;
@@ -150,6 +164,13 @@ function walk(
 
   const computed = getComputedStyle(el);
   const fixed = insideFixed || computed.position === 'fixed';
+  // 层号取祖先链上最大的那个：一个 z-index:10 的卡片里的文字，画得比同级
+  // 那个没有层的卡片晚，跟浏览器实际盖谁在上面一致。
+  const ownZ = computed.position === 'static' || computed.zIndex === 'auto'
+    ? 0
+    : Math.round(parseFloat(computed.zIndex) || 0);
+  const topHere = Math.max(parentTop, ownZ);
+  const positioned = computed.position !== 'static';
   const created: string[] = [];
   const itemStart = state.items.length;
 
@@ -165,7 +186,7 @@ function walk(
         ...box,
         rectStyle: rectStyleOf(computed),
         ...(fixed ? { fixed: true } : {}),
-      });
+      }, topHere, positioned);
       created.push(id);
     }
     const id = nextId(state);
@@ -178,7 +199,7 @@ function walk(
       ...contentBox(rect, computed, rootRect),
       media: captureMedia(el, computed),
       ...(fixed ? { fixed: true } : {}),
-    });
+    }, topHere, positioned);
     recordCandidate(el, state, itemStart, depth, box);
     return;
   }
@@ -194,7 +215,7 @@ function walk(
       ...box,
       rectStyle: rectStyleOf(computed),
       ...(fixed ? { fixed: true } : {}),
-    });
+    }, topHere, positioned);
     created.push(id);
   }
 
@@ -221,13 +242,13 @@ function walk(
       textStyle: textStyleOf(computed),
       grow: shouldGrow(computed, round(measured.bottom - measured.top)),
       ...(fixed ? { fixed: true } : {}),
-    });
+    }, topHere, positioned);
     created.push(id);
   }
 
   const nextAncestors = [...ancestorIds, ...created];
   for (const child of Array.from(el.children)) {
-    walk(child, rootRect, nextAncestors, depth + 1, state, options, group, fixed);
+    walk(child, rootRect, nextAncestors, depth + 1, state, options, group, fixed, topHere);
   }
 
   recordCandidate(el, state, itemStart, depth, box);
@@ -323,12 +344,15 @@ function nextId(state: WalkState): string {
   return `i${state.idSeq++}`;
 }
 
-function pushItem(state: WalkState, item: Omit<BlueprintItem, 'order'>): void {
+function pushItem(state: WalkState, item: Omit<BlueprintItem, 'order'>, top: number, positioned: boolean): void {
   if (state.items.length >= state.limit) {
     state.dropped++;
     return;
   }
-  state.items.push({ ...item, order: state.items.length });
+  const order = state.items.length;
+  // 一个整数键排绘制序：层号权重最大，其次「自己参与层叠」，最后文档顺序。
+  const z = top * 1e7 + (positioned ? 5e6 : 0) + order;
+  state.items.push({ ...item, order, ...(state.strict ? { z } : {}) });
 }
 
 /** Union of the text node's line boxes, or null when it renders nothing. */
@@ -353,13 +377,30 @@ function measureText(node: Text): { left: number; top: number; right: number; bo
   return { left, top, right, bottom };
 }
 
-function isVisible(el: Element): boolean {
+function isVisible(el: Element, strict: boolean): boolean {
   const tag = el.tagName.toUpperCase();
   if (SKIP_TAGS.has(tag)) return false;
   if (el.getAttribute('aria-hidden') === 'true') return false;
   const style = getComputedStyle(el);
   if (style.display === 'none' || style.visibility === 'hidden' || style.visibility === 'collapse') return false;
-  return parseFloat(style.opacity) > 0.05;
+  if (strict && isReaderOnly(el, style)) return false;
+  return parseFloat(style.opacity) > (strict ? 0.03 : 0.05);
+}
+
+/**
+ * 预滚动采集多剔的三类：读者在页面上根本看不到的东西，浏览器扩展不会给它拍照，
+ * 我们也不该给它一个光标。
+ * - `.sr-only` 那类只喂读屏软件的盒子（clip 收成 0 或 inset(50%)）
+ * - `content-visibility: hidden` 而滚动也没让它现身的子树（滚过之后浏览器会改写这个值）
+ * - 没展开的 `<details>` 里的内容
+ */
+function isReaderOnly(el: Element, style: CSSStyleDeclaration): boolean {
+  const clip = style.clip;
+  if (clip && clip !== 'auto' && /rect\(\s*0(px)?\s*,\s*0(px)?\s*,\s*0(px)?\s*,\s*0(px)?\s*\)/.test(clip)) return true;
+  if (/inset\(\s*50%/.test(style.clipPath)) return true;
+  if (style.contentVisibility === 'hidden') return true;
+  const details = el.closest('details');
+  return details !== null && !(details as HTMLDetailsElement).open;
 }
 
 function shouldIgnore(el: Element, ignore: string[]): boolean {

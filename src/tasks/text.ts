@@ -39,9 +39,13 @@ class TypeAction implements Action {
     this.fullSize = grow && item.grow ? parseFloat(item.textStyle?.fontSize ?? '0') : 0;
   }
 
-  begin(): void {
+  begin(ctx: RunContext): void {
     this.caret.style.opacity = '1';
-    if (this.fullSize > 0) this.el.style.fontSize = `${this.fullSize * GROW_START}px`;
+    if (this.fullSize > 0) {
+      this.el.style.fontSize = `${this.fullSize * GROW_START}px`;
+      // grow 是生成式配乐才有的事件：默认那套合成点击不该因为这个多出一声。
+      if (ctx.opts.score === 'generative') ctx.sound?.play('grow', this.item);
+    }
   }
 
   tick(progress: number, ctx: RunContext): void {
@@ -55,7 +59,7 @@ class TypeAction implements Action {
         this.el.style.fontSize = `${Math.round(size * 10) / 10}px`;
       }
       this.placeCaret(ctx);
-      if (typed > 0) ctx.sound?.play('type');
+      if (typed > 0) ctx.sound?.play('type', this.item);
     }
     const elapsed = progress * this.duration;
     const blinking = elapsed > this.duration - HOLD_MS;

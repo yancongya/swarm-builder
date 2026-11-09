@@ -1,6 +1,7 @@
 import { SwarmBuilder } from '../index';
 import type { AgentInfo, SwarmBuilderOptions, SwarmResult } from '../types';
 import { Panel, type Corner, type Phase } from './panel';
+import { resolveLang, type Lang } from './locale';
 import { CHROME_SELECTOR, DEFAULT_CONFIG, buildSnippet, describeRoot, pickPlain, type PlainConfig } from './snippet';
 
 export type { PlainConfig } from './snippet';
@@ -16,6 +17,11 @@ export interface TuneOptions {
   position?: Corner;
   /** Start expanded instead of collapsed to a button. */
   open?: boolean;
+  /**
+   * Panel language. Left out, it reads `<html lang>` — so a host that already
+   * declares its language gets a panel that matches, and demos can switch by URL.
+   */
+  lang?: Lang;
 }
 
 /**
@@ -28,6 +34,7 @@ export class SwarmTuner {
   private readonly root: HTMLElement;
   private readonly panel: Panel;
   private readonly initial: SwarmBuilderOptions;
+  private readonly lang: Lang;
   private swarm: SwarmBuilder | null = null;
 
   constructor(options: TuneOptions = {}) {
@@ -38,6 +45,7 @@ export class SwarmTuner {
     this.root = root;
     this.config = { ...DEFAULT_CONFIG, ...pickPlain(options.initial ?? {}) };
     this.initial = options.initial ?? {};
+    this.lang = resolveLang(options.lang);
 
     this.panel = new Panel(this.config, {
       onChange: (next) => {
@@ -62,7 +70,7 @@ export class SwarmTuner {
       onCopy: () => void this.copy(),
       onReset: () => this.reset(),
       onRestore: () => this.restore(),
-    }, options.position ?? 'bottom-right', options.open ?? false);
+    }, options.position ?? 'bottom-right', options.open ?? false, this.lang);
     document.body.appendChild(this.panel.host);
   }
 
@@ -79,18 +87,19 @@ export class SwarmTuner {
       autoStart: false,
       onStart: (agents: AgentInfo[]) => {
         this.panel.setPhase('running');
-        this.panel.setStatus(`施工中 · ${agents.length} 个光标`);
+        this.panel.setStatus('施工中 · {0} 个光标', agents.length);
         this.initial.onStart?.(agents);
       },
       onProgress: (built: number, total: number) => {
-        this.panel.setStatus(`重建中 ${built}/${total}`);
+        this.panel.setStatus('重建中 {0}/{1}', built, total);
         this.panel.setProgress(built, total);
         this.initial.onProgress?.(built, total);
       },
       onComplete: (result: SwarmResult) => {
         this.panel.setPhase('done');
-        const dropped = result.dropped > 0 ? ` · 丢弃 ${result.dropped}` : '';
-        this.panel.setStatus(`完成 ${result.built} 项 · ${(result.durationMs / 1000).toFixed(1)}s${dropped}`);
+        const seconds = (result.durationMs / 1000).toFixed(1);
+        if (result.dropped > 0) this.panel.setStatus('完成 {0} 项 · {1}s · 丢弃 {2}', result.built, seconds, result.dropped);
+        else this.panel.setStatus('完成 {0} 项 · {1}s', result.built, seconds);
         this.initial.onComplete?.(result);
       },
     });
@@ -114,7 +123,7 @@ export class SwarmTuner {
 
   /** The paste-ready snippet: plain data only, `root` as a selector, defaults omitted. */
   snippet(): string {
-    return buildSnippet(this.config, describeRoot(this.root));
+    return buildSnippet(this.config, describeRoot(this.root), this.lang);
   }
 
   async copy(): Promise<boolean> {

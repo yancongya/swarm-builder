@@ -1,4 +1,15 @@
-import type { BuildOrder, SwarmBuilderOptions } from '../types';
+import type {
+  AgentPool,
+  BuildOrder,
+  FlightMode,
+  PickMode,
+  PointerMode,
+  ReducedMotionMode,
+  ScanMode,
+  ScoreMode,
+  SwarmBuilderOptions,
+  TriggerMode,
+} from '../types';
 import type { PageTheme } from '../render/theme';
 
 export const SPEED_MIN = 0.25;
@@ -26,6 +37,15 @@ export interface NormalizedOptions {
   moveSpeed: number;
   typeInterval: number;
   fadeDuration: number;
+  flight: FlightMode;
+  pointer: PointerMode;
+  agents: AgentPool;
+  pick: PickMode;
+  trigger: TriggerMode;
+  adaptiveSpeed: boolean;
+  scan: ScanMode;
+  score: ScoreMode;
+  reducedMotion: ReducedMotionMode;
 }
 
 // Tunables are grouped here so later phases can expose them as public config.
@@ -52,6 +72,15 @@ export function normalizeOptions(options: SwarmBuilderOptions | undefined): Norm
     moveSpeed: 2200,
     typeInterval: 28,
     fadeDuration: 140,
+    flight: options?.flight ?? 'idle',
+    pointer: options?.pointer ?? 'ignore',
+    agents: options?.agents ?? 'fixed',
+    pick: options?.pick ?? 'queued',
+    trigger: options?.trigger ?? 'immediate',
+    adaptiveSpeed: options?.adaptiveSpeed ?? false,
+    scan: options?.scan ?? 'single',
+    score: options?.score ?? 'off',
+    reducedMotion: options?.reducedMotion ?? 'run',
   };
 }
 

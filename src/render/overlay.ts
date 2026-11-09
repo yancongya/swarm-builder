@@ -218,6 +218,12 @@ export class Overlay {
       img.style.objectFit = media.fit === 'none' ? 'fill' : media.fit;
       img.style.objectPosition = media.position;
       img.style.display = 'block';
+      // 原图在重建这一趟里回不来了（防盗链、图挂了、跨源被拦）：换成占位块，
+      // 别留一个空白洞——观众看到的应该是「这里本来有张图」。
+      img.onerror = () => {
+        img.remove();
+        el.classList.add('sb-media--fallback');
+      };
       content = img;
     }
     if (content) el.appendChild(content);

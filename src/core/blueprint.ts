@@ -78,6 +78,11 @@ export interface BlueprintItem {
   order: number;
   /** Index of the root child this item belongs to; keeps a subtree on one cursor. */
   group: number;
+  /**
+   * Paint order, only filled in by the pre-scroll capture: a big integer that
+   * sorts as stacking level, then positioning, then document order.
+   */
+  z?: number;
   /** Nearest ancestor task that must finish first. Always smaller in document order. */
   blockers: string[];
   x: number;

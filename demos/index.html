@@ -3,13 +3,14 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Swarm Builder · 案例预览</title>
+  <title>Swarm Builder · 为你的网页开始创造模式，集群构建前端！</title>
   <link rel="stylesheet" href="./browser.css" />
 </head>
 <body>
   <main class="win">
     <div class="tabs" role="tablist" aria-label="案例" data-tabs>
       <span class="lights" aria-hidden="true"><i></i><i></i><i></i></span>
+      <button class="newtab" type="button" data-newtab title="新标签页：输入一个地址，让光标把它盖出来" aria-label="新标签页">+</button>
     </div>
 
     <div class="nav">
@@ -22,6 +23,7 @@
       </div>
       <button class="creator" type="button" data-creator aria-pressed="true"
               title="创造者模式：所有参数都在这一个面板里改，改完点「应用并重跑」">创造者模式</button>
+      <button class="icon lang" type="button" data-lang title="界面语言：中文 / English" aria-label="切换界面语言">中/EN</button>
       <a class="gh" data-github href="https://github.com/yancongya/swarm-builder"
          target="_blank" rel="noreferrer" aria-label="GitHub 仓库：源码、Issue 与发行说明"
          title="GitHub 仓库：源码、Issue 与发行说明">
@@ -31,6 +33,27 @@
 
     <div class="viewport">
       <iframe data-frame title="案例页面" src="about:blank"></iframe>
+      <div class="blank" data-blank hidden>
+        <div class="blank-inner">
+          <svg class="mark" viewBox="0 0 32 32" aria-hidden="true">
+            <circle cx="16" cy="16" r="15" fill="#232220" stroke="#4a443b" />
+            <ellipse cx="16" cy="16" rx="13" ry="6" fill="none" stroke="#c9793c" stroke-width="1.3" transform="rotate(-24 16 16)" />
+            <path d="M9 20l3.4-8.2 1.5 3.1 3-.6z" fill="#eceadf" />
+            <circle cx="23.4" cy="10.4" r="1.8" fill="#c9793c" />
+          </svg>
+          <p class="blank-title">输入一个地址，看这群光标把它盖出来</p>
+          <form class="blank-form" data-blank-form>
+            <input class="blank-input" data-blank-input type="text" spellcheck="false" autocomplete="off"
+                   placeholder="https:// 或 ./tune.html" aria-label="网址" />
+            <button class="blank-go" type="submit">重建</button>
+          </form>
+          <div class="blank-chips" data-blank-chips></div>
+          <p class="blank-note">
+            能取到 HTML 的站点（同源，或对方允许跨域）会被剥掉脚本后原样重建，参数照样在创造者模式里改；
+            取不到的只能嵌进来显示——读不到 DOM 就不假装能盖。双语只覆盖仓库里这几页，抓进来的第三方页面保持它自己的原文。
+          </p>
+        </div>
+      </div>
     </div>
 
     <div class="statusbar" data-statusbar data-phase="idle">
@@ -41,6 +64,7 @@
     </div>
   </main>
 
+  <script type="module" src="./lang.ts"></script>
   <script type="module" src="./browser.ts"></script>
 </body>
 </html>

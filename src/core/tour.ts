@@ -14,6 +14,10 @@ export interface TourView {
  * Keeps the work in view on a page taller than the viewport by following the
  * front of the build. Off unless the host asks: it moves the scroll position,
  * which belongs to the host.
+ *
+ * The scroll target is whatever actually scrolls. `main{overflow:auto}` shells
+ * (dashboards, admin UIs) never move the window no matter how much you ask it,
+ * so the caller hands us the element it found — see `detectEnv`.
  */
 export class TourCam implements Tickable {
   private lastCheck = 0;
@@ -26,7 +30,19 @@ export class TourCam implements Tickable {
     private readonly isFinished: () => boolean,
     // The camera has to leave the clock itself, or the engine never idles.
     private readonly onDone: (cam: TourCam) => void,
+    private readonly scroller: () => Element | null = () => null,
   ) {}
+
+  /** 窗口自己滚时返回 null：那时 scrollTo 才是对的选择。 */
+  private get el(): Element | null {
+    const el = this.scroller();
+    return el && el !== document.documentElement && el !== document.body ? el : null;
+  }
+
+  private get height(): number {
+    const el = this.el;
+    return el ? el.clientHeight : window.innerHeight;
+  }
 
   tick(): void {
     const now = performance.now();
@@ -34,8 +50,7 @@ export class TourCam implements Tickable {
       if (!this.handedBack) {
         this.handedBack = true;
         // Hand the page back from the top so the reveal reads as one picture.
-        const rect = this.root.getBoundingClientRect();
-        this.scrollTo(window.scrollY + rect.top);
+        this.shift(this.root.getBoundingClientRect().top);
         this.onDone(this);
       }
       return;
@@ -51,16 +66,23 @@ export class TourCam implements Tickable {
       highest = Math.min(highest, view.y);
       lowest = Math.max(lowest, view.y);
     }
+    // 元素坐标是相对 root 的，root 在视口里的位置就是它的 rect.top：
+    // 这一套算法对「谁在滚」无所谓，getBoundingClientRect 本来就是视口坐标。
     const top = this.root.getBoundingClientRect().top;
-    if (top + lowest > window.innerHeight - MARGIN) {
-      this.scrollTo(window.scrollY + top + lowest - window.innerHeight + MARGIN);
+    const viewport = this.height;
+    if (top + lowest > viewport - MARGIN) {
+      this.shift(top + lowest - viewport + MARGIN);
     } else if (top + highest < MARGIN) {
-      this.scrollTo(window.scrollY + top + highest - MARGIN);
+      this.shift(top + highest - MARGIN);
     }
   }
 
-  private scrollTo(documentY: number): void {
+  private shift(delta: number): void {
+    if (Math.abs(delta) < 2) return;
     this.lastScroll = performance.now();
-    window.scrollTo({ top: Math.max(0, documentY), behavior: 'smooth' });
+    const behavior: ScrollBehavior = 'smooth';
+    const el = this.el;
+    if (el) el.scrollBy({ top: delta, behavior });
+    else window.scrollBy({ top: delta, behavior });
   }
 }

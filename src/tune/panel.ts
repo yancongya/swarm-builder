@@ -1,4 +1,5 @@
 import { DEFAULT_CONFIG, type PlainConfig } from './snippet';
+import { localize, phrase, type Lang } from './locale';
 
 export type Corner = 'bottom-right' | 'bottom-left' | 'top-right' | 'top-left';
 
@@ -12,6 +13,9 @@ interface Field {
   step?: number;
   choices?: [string, string][];
   placeholder?: string;
+  /** 'replica' 的行折在分组里，默认收起——它们把面板从 18 行撑到 27 行，
+     而手机那一档要求参数列表不出滚动条。 */
+  group?: 'core' | 'replica';
   /** Disabled while this predicate holds, with `why` shown as the row's tooltip. */
   offWhen?: (config: PlainConfig) => boolean;
   why?: string;
@@ -72,7 +76,59 @@ const FIELDS: Field[] = [
     choices: [['auto', '自动'], ['high', '完整'], ['low', '精简']],
   },
   { key: 'ignore', label: '跳过', kind: 'text', placeholder: '.ad, #chat-widget', hint: '逗号分隔的 CSS 选择器，命中的元素连同子树整块跳过。' },
+
+  // 下面九项是把两套参考实现的方法逐项还原进来的开关，全部默认关：关着的时候
+  // 运行算法与上面那十八项一模一样，不多一个光标、不多一声配乐，也不碰读者的滚动位置。
+  {
+    key: 'flight', label: '待时飞行', kind: 'select', group: 'replica',
+    hint: '光标没活的时候干什么。停在落点 = 就停在最后一笔的位置，和以前一样。待时飞行 = 复刻扩展那套速度积分：绕着一圈会呼吸的轨道环（135px，±18%）转，切向推力有个 tanh 慢周期会正反两向扫，径向弹簧夹在 -2600 到 1400，每个光标自带轨道偏心、自转系数与旋度，90px 内的邻居速度按 0.7 比 0.3 合进来；箭头朝行进方向偏，按下时压扁。施工中的那一只归任务管，轨道场不插手。',
+    choices: [['idle', '停在落点'], ['live', '待时飞行']],
+  },
+  {
+    key: 'pointer', label: '真实鼠标', kind: 'select', group: 'replica',
+    hint: '读者的鼠标算什么。忽略 = swarm 不管他。当圆心 = 轨道绕着鼠标转。排斥 = 鼠标周围 48px 把光标顶出去，正撞进去时再补一记 260 的冲量。两种都只在「待时飞行」开着时有效，因为鼠标位置只有轨道场会读。',
+    choices: [['ignore', '忽略'], ['follow', '当圆心'], ['repel', '排斥']],
+    offWhen: (c) => c.flight !== 'live', why: '「待时飞行」没开，轨道场不在时钟里，鼠标位置没人读。',
+  },
+  {
+    key: 'agents', label: '动态班组', kind: 'select', group: 'replica',
+    hint: '人数归谁定。固定 = 就「光标数量」那几个，各自的带干完就收起。自动 = 那个数变成下限、48 是上限，滚动越快（每 40px/s 多一个）以及能领的活越多（每 2 件多一个）人就越多，最多每 35ms 从画面外进来一个，干过活又闲了 2.5 秒的临时工自己退场。',
+    choices: [['fixed', '固定人数'], ['auto', '自动增减']],
+  },
+  {
+    key: 'pick', label: '认领方式', kind: 'select', group: 'replica',
+    hint: '活怎么到手。按队列 = 开局就按「构建顺序」每人切一条带，只在自己的带里领，抢也只在这堆里找。运行时挑 = 整页一个池子，每次空手都按参考实现的代价现挑：不在这一屏的先付一百万，带外的纵向距离乘 0.6，离自己纵向多远乘 0.4，参考线反方向优惠 50 万——于是永远是「眼前这屏从上往下」，人追着活跑而不是守着一条带。',
+    choices: [['queued', '按队列认领'], ['live', '运行时挑']],
+  },
+  {
+    key: 'trigger', label: '逐段解锁', kind: 'select', group: 'replica',
+    hint: '什么时候允许领某一件。第一帧全放 = 整页从开局就是敞开的。随滚动 = 只有顶边越过「这一屏往下 88% 那条线」的元素才算到了，前沿只降不升，所以构建跟着读者往下走。要么开「镜头跟随」，要么宿主页面自己会滚，否则滚不到的那半页永远不解锁。',
+    choices: [['immediate', '第一帧全放'], ['scroll', '随滚动解锁']],
+  },
+  {
+    key: 'adaptiveSpeed', label: '积压提速', kind: 'check', group: 'replica',
+    hint: '活堆得越多时钟走得越快：每帧按「已解锁还没人领」的件数重算倍速，等于当前基准乘 min(1 + 积压 × 0.45, 4)，最多到 4 倍。开了以后「速度」和「目标时长」就不是定论而是地面值，dense 页面收尾会明显快于估算。',
+  },
+  {
+    key: 'scan', label: '采集方式', kind: 'select', group: 'replica',
+    hint: '采蓝图之前先看多少页。单次 = 同步走一遍 DOM，现在排得出什么就建什么。预滚动 = 参考扩展的那一遍：先等字体和图片（各有上限），再找出这页真正靠谁滚（后台壳那种 main 自己 overflow:auto 的，滚窗口一格都不动），往下走最多 28 屏把懒加载和 content-visibility 的内容逼出来，回顶、落定，然后才采。第三方页面建出来缺图、看不出有多长，就是这个开关还关着。',
+    choices: [['single', '单次采集'], ['pre-scroll', '预滚动采集']],
+  },
+  {
+    key: 'score', label: '配乐', kind: 'select', group: 'replica',
+    hint: '音效开着的时候放什么。不出旋律 = 只有合成的按键、拉框、盖章三声。生成式 = 复刻那套配器：104 BPM 的十六分格，E 小调五声从 MIDI 40 起，玻璃钢琴音色叠了一根 2.756 的不谐和泛音，盒子面积定音区、横向位置定音级，一个八分槽只许一个音、同时最多 28 个声部，混响是现算的 3.2 秒脉冲，声像跟着光标走，收尾一记 E 大调 add9 扫弦。',
+    choices: [['off', '不出旋律'], ['generative', '生成式配乐']],
+    offWhen: (c) => !c.sound, why: '「音效」没开，配乐没有出口。',
+  },
+  {
+    key: 'reducedMotion', label: '减少动效', kind: 'select', group: 'replica',
+    hint: '读者勾了 prefers-reduced-motion: reduce 时怎么办。照跑 = 这是装饰不是视差陷阱，宿主既然调了库就演给他看。直接交还 = 参考库自己的规则，什么都不演，立刻报完成把真页面还回去。',
+    choices: [['run', '照跑'], ['skip', '直接交还']],
+  },
 ];
+
+/** 分组折叠的那几行：全默认关，所以平时收着，展开与否不改变正在跑的那一局。 */
+const REPLICA = FIELDS.filter((field) => field.group === 'replica');
 
 /** 悬浮球的标记：一枚光标停在轨道上，轨道上还有三颗正在赶路的光标——一群光标围着同一个点施工。
     颜色走 CSS 规则而不是 fill="var(--x)"：presentation attribute 里的 var() 在 WebKit 上不生效。 */
@@ -144,6 +200,15 @@ header .sp{flex:1}
 .fields{flex:1 1 auto;min-height:0;padding:4px 10px;overflow-y:auto;border-top:1px solid var(--line);scrollbar-width:thin}
 .fields::-webkit-scrollbar{width:8px}
 .fields::-webkit-scrollbar-thumb{background:#3d3a33;border-radius:8px}
+/* 复刻开关默认收起：面板在手机上不许出滚动条，而这九项全默认关，平时没人动。
+   展开以后交给 .fields 自己的滚动条——那是读者自己要点开的深度，不是默认状态。 */
+.fields[data-replica="closed"] .row[data-group="replica"]{display:none}
+.group{display:flex;align-items:center;gap:6px;width:100%;margin:3px 0;padding:4px 7px;
+  border:1px dashed var(--line);border-radius:7px;background:transparent;color:var(--dim);
+  font-size:11px;text-align:left;cursor:pointer}
+.group:hover{color:var(--ink);border-color:var(--accent)}
+.group::before{content:"▸";flex:0 0 auto;color:var(--accent)}
+.fields[data-replica="open"] .group::before{content:"▾"}
 .row{display:flex;align-items:center;gap:8px;padding:2px 0}
 .row .k{flex:0 0 74px;color:var(--dim)}
 .row .v{flex:1;display:flex;align-items:center;gap:6px;min-width:0}
@@ -189,7 +254,12 @@ header{cursor:move;user-select:none;touch-action:none}
   border-right:2px solid var(--line);border-bottom:2px solid var(--line);border-bottom-right-radius:11px}
 .grip:hover{border-color:var(--accent)}
 /* 矮宿主（手机竖屏、半屏窗口）：18 行仍然要一屏全露，所以按视口高度分档压缩
-   表头/状态/脚注/按钮的行距，而不是把参数藏进滚动条里。 */
+   表头/状态/脚注/按钮的行距，而不是把参数藏进滚动条里。
+
+   档与档的分界线不是随手取的：卡片高度被 max-height:88vh 夹住，所以每一档都有自己的
+   「装得下的最低视口高度」= (内容 scrollHeight + 卡内非滚动区) / 0.88。实测三档分别是
+   774 / 713 / 599，于是上界必须等于前一档的下界——否则就出现「这一档还没压到极限，但
+   88vh 已经不够」的死区，滚 3px 也是滚。下面的 780、712、598 就是这么定出来的。 */
 @media (max-height: 780px) {
   header{padding:7px 10px}
   .status{padding:5px 10px 4px;min-height:22px}
@@ -200,7 +270,7 @@ header{cursor:move;user-select:none;touch-action:none}
 }
 /* 再矮一档：mockup 浏览器在手机上给案例留的视口只有 ~607px，88vh 装不下上面那套
    行距，所以这里连字号、控件内边距和每行的上下留白一起收，让 18 行仍然不用滚动。 */
-@media (max-height: 660px) {
+@media (max-height: 712px) {
   header{padding:5px 10px}
   .status{padding:3px 10px 2px;min-height:20px}
   .fields{padding:2px 10px}
@@ -210,6 +280,22 @@ header{cursor:move;user-select:none;touch-action:none}
   .note{padding:4px 10px;min-height:20px}
   footer{padding:5px 10px}
   .util{padding:0 10px 5px}
+}
+/* 最后一档：窗口只剩半屏时连控件高度和分组按钮的留白一起收。压到这里仍然装不下
+   （案例视口 < ~540px）才真的交给滚动条——那时滚动条是可见的，把手也能把面板拉大。 */
+@media (max-height: 598px) {
+  header{padding:3px 10px}
+  .status{padding:2px 10px 1px;min-height:16px}
+  .fields{padding:0 10px}
+  .row .k,.row .v{font-size:10.5px}
+  input[type=range]{height:12px}
+  input[type=number],input[type=text],select{padding:0 4px}
+  .group{margin:1px 0;padding:2px 6px}
+  .note{padding:3px 10px;min-height:16px}
+  footer{padding:3px 10px}
+  footer button{padding:3px 7px}
+  .util{padding:0 10px 3px}
+  .util button{padding:2px 6px}
 }
 `;
 
@@ -248,14 +334,17 @@ export class Panel {
   private readonly code: HTMLTextAreaElement;
   private readonly card: HTMLElement;
   private readonly tip: HTMLElement;
+  private groupBtn: HTMLButtonElement | null = null;
+  private readonly lang: Lang;
   private hovered: HTMLElement | null = null;
   private config: PlainConfig;
   private applied: PlainConfig | null = null;
   private phase: Phase = 'idle';
-  private shown = '待触发';
+  private shown: string;
   private draggedAt = 0;
 
-  constructor(config: PlainConfig, handlers: PanelHandlers, position: Corner, expanded: boolean) {
+  constructor(config: PlainConfig, handlers: PanelHandlers, position: Corner, expanded: boolean, lang: Lang = 'zh') {
+    this.lang = lang;
     this.host = document.createElement('div');
     // Chrome marker: the overlay must not hide it, and the snapshot must not rebuild it.
     this.host.setAttribute('data-sb-chrome', '');
@@ -294,7 +383,7 @@ export class Panel {
       '<button type="button" data-reset data-tip="全部退回库默认值">重置</button>',
       '<button type="button" data-restore data-tip="停掉施工，把页面原样交还">恢复原状</button></div>',
       '<textarea class="code" data-code readonly hidden spellcheck="false"></textarea>',
-      '<i class="grip" data-grip data-tip="拖动改变面板大小：拉高可以让 17 行参数全部露出，不用滚。"></i>',
+      '<i class="grip" data-grip data-tip="拖动改变面板大小：拉高可以让 18 行参数全部露出，不用滚。"></i>',
     ].join('');
     const tip = document.createElement('div');
     tip.className = 'tip';
@@ -304,7 +393,31 @@ export class Panel {
     this.shadow.append(style, entry, card, tip);
 
     const fields = card.querySelector<HTMLElement>('[data-fields]') as HTMLElement;
-    for (const field of FIELDS) fields.append(this.row(field, config, handlers));
+    // 复刻开关那九行折在一个分组里，默认收起：面板在手机上不许出滚动条，
+    // 常驻的十八行已经把这屏占满了，而九行开关全默认关、平时没人动。
+    const group = document.createElement('button');
+    group.type = 'button';
+    group.className = 'group';
+    group.dataset.groupfold = '';
+    group.setAttribute('aria-expanded', 'false');
+    group.dataset.tip = '这几项把两套参考实现的方法逐项还原了：轨道场、运行时挑选、逐段解锁、预滚动采集和生成式配乐。全部默认关——关着的时候运行算法与上面那十八项一模一样，不多一个光标、不多一声配乐，也不会自己去动读者的滚动位置。';
+    fields.dataset.replica = 'closed';
+    let opened = false;
+    for (const field of FIELDS) {
+      if (field.group === 'replica' && !opened) {
+        opened = true;
+        fields.append(group);
+      }
+      fields.append(this.row(field, config, handlers));
+    }
+    group.addEventListener('click', () => {
+      const open = fields.dataset.replica !== 'open';
+      fields.dataset.replica = open ? 'open' : 'closed';
+      group.setAttribute('aria-expanded', String(open));
+    });
+    this.groupBtn = group;
+    // 建好一次就整棵换掉：静态标签、选项、按钮、data-tip 全在这一遍里处理。
+    localize(this.shadow, lang);
 
     this.status = card.querySelector<HTMLElement>('[data-status]') as HTMLElement;
     this.pauseBtn = card.querySelector<HTMLButtonElement>('[data-pause]') as HTMLButtonElement;
@@ -315,6 +428,8 @@ export class Panel {
     this.code = card.querySelector<HTMLTextAreaElement>('[data-code]') as HTMLTextAreaElement;
     this.card = card;
     this.tip = tip;
+    // 还没开局时状态行写的是「待触发」，本地化过的这一份要和 DOM 一致。
+    this.shown = phrase(lang, '待触发');
 
     // 悬浮球兼任两件事：按开放参数、按住挪位置。挪过之后松手不能再顺手展开一次。
     orb.addEventListener('click', () => {
@@ -346,6 +461,7 @@ export class Panel {
     // 就只能靠一个手写的行数，加参数时必然忘记改。控件那侧用的是 data-key，
     // 这里换个名字，免得 [data-key=…] 先选中行而不是输入框。
     row.dataset.rowKey = field.key;
+    row.dataset.group = field.group ?? 'core';
     row.dataset.tip = field.hint;
     const key = document.createElement('span');
     key.className = 'k';
@@ -449,6 +565,13 @@ export class Panel {
     return this.host.dataset.open === 'true';
   }
 
+  /** 灰掉的行要把「为什么灰」接到提示后面：中文用全角括号，英文用半角。 */
+  private tipFor(field: Field): string {
+    const hint = phrase(this.lang, field.hint);
+    const why = phrase(this.lang, field.why ?? '');
+    return this.lang === 'zh' ? `${hint}（${why}）` : `${hint} (${why})`;
+  }
+
   /** Re-points the dependency greys and the 「待生效」 marks; runs after every edit and every apply. */
   private sync(): void {
     let dirty = 0;
@@ -459,7 +582,7 @@ export class Panel {
       const off = field.offWhen?.(this.config) ?? false;
       control.disabled = off;
       row.dataset.off = String(off);
-      row.dataset.tip = off && field.why ? `${field.hint}（${field.why}）` : field.hint;
+      row.dataset.tip = off && field.why ? this.tipFor(field) : phrase(this.lang, field.hint);
       if (this.hovered === row) this.showTip(row);
       const changed = this.applied !== null && !same(this.config[field.key], this.applied[field.key]);
       row.dataset.dirty = String(changed);
@@ -467,8 +590,15 @@ export class Panel {
     }
     this.note.dataset.pending = String(dirty > 0);
     this.note.textContent = dirty > 0
-      ? `${dirty} 项待生效 · 点「应用并重跑」`
-      : (this.applied ? '已与正在跑的这一局一致' : '改完点「应用并重跑」；未设目标时长时「速度」可运行中改');
+      ? phrase(this.lang, '{0} 项待生效 · 点「应用并重跑」', dirty)
+      : (this.applied
+        ? phrase(this.lang, '已与正在跑的这一局一致')
+        : phrase(this.lang, '改完点「应用并重跑」；未设目标时长时「速度」可运行中改'));
+    if (this.groupBtn) {
+      // 与行内取值同一套口径：config 里缺键就是没设过，等于默认值。
+      const on = REPLICA.filter((field) => !same(this.config[field.key] ?? DEFAULT_CONFIG[field.key], DEFAULT_CONFIG[field.key])).length;
+      this.groupBtn.textContent = phrase(this.lang, '参考实现复刻 · {0} 项 · 已开 {1}', REPLICA.length, on);
+    }
   }
 
   /** A run is starting with these values, so 「待生效」 now measures against them. */
@@ -483,7 +613,7 @@ export class Panel {
     const live = phase === 'running' || phase === 'paused';
     this.pauseBtn.disabled = !live;
     this.skipBtn.disabled = !live;
-    this.pauseBtn.textContent = phase === 'paused' ? '继续' : '暂停';
+    this.pauseBtn.textContent = phrase(this.lang, phase === 'paused' ? '继续' : '暂停');
     if (phase === 'done') this.meter.style.width = '100%';
     if (phase === 'idle') this.meter.style.width = '0';
   }
@@ -512,9 +642,14 @@ export class Panel {
     this.sync();
   }
 
-  setStatus(text: string): void {
-    this.shown = text;
-    this.status.textContent = text;
+  /**
+   * 状态行的文案由调用方给中文模板，面板知道自己是什么语言：
+   * 数字先留在模板里，查完字典再填，免得把「完成 12 项」这种句子反过来猜。
+   */
+  setStatus(text: string, ...args: (string | number)[]): void {
+    const shown = phrase(this.lang, text, ...args);
+    this.shown = shown;
+    this.status.textContent = shown;
   }
 
   get statusText(): string {
@@ -582,7 +717,7 @@ export class Panel {
     });
   }
 
-  /** 每一个 `[data-tip]` 都有提示：17 行参数、表头信息钮、底部与工具条的每个按钮。 */
+  /** 每一个 `[data-tip]` 都有提示：18 行参数、表头信息钮、底部与工具条的每个按钮。 */
   private bindTips(): void {
     for (const el of Array.from(this.shadow.querySelectorAll<HTMLElement>('[data-tip]'))) {
       el.addEventListener('pointerenter', () => this.showTip(el));

@@ -85,13 +85,15 @@ body { margin: 0; font: 15px/1.6 system-ui, -apple-system, "Segoe UI", Roboto, s
 #app .floating span { color: #9c9689; }
 
 /* --- dark complex UI --- */
-.page-blender { background: #23272d; color: #ced2d8; font-size: 12px; }
+/* 铺满屏幕：这台工作台的高度由视口给，不由内容给。min-height:640 只是地板，
+   真正的行高交给 grid-template-rows，中间那行吃掉剩余高度，底部时间轴贴住视口下沿。 */
+.page-blender { background: #23272d; color: #ced2d8; font-size: 12px; min-height: 100vh; display: flex; flex-direction: column; }
 .page-blender .menubar {
   display: flex; gap: 16px; padding: 6px 12px; background: #1d2126;
   border-bottom: 1px solid #12151a;
 }
 .page-blender .menubar span { color: #b6bbc4; }
-.page-blender .shell { display: grid; grid-template-columns: 230px 1fr 260px; min-height: 640px; }
+.page-blender .shell { flex: 1 1 auto; display: grid; grid-template-columns: 230px 1fr 260px; grid-template-rows: minmax(0, 1fr) auto; min-height: 640px; }
 .page-blender .panel { background: #2b3038; border-right: 1px solid #1d2126; padding: 8px; }
 .page-blender .panel.right { border-right: 0; border-left: 1px solid #1d2126; }
 .page-blender .panel h4 {
@@ -148,9 +150,9 @@ body { margin: 0; font: 15px/1.6 system-ui, -apple-system, "Segoe UI", Roboto, s
   --copper: #a2601f;
   background: var(--paper);
   color: var(--ink);
-  max-width: 1080px;
-  margin: 0 auto;
-  padding: 0 28px 44px;
+  /* 通栏版式：页面本身铺满，左右只留一条随窗口伸缩的边距。栏宽不再由一个居中的
+     max-width 决定——那样只是「底色铺满、架构还是居中的一栏」。 */
+  padding: 0 clamp(20px, 4.5vw, 72px) 44px;
 }
 .page-home .top { display: flex; align-items: center; gap: 18px; padding: 18px 0; border-bottom: 1px solid var(--line); }
 .page-home .brand { display: flex; align-items: center; gap: 9px; color: var(--ink); text-decoration: none; }
@@ -168,10 +170,22 @@ body { margin: 0; font: 15px/1.6 system-ui, -apple-system, "Segoe UI", Roboto, s
 .page-home .gh:hover { border-color: var(--copper); color: var(--copper); }
 
 .page-home .hero { padding: 52px 0 38px; border-bottom: 1px solid var(--line); }
+/* hero 是两栏：左边讲它是什么，右边摆这一页自己正在用的参数；数字条单独占满整行。 */
+.page-home .hero-grid {
+  display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(300px, 1fr);
+  gap: 28px 56px; align-items: start;
+}
 .page-home .kicker { margin: 0 0 14px; color: var(--copper); font-size: 12px; font-weight: 650; letter-spacing: .07em; text-transform: uppercase; }
-.page-home .hero h1 { margin: 0 0 16px; font-size: 50px; line-height: 1.07; letter-spacing: -.035em; }
-.page-home .lead { margin: 0 0 26px; max-width: 640px; color: var(--dim); font-size: 17px; line-height: 1.65; }
+.page-home .hero h1 { margin: 0 0 16px; font-size: clamp(38px, 4.2vw, 62px); line-height: 1.07; letter-spacing: -.035em; }
+.page-home .lead { margin: 0 0 26px; max-width: 62ch; color: var(--dim); font-size: clamp(15px, 1.35vw, 18px); line-height: 1.65; }
 .page-home .cta { display: flex; gap: 12px; flex-wrap: wrap; }
+.page-home .hero-board { padding: 18px 20px; border: 1px solid var(--line); border-radius: 16px; background: var(--card); }
+.page-home .board-title { margin: 0 0 10px; color: var(--dim); font-size: 11.5px; font-weight: 600; letter-spacing: .07em; text-transform: uppercase; }
+.page-home .board { margin: 0; display: grid; gap: 0; }
+.page-home .board > div { display: flex; align-items: baseline; justify-content: space-between; gap: 18px; padding: 8px 0; border-top: 1px solid var(--rule); }
+.page-home .board dt { color: var(--copper); font-size: 13px; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+.page-home .board dd { margin: 0; color: var(--dim); font-size: 13px; text-align: right; }
+.page-home .board-note { margin: 12px 0 0; color: var(--dim); font-size: 12.5px; line-height: 1.6; }
 .page-home .btn {
   display: inline-block; padding: 12px 20px; border-radius: 10px;
   font: inherit; font-size: 15px; font-weight: 600; text-decoration: none; cursor: pointer;
@@ -179,20 +193,27 @@ body { margin: 0; font: 15px/1.6 system-ui, -apple-system, "Segoe UI", Roboto, s
 .page-home .btn.primary { background: var(--copper); border: 1px solid var(--copper); color: #fff; }
 .page-home .btn.primary:hover { filter: brightness(1.08); }
 .page-home .btn.ghost { background: transparent; border: 1px solid var(--line); color: var(--ink); }
-.page-home .stats { display: flex; gap: 16px 28px; flex-wrap: wrap; margin-top: 32px; }
-.page-home .stat b { display: block; font-size: 26px; letter-spacing: -.02em; color: var(--copper); font-variant-numeric: tabular-nums; }
+.page-home .stats {
+  margin-top: 34px; padding-top: 26px; border-top: 1px solid var(--line);
+  display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 24px;
+}
+.page-home .stat b { display: block; font-size: clamp(24px, 2.6vw, 34px); letter-spacing: -.02em; color: var(--copper); font-variant-numeric: tabular-nums; }
 .page-home .stat span { color: var(--dim); font-size: 12.5px; }
 
 .page-home section { padding: 38px 0; border-bottom: 1px solid var(--line); }
-.page-home section > h2 { margin: 0 0 20px; font-size: 26px; letter-spacing: -.02em; }
-.page-home .features .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+.page-home section > h2 { margin: 0 0 20px; font-size: clamp(22px, 2.2vw, 30px); letter-spacing: -.02em; }
+/* 标题那一行也吃满宽度：左边是栏目名，右边是那句话。 */
+.page-home .head { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 6px 40px; align-items: end; margin-bottom: 20px; }
+.page-home .head > h2 { margin: 0; font-size: clamp(22px, 2.2vw, 30px); letter-spacing: -.02em; }
+.page-home .features .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; }
 .page-home .feature { padding: 20px; border: 1px solid var(--line); border-radius: 14px; background: var(--card); }
 .page-home .feature .icon { width: 24px; height: 24px; display: block; color: var(--copper); margin-bottom: 12px; }
 .page-home .feature h3 { margin: 0 0 6px; font-size: 16px; }
 .page-home .feature p { margin: 0; color: var(--dim); font-size: 13.5px; line-height: 1.6; }
 
-.page-home .steps { list-style: none; margin: 0; padding: 0; display: grid; gap: 18px; }
-.page-home .step { display: grid; grid-template-columns: 34px minmax(0, 1fr); gap: 14px; }
+/* 三步是先后关系（装 → 接 → 调），并排会把顺序读成并列，所以一列一行。 */
+.page-home .steps { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: 1fr; gap: 14px; }
+.page-home .step { display: grid; grid-template-columns: 34px minmax(0, 1fr); gap: 14px; padding: 18px; border: 1px solid var(--line); border-radius: 16px; background: var(--card); }
 .page-home .step .no {
   width: 34px; height: 34px; display: grid; place-items: center;
   border-radius: 50%; background: var(--ink); color: var(--paper); font-size: 15px; font-weight: 650;
@@ -205,9 +226,11 @@ body { margin: 0; font: 15px/1.6 system-ui, -apple-system, "Segoe UI", Roboto, s
 }
 .page-home pre code { font: 12.5px/1.65 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
 .page-home code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
-.page-home p code, .page-home li code { background: #ece6da; padding: 1px 6px; border-radius: 5px; font-size: 12.5px; }
+/* 行内代码的胶囊底色只给正文里的 code。原来写成 `.page-home li code`，把 <pre> 里的
+   整块代码也一起刷成了米色——米色底压米色字，代码块看起来就是一排白条。 */
+.page-home :not(pre) > code { background: #ece6da; color: #4c463c; padding: 1px 6px; border-radius: 5px; font-size: 12.5px; }
 
-.page-home .note { margin: -10px 0 16px; color: var(--dim); font-size: 13.5px; }
+.page-home .note { margin: 0; color: var(--dim); font-size: 13.5px; }
 .page-home .table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
 .page-home .table th {
   text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line);
@@ -216,27 +239,65 @@ body { margin: 0; font: 15px/1.6 system-ui, -apple-system, "Segoe UI", Roboto, s
 .page-home .table td { padding: 9px 10px; border-bottom: 1px solid var(--rule); color: #4c463c; vertical-align: top; }
 .page-home .table td:first-child { white-space: nowrap; color: var(--ink); }
 
-.page-home .limits .list { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+/* 和扩展版那一节：表格回答「哪儿不一样」，两张卡回答「哪一头赢、哪一头输」。
+   输的那张不藏短处，铜色边只给赢的一侧。 */
+.page-home .vs .table { margin-bottom: 22px; }
+.page-home .give { display: grid; grid-template-columns: repeat(auto-fit, minmax(360px, 1fr)); gap: 16px; }
+.page-home .pc { padding: 18px 20px; border: 1px solid var(--line); border-radius: 14px; background: var(--card); }
+.page-home .pc.win { border-left: 3px solid var(--copper); }
+.page-home .pc.loss { border-left: 3px solid #b3aa9a; }
+.page-home .pc h3 { margin: 0 0 10px; font-size: 16px; }
+.page-home .pc ul { margin: 0; padding-left: 18px; display: grid; gap: 9px; font-size: 13.5px; line-height: 1.6; color: #4c463c; }
+
+.page-home .limits .list { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 10px; }
 .page-home .limits li {
   padding: 12px 14px; border-left: 2px solid var(--copper); background: var(--card);
   border-radius: 0 10px 10px 0; font-size: 14px; color: #4c463c;
 }
 .page-home .colophon { padding-top: 24px; color: var(--dim); font-size: 13px; line-height: 1.7; }
-.page-home .colophon p { margin: 0; }
+.page-home .colophon p { margin: 0; max-width: 110ch; }
 .page-home .gh.inline {
   display: inline-flex; align-items: center; gap: 5px; padding: 0 4px;
   border: 0; background: none; color: var(--copper); font-weight: 600;
 }
 .page-home .gh.inline svg { width: 14px; height: 14px; }
 
-/* 长页面：唯一目的是让文档比视口高好几倍，镜头才有东西可跟。 */
-.page-tall { max-width: 820px; margin: 0 auto; padding: 48px 28px 96px; background: #fbf9f4; color: #26221b; }
-.page-tall .masthead { padding-bottom: 24px; margin-bottom: 40px; border-bottom: 1px solid #ded7c8; }
-.page-tall h1 { font-size: 40px; line-height: 1.1; letter-spacing: -.02em; margin: 0 0 10px; }
-.page-tall .sub { margin: 0; color: #6f6a5f; font-size: 15px; max-width: 620px; }
-.page-tall .chapter { margin: 0 0 52px; }
-.page-tall .chapter h2 { font-size: 22px; margin: 0 0 12px; letter-spacing: -.01em; }
-.page-tall .chapter p { margin: 0 0 18px; line-height: 1.7; color: #4c463c; font-size: 15px; }
+/* 给 AI 的提示词：整段摊开可读，复制走的就是屏幕上这一份，所以不做「点开才显示」。
+   长段落用 pre-wrap，不然一行编号说明会把页面撑出横向滚动。 */
+.page-home .prompt {
+  margin-top: 18px; border: 1px solid var(--line); border-radius: 16px;
+  background: var(--card); overflow: hidden;
+}
+.page-home .prompt-bar {
+  display: flex; align-items: center; gap: 8px 14px; flex-wrap: wrap;
+  padding: 14px 16px; border-bottom: 1px solid var(--rule);
+}
+.page-home .prompt-bar b { font-size: 15px; }
+.page-home .prompt-hint { flex: 1 1 260px; color: var(--dim); font-size: 13px; line-height: 1.5; }
+.page-home pre.prompt-text {
+  margin: 0; border-radius: 0; background: #1f1e1b; padding: 14px 16px;
+  max-height: 340px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere;
+}
+.page-home .btn.tiny {
+  flex: 0 0 auto; padding: 8px 14px; font-size: 13px; border-radius: 9px;
+  background: transparent; border: 1px solid var(--copper); color: var(--copper);
+}
+.page-home .btn.tiny:hover { background: var(--copper); color: #fff; }
+.page-home .btn.tiny[data-copied='true'] { background: var(--copper); border-color: var(--copper); color: #fff; }
+
+/* 长页面：唯一目的是让文档比视口高好几倍，镜头才有东西可跟。通栏长文版式——
+   章节标题走左栏，正文与图走右栏，宽度是真的被用起来，不是居中一栏再铺个底色。 */
+.page-tall { padding: 0 clamp(20px, 4.5vw, 72px) 96px; background: #fbf9f4; color: #26221b; }
+.page-tall .masthead {
+  display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); gap: 12px 56px;
+  align-items: end; padding: 48px 0 24px; margin-bottom: 40px; border-bottom: 1px solid #ded7c8;
+}
+.page-tall h1 { font-size: clamp(30px, 3.6vw, 52px); line-height: 1.08; letter-spacing: -.02em; margin: 0; }
+.page-tall .sub { margin: 0; color: #6f6a5f; font-size: 15px; }
+.page-tall .chapter { display: grid; grid-template-columns: 200px minmax(0, 1fr); gap: 0 48px; margin: 0 0 52px; }
+.page-tall .chapter > :not(h2) { grid-column: 2; }
+.page-tall .chapter h2 { grid-column: 1; align-self: start; margin: 0; font-size: 17px; line-height: 1.35; letter-spacing: -.01em; color: #8b8474; font-weight: 600; }
+.page-tall .chapter p { margin: 0 0 18px; line-height: 1.7; color: #4c463c; font-size: 15px; max-width: 74ch; }
 .page-tall .shots { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin: 0 0 18px; }
 .page-tall .shots figure { margin: 0; }
 .page-tall .shots img { display: block; width: 100%; height: auto; border: 1px solid #ded7c8; border-radius: 8px; }
@@ -260,22 +321,29 @@ body { margin: 0; font: 15px/1.6 system-ui, -apple-system, "Segoe UI", Roboto, s
   .page-home .links::-webkit-scrollbar { display: none; }
   .page-home .gh { margin-left: auto; padding: 6px 11px; }
   .page-home .hero { padding: 30px 0 26px; }
+  .page-home .hero-grid { grid-template-columns: minmax(0, 1fr); gap: 22px; }
   .page-home .hero h1 { font-size: 30px; line-height: 1.15; }
   .page-home .lead { font-size: 15px; }
   .page-home .btn { padding: 11px 16px; font-size: 14px; }
-  .page-home .stats { margin-top: 22px; gap: 14px 20px; }
+  .page-home .stats { margin-top: 22px; padding-top: 18px; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px 12px; }
   .page-home .stat b { font-size: 21px; }
   .page-home section { padding: 26px 0; }
-  .page-home section > h2 { font-size: 21px; }
+  .page-home section > h2, .page-home .head > h2 { font-size: 21px; }
+  .page-home .head { grid-template-columns: minmax(0, 1fr); align-items: start; gap: 6px; }
   .page-home .features .grid { grid-template-columns: 1fr; gap: 12px; }
   .page-home .feature { padding: 16px; }
-  .page-home .steps { gap: 14px; }
-  .page-home .step { grid-template-columns: 28px minmax(0, 1fr); gap: 10px; }
+  .page-home .step { grid-template-columns: 28px minmax(0, 1fr); gap: 10px; padding: 14px; }
   .page-home .step .no { width: 28px; height: 28px; font-size: 13px; }
+  .page-home .limits .list { grid-template-columns: 1fr; }
   .page-home pre { font-size: 11.5px; }
   .page-home pre code { font-size: 11.5px; }
   .page-home .table { font-size: 12px; }
   .page-home .table th, .page-home .table td { padding: 6px 6px; }
+  /* 名字列桌面是不换行的；参数表长到二十六行以后，最宽的那一格把整张表顶到 402px，
+     比 390 的屏还宽——整页因此出横向滚动条。窄屏放开换行，取值列那些不带空格的
+     组合名（ignore·follow·repel）也允许硬断。 */
+  .page-home .table td:first-child { white-space: normal; }
+  .page-home .table code { overflow-wrap: anywhere; }
   .page-home .limits li { padding: 10px 12px; font-size: 13px; }
 
   .page-landing nav { padding: 14px 16px; gap: 10px 14px; flex-wrap: wrap; }
@@ -294,11 +362,15 @@ body { margin: 0; font: 15px/1.6 system-ui, -apple-system, "Segoe UI", Roboto, s
 
   .page-tall { padding: 26px 16px 64px; }
   .page-tall h1 { font-size: 28px; }
+  .page-tall .masthead { grid-template-columns: minmax(0, 1fr); gap: 10px; padding: 0 0 18px; margin-bottom: 26px; }
+  .page-tall .chapter { grid-template-columns: minmax(0, 1fr); gap: 0; margin-bottom: 34px; }
+  .page-tall .chapter > :not(h2) { grid-column: auto; }
+  .page-tall .chapter h2 { grid-column: auto; margin: 0 0 10px; }
   .page-tall .shots { grid-template-columns: 1fr; }
   .page-tall .colophon { margin-top: 40px; }
 
   /* 复杂工作台在三列上根本没法读，手机上把两侧面板收到中间列下面。 */
-  .page-blender .shell { grid-template-columns: minmax(0, 1fr); min-height: 0; }
+  .page-blender .shell { grid-template-columns: minmax(0, 1fr); grid-template-rows: none; min-height: 0; }
   .page-blender .panel { border-right: 0; border-left: 0; border-bottom: 1px solid #1d2126; }
   .page-blender .menubar { flex-wrap: wrap; gap: 6px 12px; }
   .page-blender .viewport { min-height: 300px; }

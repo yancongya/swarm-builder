@@ -26,7 +26,7 @@ export class DragRectAction implements Action {
   }
 
   begin(ctx: RunContext): void {
-    ctx.sound?.play('draw');
+    ctx.sound?.play('draw', this.item);
   }
 
   tick(progress: number, ctx: RunContext): void {

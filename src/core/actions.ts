@@ -61,8 +61,10 @@ export class SnapSettleAction implements Action {
     if (this.el) this.displace((this.item.snapFrom ?? 0) * (1 - easeInOutCubic(progress)));
   }
 
-  end(): void {
+  end(ctx: RunContext): void {
     if (this.el) this.displace(0);
+    // 吸附那一声也只属于生成式配乐，默认那套合成点击听不到它。
+    if (this.el && ctx.opts.score === 'generative') ctx.sound?.play('snap', this.item);
   }
 
   private displace(offset: number): void {

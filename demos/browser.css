@@ -79,9 +79,27 @@ body {
   border-color: var(--edge-soft);
   box-shadow: 0 1px 0 var(--chrome-2);
 }
-.tab b { font-weight: 500; overflow: hidden; text-overflow: ellipsis; }
+.tab b { min-width: 0; font-weight: 500; overflow: hidden; text-overflow: ellipsis; }
 .tab .fav { width: 6px; height: 6px; border-radius: 50%; background: #4c483f; flex: 0 0 auto; }
 .tab[aria-selected="true"] .fav { background: var(--accent); }
+/* 只有用户自己开的标签有关闭钮：预设页是仓库里的案例，关掉它们等于丢模板。 */
+.tab .close {
+  flex: 0 0 auto; width: 15px; height: 15px; display: grid; place-items: center;
+  border-radius: 50%; color: var(--dim); font: 13px/1 system-ui, sans-serif; font-style: normal;
+  cursor: pointer;
+}
+.tab .close:hover { color: var(--ink); background: var(--chrome-3); }
+
+/* 新标签页的加号：排在标签条末尾（order 9），案例标签是脚本追加在它后面的。 */
+.newtab {
+  order: 9;
+  flex: 0 0 auto; width: 25px; height: 25px; margin-bottom: 4px;
+  display: grid; place-items: center;
+  border: 1px solid transparent; border-radius: 8px;
+  background: transparent; color: var(--dim);
+  font: 16px/1 system-ui, sans-serif; cursor: pointer;
+}
+.newtab:hover { color: var(--ink); background: var(--chrome-2); border-color: var(--edge-soft); }
 
 .nav {
   display: flex;
@@ -105,6 +123,9 @@ body {
 }
 .nav .icon:hover:not(:disabled) { color: var(--ink); background: var(--chrome-3); }
 .nav .icon:disabled { opacity: .3; cursor: default; }
+
+/* 语言钮要装下「中/EN」，图标钮那颗正方形留给箭头键就好。 */
+.nav .icon.lang { width: auto; padding: 0 8px; font-size: 11px; letter-spacing: .02em; }
 
 .addr {
   flex: 1;
@@ -166,6 +187,40 @@ body {
 
 .viewport { position: relative; min-height: 0; background: #fff; }
 .viewport iframe { display: block; width: 100%; height: 100%; border: 0; }
+
+/* 新标签页：盖在 iframe 上的空白页，输入地址才开工。取不到 HTML 时不假装能盖，
+   状态条会明说这一页只是嵌进来显示。 */
+.blank {
+  position: absolute; inset: 0; display: grid; place-items: center;
+  padding: 24px; background: var(--chrome-2); color: var(--ink);
+}
+.blank[hidden] { display: none; }
+.blank-inner { width: min(520px, 100%); display: grid; gap: 13px; justify-items: center; text-align: center; }
+.blank .mark { width: 52px; height: 52px; }
+.blank-title { margin: 0; font-size: 14.5px; color: var(--dim); }
+.blank-form { display: flex; gap: 8px; width: 100%; }
+.blank-input {
+  flex: 1; min-width: 0; height: 33px; padding: 0 14px;
+  border: 1px solid var(--edge-soft); border-radius: 999px;
+  background: var(--chrome); color: var(--ink);
+  font: 12px/1 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+.blank-input:focus-visible { outline: none; border-color: var(--accent); }
+.blank-input[data-bad="true"] { border-color: #d2603f; }
+.blank-go {
+  flex: 0 0 auto; height: 33px; padding: 0 16px;
+  border: 1px solid rgba(201, 121, 60, .45); border-radius: 999px;
+  background: var(--accent-soft); color: var(--accent);
+  font: inherit; font-weight: 600; cursor: pointer;
+}
+.blank-go:hover { color: var(--ink); background: rgba(201, 121, 60, .26); }
+.blank-chips { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; }
+.blank-chips .chip {
+  padding: 5px 11px; border: 1px solid var(--edge-soft); border-radius: 999px;
+  background: transparent; color: var(--dim); font: inherit; cursor: pointer;
+}
+.blank-chips .chip:hover { color: var(--ink); border-color: var(--edge); background: var(--chrome-3); }
+.blank-note { margin: 2px 0 0; max-width: 440px; color: #7d7768; font-size: 11.5px; line-height: 1.65; }
 
 .statusbar {
   display: flex;

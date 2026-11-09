@@ -10,7 +10,7 @@
   <div id="app">
     <div class="page-simple">
       <h1>无构建产物依赖</h1>
-      <p class="sub">这一页只引一个 script 标签，没有打包、没有 import map，面板照样能用——调参产物自带引擎。</p>
+      <p class="sub">库只有一个 script 标签：不打包、不要 import map，面板照样能用——调参产物自带引擎。</p>
       <div class="cards">
         <div class="card"><h3>script</h3><p>window.SwarmBuilderTune 全局可用。</p></div>
         <div class="card"><h3>tune</h3><p>一次调用就把创造者模式放到页面上。</p></div>
@@ -20,7 +20,10 @@
   </div>
 
   <script src="/dist/swarm-builder.tune.iife.js"></script>
-  <script>
+  <script type="module">
+    // lang 先跑：?auto 是在这一份脚本里 apply 的，蓝图得是切换后的语言。
+    import './lang.ts';
+
     const app = document.querySelector('#app');
     const tuner = window.SwarmBuilderTune.tune({
       root: app,

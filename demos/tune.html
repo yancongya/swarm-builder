@@ -63,6 +63,8 @@
   </div>
 
   <script type="module">
+    // 翻译必须先跑：tune() 一开局就采集蓝图，蓝图里的文字得是切换后的那一种。
+    import './lang.ts';
     import { tune } from '../src/tune/index';
 
     const tuner = tune({

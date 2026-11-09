@@ -3,10 +3,10 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Swarm Builder · 让一群光标把页面重建出来</title>
+  <title>Swarm Builder · 为你的网页开始创造模式</title>
   <link rel="stylesheet" href="./demo.css" />
 </head>
-<body data-demo="home" data-swarm='{"sound":true,"tour":true,"order":"rows","speed":1.5,"maxItems":320}'>
+<body data-demo="home" data-swarm='{"sound":true,"tour":true,"order":"rows","speed":1.5,"maxItems":320,"performanceMode":"high"}'>
   <div id="app">
     <div class="page-home">
 
@@ -21,8 +21,9 @@
           <b>Swarm Builder</b>
         </a>
         <div class="links">
-          <a href="#features">功能</a>
-          <a href="#use">怎么用</a>
+          <a href="#features">它盖什么</a>
+          <a href="#vs">和扩展版</a>
+          <a href="#use">怎么接</a>
           <a href="#params">参数</a>
           <a href="#limits">边界</a>
         </div>
@@ -34,17 +35,36 @@
       </nav>
 
       <header class="hero" id="top">
-        <p class="kicker">v0.1.0 · 零依赖 · MIT · ESM / CJS / IIFE</p>
-        <h1>一群光标，把这一页<br />重新盖出来</h1>
-        <p class="lead">
-          swarm-builder 采集页面 DOM，拆成矩形、文字、媒体、重复模块与辅助线，
-          再交给多个光标按你选的顺序施工；盖完收工，真实页面交还给你。
-          你现在看到的这一页，就是它重建的。
-        </p>
-        <div class="cta">
-          <button class="btn primary" type="button" data-replay>再盖一遍</button>
-          <a class="btn ghost" href="#use">怎么用 ↓</a>
+        <div class="hero-grid">
+          <div class="hero-main">
+            <p class="kicker">v0.1.0 · 零依赖 · MIT · ESM / CJS / IIFE</p>
+            <h1>为你的网页开始创造模式，<br />集群构建前端！</h1>
+            <p class="lead">
+              swarm-builder 读一遍你的 DOM，把它拆成矩形、文字、媒体、重复模块与辅助线，
+              再交给一群光标按你选的顺序重新盖出来。盖完收工，真实页面原样交还——
+              你现在看到的这一页，就是它盖的。
+            </p>
+            <div class="cta">
+              <button class="btn primary" type="button" data-replay>再盖一遍</button>
+              <a class="btn ghost" href="#use">怎么接 ↓</a>
+            </div>
+          </div>
+
+          <!-- 这一页自己正在用哪几个参数，直接写在 hero 右边：读文档的人不用再猜。 -->
+          <aside class="hero-board">
+            <h2 class="board-title">这一页正在用的参数</h2>
+            <dl class="board">
+              <div><dt>order</dt><dd>rows · 自上而下</dd></div>
+              <div><dt>speed</dt><dd>1.5</dd></div>
+              <div><dt>maxItems</dt><dd>320</dd></div>
+              <div><dt>performanceMode</dt><dd>high · 本页不裁剪</dd></div>
+              <div><dt>sound / tour</dt><dd>开 / 开</dd></div>
+              <div><dt>agentCount</dt><dd>面板里 1–24</dd></div>
+            </dl>
+            <p class="board-note">右下角那块面板改的就是这些数，改完点「应用并重跑」。这页把 performanceMode 写死成 high：盒子太密时自动档会剪掉辅助线和标题步进，而那两个正是这页要演示的东西。</p>
+          </aside>
         </div>
+
         <div class="stats">
           <div class="stat"><b>6</b><span>类拆解</span></div>
           <div class="stat"><b>7</b><span>套构建顺序</span></div>
@@ -59,12 +79,12 @@
           <article class="feature">
             <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="12" rx="2" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M7 20h10" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
             <h3>矩形与骨架</h3>
-            <p>每个盒子带尺寸徽章落位，边框、圆角、底色按采集那一帧还原，容器先把骨架撑起来。</p>
+            <p>盒子带着尺寸徽章落位，边框、圆角、底色照采集那一帧还原；容器先把骨架撑起来。</p>
           </article>
           <article class="feature">
             <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h11M4 18h7" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
             <h3>逐字打字</h3>
-            <p>文本逐字符写出，I 型光标与插入符跟着走；大标题可以一边打字一边长到真实字号。</p>
+            <p>文本一个字符一个字符敲出来，I 型光标与插入符跟着走；大标题能边打字边长到真实字号。</p>
           </article>
           <article class="feature">
             <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="10" height="8" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M16 9l4 3-4 3z" fill="currentColor"/></svg>
@@ -74,7 +94,7 @@
           <article class="feature">
             <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="8" height="8" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.6"/><rect x="13" y="13" width="8" height="8" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M13 6h8M6 13v8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
             <h3>重复模块盖章</h3>
-            <p>一列相似的兄弟只真做一个，其余按住 ⌥ 拖过去盖章，列表和卡片墙不必一行行重打。</p>
+            <p>一列相似的兄弟只真做一个，其余按住 ⌥ 拖过去盖章，卡片墙不必一行行重打。</p>
           </article>
           <article class="feature">
             <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v18M4 9h16" stroke="currentColor" stroke-width="1.5" stroke-dasharray="3 3"/><circle cx="12" cy="9" r="2.4" fill="currentColor"/></svg>
@@ -84,19 +104,62 @@
           <article class="feature">
             <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="8" cy="9" r="2.2" fill="currentColor"/><circle cx="15" cy="14" r="2.2" fill="currentColor"/><path d="M8 11v4a3 3 0 0 0 3 3h3" stroke="currentColor" stroke-width="1.6" fill="none" stroke-linecap="round"/></svg>
             <h3>多光标集群</h3>
-            <p>1–24 个光标同场施工，队列分发可选七套顺序，还能开工时均衡让它们差不多同时收工。</p>
+            <p>1–24 个光标同场施工，认领顺序七套可选；开工时按预估工时均衡，大家差不多同时收工。</p>
+          </article>
+        </div>
+      </section>
+
+      <section class="vs" id="vs">
+        <div class="head">
+          <h2>和扩展版哪里不一样</h2>
+          <p class="note">效果基准是 Chrome 扩展「Swarm Rebuild」：它装在浏览器里，你打开哪一页就盖哪一页；这一份装在页面里，只有访问你站点的人看到。下面每一条优缺点都是从这一句区别里长出来的。</p>
+        </div>
+        <table class="table">
+          <thead>
+            <tr><th>维度</th><th>扩展版</th><th>本库</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>装在哪儿</td><td>浏览器里，只对你这台机器生效</td><td>页面里，每个访问者都拿到</td></tr>
+            <tr><td>能盖谁</td><td>当下打开的任何网站</td><td>你自己部署的那一棵 root 子树</td></tr>
+            <tr><td>改参数</td><td>扩展弹窗里点</td><td>18 项配置、控制方法、完成回调，类型全在</td></tr>
+            <tr><td>第二遍</td><td>每次进来都是新的一局</td><td>seed 固定就逐帧一致，同一场施工可重放</td></tr>
+            <tr><td>能不能自动化</td><td>得人对着浏览器点</td><td>headless 里跑完直接读结果</td></tr>
+            <tr><td>带多少东西</td><td>一个扩展</td><td>gzip 15 KB 的核心包，零依赖，ESM / CJS / IIFE 随取</td></tr>
+            <tr><td>许可</td><td>无明确授权，源码不可复用</td><td>MIT</td></tr>
+          </tbody>
+        </table>
+        <div class="give">
+          <article class="pc win">
+            <h3>库这头多出来的</h3>
+            <ul>
+              <li>定速进场：给一个秒数，倍率交给估算器反推，整场压到那一秒收尾。</li>
+              <li>七套认领顺序加等工时切带：谁守哪条带、谁先盖由你选，扩展是固定顺序。</li>
+              <li>它成了你页面的一部分：可以只盖首屏、可以只挂一个子树、可以把真实 DOM 原样交还。</li>
+              <li>调好就导出：创造者模式一键把这一局参数变成可粘贴代码，也能整段交给 agent。</li>
+              <li>有降级路径：跨域媒体、伪元素、Web Component 都落到占位框，不留空洞。</li>
+            </ul>
+          </article>
+          <article class="pc loss">
+            <h3>库这头不如扩展的</h3>
+            <ul>
+              <li>盖不了别人家的页面：重建第三方站点得先把 HTML 取回来，同源或本地转发口可以，公网站点多半被 CORS 挡住，取不到就只能原样显示。</li>
+              <li>一次只管自己这一页：跨页常驻、随手换个网站再盖，是扩展才有的便利。</li>
+              <li>它是进场动画：画面定格在采集那一瞬间，重建出来的盒子不带交互。</li>
+              <li>上游改了表现，这里不会自动跟上——按公开行为重实现，不是 fork，也没有对方的排期。</li>
+              <li>得发一次版才看得见：扩展装了就有，库要把这几个文件部署进站点。</li>
+            </ul>
           </article>
         </div>
       </section>
 
       <section class="use" id="use">
-        <h2>怎么用</h2>
+        <h2>怎么接</h2>
         <ol class="steps">
           <li class="step">
             <span class="no">1</span>
             <div>
               <h3>装它</h3>
-              <p>零依赖，一个包三种格式；CDN 直接引 IIFE 也行。</p>
+              <p>零依赖，一个包三种格式；不想装也能直接引 CDN 上那个 IIFE。</p>
               <pre><code>npm i swarm-builder</code></pre>
             </div>
           </li>
@@ -104,7 +167,7 @@
             <span class="no">2</span>
             <div>
               <h3>指一个容器</h3>
-              <p><code>root</code> 给谁就重建谁，页面其余部分不受影响；<code>mount()</code> 是最小写法。</p>
+              <p><code>root</code> 给谁就重建谁，页面其余部分照常跑；<code>mount()</code> 是最小写法。</p>
               <pre><code>import { mount } from 'swarm-builder';
 
 mount({
@@ -120,44 +183,77 @@ mount({
             <span class="no">3</span>
             <div>
               <h3>改到满意，再抄配置</h3>
-              <p>创造者模式挂在页面上，18 项参数一屏全露；调好后一键导出可以直接粘进代码的片段。</p>
+              <p>创造者模式挂在页面上，18 项参数一屏全露；调好一键导出，那份片段可以直接粘进代码。</p>
               <pre><code>import { tune } from 'swarm-builder/tune';
 
 tune({ root: '#app', initial: { order: 'depth', balance: true } });</code></pre>
             </div>
           </li>
         </ol>
+
+        <!-- 提示词整段摊在页面上：复制走的就是这里显示的那一份，改了立刻看得见。 -->
+        <div class="prompt">
+          <div class="prompt-bar">
+            <b>给 AI 的提示词</b>
+            <span class="prompt-hint">把下面这段原样粘给 coding agent，它能在你自己的项目里接完</span>
+            <button class="btn tiny" type="button" data-copy-prompt>一键复制</button>
+          </div>
+<pre class="prompt-text" data-prompt data-i18n-skip>用 swarm-builder 在我的项目里做「一群光标把页面重建出来」的进场动画。它是零依赖的 MIT 库，ESM / CJS / IIFE 三种格式都有。
+
+1. 装：npm i swarm-builder；走 CDN 就引 dist/swarm-builder.iife.js，全局名 SwarmBuilder。框架里等容器挂载完再开局（React 用 useEffect、Vue 用 onMounted），部署就是把这几个文件当静态资源发出去，没有服务端。
+2. 指一个容器来重建，页面其余部分不动：
+   import { mount } from 'swarm-builder';
+   mount({ root: document.querySelector('#app'), agentCount: 8, order: 'rows', tour: true, sound: true });
+3. 要边看边调就换成创造者模式（右下角悬浮球，18 项日常参数一屏全露，另外 9 项「复刻参考实现」的开关折在同一块面板的一组里，改完点「应用并重跑」）：
+   import { tune } from 'swarm-builder/tune';
+   tune({ root: '#app', initial: { order: 'depth', balance: true } });
+4. 常规参数：agentCount 1–24 个光标；order 取 group / rows / cols / snake / depth / radial / random；balance 按预估工时均衡各队列；speed 是 0.25–8 倍率，targetDuration 给秒数让估算器反推倍率；seed 固定即可重放（0 = 每局现抽）；maxItems 是蓝图上限，超出计入 dropped；ignore 用选择器跳过整棵子树；duplicate / maxCopies 管重复模块盖章；guides / maxGuides 管辅助线；grow 是标题字号步进；flocking 让光标互相避让；tour 让镜头跟随施工前沿；sound 是合成音效；theme 是施工线墨色；performanceMode 在密集页面自动裁剪特效。
+5. 复刻参考实现的九个开关，默认全关、关着时行为与上面完全一致：flight（idle 停在落点 / live 待时绕圆心飞），pointer（ignore / follow 当圆心 / repel 48px 排斥环，只在 live 下有用），agents（fixed 固定 / auto 人数随滚动速度与积压活增减，上限 48），pick（queued 按预切队列 / live 每帧给所有活定价谁近谁抢），trigger（immediate 第一帧全放 / scroll 只放行滚过的部分，配 tour 用），adaptiveSpeed（积压每件 +45% 最多 4 倍），scan（single 走一遍 / pre-scroll 先把整页滚一遍等懒加载和图片，重建别人的站点要用这档），score（off 只有点击声 / generative 104 BPM 生成式配乐），reducedMotion（run 照跑 / skip 一项不建直接交还）。
+6. 别做的事：不要为了动画改我的页面结构；这是进场动画，重建出来的盒子没有交互，结束后真实 DOM 原样交还。
+7. 验收：跑完 console 无报错、文档宽度不超出视口、动画结束后原页面照常可交互。</pre>
+        </div>
       </section>
 
       <section class="params" id="params">
-        <h2>参数速查</h2>
-        <p class="note">完整清单见 README；这里挑最常动的几项。全部都能在创造者模式里改。</p>
+        <div class="head">
+          <h2>参数速查</h2>
+          <p class="note">完整清单在 README；这里只挑最常动的几项，每一行都能在创造者模式里改。</p>
+        </div>
         <table class="table">
           <thead>
             <tr><th>参数</th><th>取值</th><th>它在管什么</th></tr>
           </thead>
           <tbody>
-            <tr><td><code>agentCount</code></td><td>1–24</td><td>同时施工的光标数，越多越快也越吵</td></tr>
+            <tr><td><code>agentCount</code></td><td>1–24</td><td>同时施工的光标数，越多越快，画面也越吵</td></tr>
             <tr><td><code>order</code></td><td>group / rows / cols / snake / depth / radial / random</td><td>光标怎么认领这一页；竖列在没有真沟时自动退回横带</td></tr>
-            <tr><td><code>balance</code></td><td>布尔</td><td>把带切成等预估工时而不是等件数，避免一个光标收尾其他人干等</td></tr>
+            <tr><td><code>balance</code></td><td>布尔</td><td>带按预估工时切等分而不是按件数，避免别人干等一个收尾</td></tr>
             <tr><td><code>seed</code></td><td>数字，0 = 现抽</td><td>随机顺序的种子，完成状态会回显实际用的那颗</td></tr>
             <tr><td><code>speed</code> / <code>targetDuration</code></td><td>0.25–8 / 秒</td><td>倍率，或交给估算器反推倍率把整场压进固定时长</td></tr>
             <tr><td><code>tour</code></td><td>布尔</td><td>滚动跟着施工前沿走，结束交还页首</td></tr>
             <tr><td><code>sound</code></td><td>布尔</td><td>合成音效，不用带音频文件</td></tr>
             <tr><td><code>maxItems</code> / <code>ignore</code></td><td>数字 / 选择器</td><td>蓝图上限；命中的子树整块跳过</td></tr>
             <tr><td><code>theme</code> / <code>performanceMode</code></td><td>auto 优先</td><td>施工线墨色按页面明暗；拥挤页面自动裁剪特效</td></tr>
+            <tr><td><code>flight</code> / <code>pointer</code></td><td>idle·live / ignore·follow·repel</td><td>干完活的光标停在落点，还是放回群蜂里绕着圆心转；绕的时候圆心是不是你的鼠标，要不要给鼠标配一圈 48px 的排斥环</td></tr>
+            <tr><td><code>agents</code></td><td>fixed·auto</td><td>人数会不会变。auto 时你给的数是下限、48 是上限，滚动越快、可领的活越多招的人越多，闲了 2.5 秒的临时工自己离场</td></tr>
+            <tr><td><code>pick</code> / <code>trigger</code></td><td>queued·live / immediate·scroll</td><td>守着切好的队列，还是每帧给所有活定价、谁近谁抢；整页第一帧全放行，还是只放行已经滚过的那部分</td></tr>
+            <tr><td><code>adaptiveSpeed</code></td><td>布尔</td><td>活堆起来就拧快时钟（积压每件 +45%，最多 4 倍）。开了以后 speed 与 targetDuration 变成下限而不是节奏</td></tr>
+            <tr><td><code>scan</code></td><td>single·pre-scroll</td><td>采集是走一遍，还是先把整页滚一遍把懒加载和图片等出来，再回顶开始。重建别人的站点要用 pre-scroll</td></tr>
+            <tr><td><code>score</code></td><td>off·generative</td><td>音效只是一串点击声，还是原版那套 104 BPM、按方块面积选八度的生成式配乐</td></tr>
+            <tr><td><code>reducedMotion</code></td><td>run·skip</td><td>系统要求减少动效时照跑（宿主主动要的），还是一项不建、直接把真实页面交还</td></tr>
           </tbody>
         </table>
+        <p class="board-note">最后七行是「复刻参考实现」的开关：默认全部关着，关着的时候每帧算的东西、落下的像素都和原本一模一样——轨道场、动态班组、指针监听、运行时定价、配乐的混响只在打开时才构造。创造者模式面板把它们单独收在「参考实现复刻」一组，折叠着，一行一个 hover。想整页照着原版的做，就把它们一起打开再点「应用并重跑」。</p>
       </section>
 
       <section class="limits" id="limits">
         <h2>用之前知道的几件事</h2>
         <ul class="list">
-          <li>它是进场动画，不是懒加载：动画定格在采集那一瞬间，重建出来的盒子没有交互。</li>
+          <li>它是进场动画，不是懒加载：画面定格在采集那一瞬间，重建出来的盒子没有交互。</li>
           <li>页面很长先看 <code>maxItems</code>，超出的条目计入 <code>dropped</code> 而不是被盖出来。</li>
           <li>伪元素、跨域 canvas、Web Component 的 shadow DOM 会降级成占位框——有占位，不留空洞。</li>
           <li>浏览器要求页面已有用户手势才发声，所以自动开局的那一次可能静音，点一下就回来了。</li>
-          <li>用户偏好减少动效时请自己判断再开局：<code>matchMedia('(prefers-reduced-motion: reduce)')</code>。</li>
+          <li>系统要求减少动效时怎么走由 <code>reducedMotion</code> 定：默认 <code>'run'</code> 照跑（这是宿主主动要的装饰），<code>'skip'</code> 则一项不建、直接把真实页面交还。</li>
+          <li>预览壳里输入第三方地址，取得到 HTML 才会重建：同源页面与本地预览的同源转发可以，公网站点多半被 CORS 挡住，那就只原样显示。</li>
         </ul>
       </section>
 
@@ -175,6 +271,8 @@ tune({ root: '#app', initial: { order: 'depth', balance: true } });</code></pre>
     </div>
   </div>
 
+  <script type="module" src="./lang.ts"></script>
+  <script type="module" src="./prompt.ts"></script>
   <script type="module" src="./creator.ts"></script>
   <script type="module">
     // 按钮是页面上唯一的重放入口：creator.ts 已经把 tuner 挂上 window，这里只是替

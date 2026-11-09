@@ -1,4 +1,5 @@
 import type { SwarmBuilderOptions } from '../types';
+import type { Lang } from './locale';
 
 /** The serialisable half of the options: `root` is an element and the callbacks are functions. */
 export type PlainConfig = Omit<SwarmBuilderOptions, 'root' | 'autoStart' | 'onStart' | 'onProgress' | 'onComplete'>;
@@ -22,6 +23,15 @@ export const DEFAULT_CONFIG: Required<PlainConfig> = {
   flocking: true,
   tour: false,
   theme: 'auto',
+  flight: 'idle',
+  pointer: 'ignore',
+  agents: 'fixed',
+  pick: 'queued',
+  trigger: 'immediate',
+  adaptiveSpeed: false,
+  scan: 'single',
+  score: 'off',
+  reducedMotion: 'run',
 };
 
 const KEYS = Object.keys(DEFAULT_CONFIG) as (keyof PlainConfig)[];
@@ -63,15 +73,18 @@ export function describeRoot(root: HTMLElement): { selector: string; guessed: bo
  * a file and an agent asked to apply the settings. Only values that differ from
  * the defaults are listed, which keeps the snippet short and teaches the defaults.
  */
-export function buildSnippet(config: PlainConfig, root: { selector: string; guessed: boolean }): string {
-  const rows = [`  root: document.querySelector('${root.selector}'),${root.guessed ? ' // 猜的：换成你的容器' : ''}`];
+export function buildSnippet(config: PlainConfig, root: { selector: string; guessed: boolean }, lang: Lang = 'zh'): string {
+  const en = lang === 'en';
+  const rows = [`  root: document.querySelector('${root.selector}'),${root.guessed ? (en ? ' // guessed - swap in your own container' : ' // 猜的：换成你的容器') : ''}`];
   for (const key of KEYS) {
     const value = config[key];
     if (value === undefined || same(value, DEFAULT_CONFIG[key])) continue;
     rows.push(key === 'ignore' ? `  ignore: ${literal(withoutChrome(value as string[]))},` : `  ${key}: ${literal(value)},`);
   }
   return [
-    '// 由 swarm-builder 创造者模式导出，只列出与默认值不同的选项。',
+    en
+      ? '// Exported by swarm-builder creator mode; only options that differ from the defaults are listed.'
+      : '// 由 swarm-builder 创造者模式导出，只列出与默认值不同的选项。',
     "import { SwarmBuilder } from 'swarm-builder';",
     '',
     'const swarm = new SwarmBuilder({',

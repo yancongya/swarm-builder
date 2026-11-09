@@ -83,6 +83,18 @@ export class CursorLayer {
     handle.el.classList.add(SHAPES[shape]);
   }
 
+  /**
+   * 待时物理（`flight: 'live'`）写的位置与姿态：箭头朝行进方向歪过去，按下的时候压扁。
+   * 关着时没人调用，所以默认那套「落在哪儿就是哪儿」的光标一个像素都不动。
+   */
+  setPose(id: number, x: number, y: number, angleDeg: number, press: number): void {
+    this.setPosition(id, x, y);
+    const handle = this.handles.get(id);
+    if (!handle) return;
+    handle.el.style.setProperty('--tilt', `${angleDeg.toFixed(1)}deg`);
+    handle.el.style.setProperty('--press', press.toFixed(3));
+  }
+
   /** A null badge ends the drag affordance (size badge + corner marker). */
   setBadge(id: number, text: string | null): void {
     const handle = this.handles.get(id);

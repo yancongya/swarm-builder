@@ -26,6 +26,10 @@ export const CSS = `
 .sb-cursor__arrow,.sb-cursor__ibeam{position:absolute;left:0;top:0;display:none}
 .sb-cursor.is-arrow .sb-cursor__arrow{display:block}
 .sb-cursor.is-ibeam .sb-cursor__ibeam{display:block}
+/* 待时物理（flight:'live'）才会写这两个变量：箭头朝行进方向歪过去，按下时沿竖直压扁。
+   默认关着时两个变量都没有值，等价于不变化。 */
+.sb-cursor__arrow,.sb-cursor__ibeam{transform-origin:1px 1px;
+  transform:rotate(var(--tilt,0deg)) scale(1,calc(1 - .35*var(--press,0)))}
 .sb-cursor__crosshair{position:absolute;display:none;inset:0}
 .sb-cursor__crosshair::before,.sb-cursor__crosshair::after{content:"";position:absolute;
   background:currentColor;opacity:.75}

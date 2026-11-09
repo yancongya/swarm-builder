@@ -1,6 +1,6 @@
-import type { BlueprintItem } from './blueprint';
+import type { BlueprintItem, ItemKind } from './blueprint';
 import type { NormalizedOptions } from './config';
-import type { SoundBus } from './sound';
+import type { SoundEvent } from './sound';
 import type { Flock } from './flocking';
 import type { Overlay } from '../render/overlay';
 import type { CursorShape } from '../types';
@@ -13,12 +13,31 @@ export interface AgentView {
   setBadge(text: string | null): void;
 }
 
+/**
+ * 动作层听到的是同一组事件，但两种实现用法不同：合成点击（SoundBus）只认事件名，
+ * 生成式配乐（ScoreBus）还要落点去算音高与声像，所以事件可以带一个盒子。
+ * BlueprintItem 结构上就满足它，动作里把自己那个元素传过去就行；
+ * 'dup' 不是元素类型，是副本盖章专用的声部。
+ */
+export interface SoundSpot {
+  kind: ItemKind | 'dup';
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+export interface SoundSink {
+  play(event: SoundEvent, spot?: SoundSpot): void;
+  dispose(): void;
+}
+
 export interface RunContext {
   opts: NormalizedOptions;
   overlay: Overlay;
   agent: AgentView;
   /** Null unless the host asked for sound. */
-  sound: SoundBus | null;
+  sound: SoundSink | null;
   /** Other cursors, so a move can dodge them. */
   flock: Flock;
   /** Look up an item the action has to materialise but was not scheduled for. */

@@ -1,5 +1,5 @@
 import type { Blueprint, BlueprintItem } from './blueprint';
-import type { BuildOrder } from '../types';
+import type { BuildOrder, PickMode, TriggerMode } from '../types';
 import { makeRng, resolveSeed, shuffled } from './rng';
 
 export interface SchedulerOptions {
@@ -10,7 +10,34 @@ export interface SchedulerOptions {
   balance: boolean;
   /** 一个元素大约多重（毫秒）；只有 balance 开着才用到，所以由调用方注入。 */
   cost: (item: BlueprintItem) => number;
+  /** 'queued'（默认）按预先切好的队列领；'live' 用参考实现的代价函数现挑。 */
+  pick: PickMode;
+  /** 'immediate'（默认）第一帧就全页开放；'scroll' 只放行滚动前沿以上的。 */
+  trigger: TriggerMode;
 }
+
+/** 领活的一方：编号 + 当前位置，live 挑选要按离光标多远算代价。 */
+export interface Claimer {
+  readonly index: number;
+  readonly x: number;
+  readonly y: number;
+}
+
+/** 一帧里看得见的这一段页面，蓝图坐标。 */
+export interface ViewBand {
+  top: number;
+  bottom: number;
+}
+
+/** cursor-swarm 的 `trigger` 默认值：元素顶边越过视口 88% 那条线才算到了。 */
+const UNLOCK_FRACTION = 0.88;
+/** 参考版 pick()：带外先付一百万，带内按纵向位置、再按离光标的距离加权。 */
+const OUTSIDE_PENALTY = 1e6;
+const GUIDE_BONUS = 5e5;
+const BAND_WEIGHT = 0.6;
+const CURSOR_WEIGHT = 0.4;
+/** 带顶往上再让 40px，免得刚滚出视野的元素立刻变成天价。 */
+const BAND_SLACK = 40;
 
 /**
  * How the work is handed out. One shared invariant: a cursor claims from its own
@@ -37,11 +64,23 @@ export interface SchedulerOptions {
  * can hold a child whose parent sits in the band above, and without stealing
  * that cursor would wait forever. `balance` leaves the direction of the sweep
  * alone and changes how much work each band carries.
+ *
+ * Spatial bands are cut on an element's *leading* edge, not its centre, and
+ * ties go to the shallower depth. A container starts above what it contains, so
+ * keying by the leading edge puts every parent in the same band as, or an
+ * earlier one than, its children - which is what makes `rows` read as a single
+ * top-to-bottom sweep instead of a cursor repeatedly jumping back up to fetch a
+ * wrapper its next item is still waiting on.
  */
 export class Scheduler {
   private readonly queues: BlueprintItem[][] = [];
   private readonly known = new Set<string>();
   private readonly completed = new Set<string>();
+  /** `pick: 'live'` 时唯一的工作来源；关着时是 null，一切照旧走 queues。 */
+  private readonly pool: BlueprintItem[] | null;
+  /** `trigger: 'scroll'` 时是已经滚到的最低那条线；关着时是 Infinity。 */
+  private frontier: number;
+  private band: ViewBand = { top: Number.NEGATIVE_INFINITY, bottom: Number.POSITIVE_INFINITY };
   readonly total: number;
   /** The number this run shuffled with - 0 in means "pick one for me". */
   readonly seed: number;
@@ -54,6 +93,8 @@ export class Scheduler {
     const schedulable = blueprint.items.filter((item) => !item.consumed);
     for (const item of schedulable) this.known.add(item.id);
     const target = Math.max(1, Math.ceil(schedulable.length / opts.agentCount));
+    this.pool = opts.pick === 'live' ? schedulable.slice() : null;
+    this.frontier = opts.trigger === 'scroll' ? 0 : Number.POSITIVE_INFINITY;
 
     for (const unit of unitsFor(blueprint, opts, schedulable, target, makeRng(this.seed))) {
       this.queues.push(unit);
@@ -62,7 +103,63 @@ export class Scheduler {
   }
 
   isEmpty(agentIndex: number): boolean {
+    if (this.pool) return this.pool.length === 0;
     return (this.queues[agentIndex]?.length ?? 0) === 0;
+  }
+
+  /**
+   * 每帧报一次可见范围：`trigger:'scroll'` 用它推进只降不升的前沿，
+   * `pick:'live'` 用它算「在这屏外面」的代价。
+   */
+  setViewport(band: ViewBand): void {
+    this.band = band;
+    if (this.frontier !== Number.POSITIVE_INFINITY) {
+      this.frontier = Math.max(this.frontier, band.top + (band.bottom - band.top) * UNLOCK_FRACTION);
+    }
+  }
+
+  /** 还没被领走的活，含被前沿挡住的；0 表示这局做完了。 */
+  get pending(): number {
+    if (this.pool) return this.pool.length;
+    let n = 0;
+    for (const queue of this.queues) n += queue.length;
+    return n;
+  }
+
+  /** 参考版的 backlog()：已解锁、还没落定的活。用来把时钟拧快。 */
+  get backlog(): number {
+    let n = 0;
+    this.eachUnclaimed((item) => { if (this.unlocked(item)) n++; });
+    return n;
+  }
+
+  /** 已解锁又没人领、依赖也齐的活：班组按这个决定要不要再招人。 */
+  get available(): number {
+    let n = 0;
+    this.eachUnclaimed((item) => { if (this.ready(item)) n++; });
+    return n;
+  }
+
+  private eachUnclaimed(fn: (item: BlueprintItem) => void): void {
+    if (this.pool) {
+      for (const item of this.pool) fn(item);
+      return;
+    }
+    for (const queue of this.queues) for (const item of queue) fn(item);
+  }
+
+  /** 还欠着多少件「要滚到才放行」的活。不为 0 时谁都不能收工，包括原始班底。 */
+  get gated(): number {
+    let n = 0;
+    this.eachUnclaimed((item) => { if (!this.unlocked(item)) n++; });
+    return n;
+  }
+
+  /** 最近的一件被挡住的东西在页面的哪个位置——镜头拿它当前方的靶子，滚过去才会解锁。 */
+  nextGatedY(): number | null {
+    let best = Number.POSITIVE_INFINITY;
+    this.eachUnclaimed((item) => { if (!this.unlocked(item)) best = Math.min(best, item.y); });
+    return Number.isFinite(best) ? best : null;
   }
 
   /** The distribution as handed out, so a run length can be predicted from it. */
@@ -76,19 +173,51 @@ export class Scheduler {
   }
 
   /**
-   * Claims the first dependency-free task in this agent's queue, then - only if
-   * its own queue is stuck - the first one anywhere else. A blocked item is
-   * never lost: its blocker is shallower in the tree, so some queue always has
-   * a ready task while work remains.
+   * `queued`（默认）：先在自己那条队列里找第一个能干的，找不到再顺移着抢；
+   * 被挡住的任务不会丢，它的阻碍者深度更浅，总有队列里有活。
+   * `live`：整页一个池子，按参考实现的代价挑最便宜的那个。
    */
-  take(agentIndex: number): BlueprintItem | null {
-    for (let offset = 0; offset < this.queues.length; offset++) {
-      const queue = this.queues[(agentIndex + offset) % this.queues.length];
+  take(claimer: Claimer): BlueprintItem | null {
+    if (this.pool) return this.pickLive(claimer);
+    const offset = ((claimer.index % this.queues.length) + this.queues.length) % this.queues.length;
+    for (let step = 0; step < this.queues.length; step++) {
+      const queue = this.queues[(offset + step) % this.queues.length];
       if (!queue) continue;
-      const index = queue.findIndex((item) => this.isReady(item));
+      const index = queue.findIndex((item) => this.ready(item));
       if (index >= 0) return queue.splice(index, 1)[0] as BlueprintItem;
     }
     return null;
+  }
+
+  private pickLive(claimer: Claimer): BlueprintItem | null {
+    const pool = this.pool as BlueprintItem[];
+    let best = -1;
+    let cheapest = Number.POSITIVE_INFINITY;
+    for (let index = 0; index < pool.length; index++) {
+      const item = pool[index] as BlueprintItem;
+      if (!this.ready(item)) continue;
+      const score = this.pickScore(item, claimer.y);
+      if (score < cheapest) {
+        cheapest = score;
+        best = index;
+      }
+    }
+    return best < 0 ? null : (pool.splice(best, 1)[0] as BlueprintItem);
+  }
+
+  /**
+   * 参考版 swarm.js 的 pick()：不在视口里先付一百万，带外的那一段按距离乘 0.6，
+   * 离光标纵向距离再乘 0.4，参考线反方向优惠 50 万——于是永远是「眼前这屏从上往下」，
+   * 手边那条线优先。
+   */
+  private pickScore(item: BlueprintItem, cursorY: number): number {
+    const y = item.y;
+    const top = this.band.top - BAND_SLACK;
+    const outside = y >= top && y <= this.band.bottom ? 0 : y < top ? 1 : 2;
+    return outside * OUTSIDE_PENALTY
+      + (outside === 1 ? top - y : y) * BAND_WEIGHT
+      + Math.abs(y - cursorY) * CURSOR_WEIGHT
+      - (item.kind === 'guide' ? GUIDE_BONUS : 0);
   }
 
   markDone(id: string): void {
@@ -99,8 +228,13 @@ export class Scheduler {
     return this.completed.size;
   }
 
-  private isReady(item: BlueprintItem): boolean {
-    return item.blockers.every((blocker) => !this.known.has(blocker) || this.completed.has(blocker));
+  private ready(item: BlueprintItem): boolean {
+    return this.unlocked(item) && item.blockers.every((blocker) => !this.known.has(blocker) || this.completed.has(blocker));
+  }
+
+  /** `trigger:'immediate'` 时前沿是 Infinity，这一句永远为真。 */
+  private unlocked(item: BlueprintItem): boolean {
+    return item.y <= this.frontier;
   }
 }
 
@@ -119,11 +253,11 @@ function unitsFor(
 
   switch (opts.order) {
     case 'rows':
-      return bands(schedulable, opts.agentCount, centerY, cost);
+      return bands(schedulable, opts.agentCount, topY, cost, ancestorFirst);
     case 'cols':
       return columns(blueprint, schedulable, opts.agentCount, cost);
     case 'snake': {
-      const units = bands(schedulable, opts.agentCount, centerY, cost);
+      const units = bands(schedulable, opts.agentCount, topY, cost, ancestorFirst);
       // 带内改按 x 排，奇数带整个反过来：光标扫完一条带正好停在下一条带的
       // 开头那一侧，不必横穿整页回到起点。
       units.forEach((unit, index) => {
@@ -173,6 +307,14 @@ function groups(schedulable: BlueprintItem[]): BlueprintItem[][] {
 
 const centerY = (item: BlueprintItem): number => item.y + item.height / 2;
 const centerX = (item: BlueprintItem): number => item.x + item.width / 2;
+/** 横带的切分轴：元素的顶边，不是它的中线。 */
+const topY = (item: BlueprintItem): number => item.y;
+/**
+ * 顶边齐平时按深度排，浅的先。一个容器和它的第一个子元素常常同一条顶边（子元素没有
+ * 上内边距），这时候只有深度能决定谁该先落地——反了的话子元素会一直等着它的父，
+ * 光标就得回头去别的带里抢，自上而下就断了。
+ */
+const ancestorFirst = (a: BlueprintItem, b: BlueprintItem): number => a.depth - b.depth;
 
 /**
  * One band per cursor: sorted by the key, then cut into contiguous slices.
@@ -185,10 +327,11 @@ function bands(
   agentCount: number,
   key: (item: BlueprintItem) => number,
   cost: ((item: BlueprintItem) => number) | null,
+  tie: (a: BlueprintItem, b: BlueprintItem) => number = (a, b) => centerY(a) - centerY(b),
 ): BlueprintItem[][] {
   const sorted = schedulable
     .slice()
-    .sort((a, b) => key(a) - key(b) || centerY(a) - centerY(b) || a.order - b.order);
+    .sort((a, b) => key(a) - key(b) || tie(a, b) || a.order - b.order);
   if (!cost) {
     const per = Math.max(1, Math.ceil(sorted.length / Math.max(1, agentCount)));
     const units: BlueprintItem[][] = [];
@@ -276,7 +419,9 @@ function columns(
     if (start > reach + gutter) blocks++;
     reach = Math.max(reach, end);
   }
-  return bands(schedulable, agentCount, blocks >= 2 ? centerX : centerY, cost);
+  return blocks >= 2
+    ? bands(schedulable, agentCount, centerX, cost)
+    : bands(schedulable, agentCount, topY, cost, ancestorFirst);
 }
 
 /**
