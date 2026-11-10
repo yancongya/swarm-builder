@@ -22,6 +22,13 @@ export interface TuneOptions {
    * declares its language gets a panel that matches, and demos can switch by URL.
    */
   lang?: Lang;
+  /**
+   * Where the engine injects its overlay/cursor styles. Defaults to `document`;
+   * a host that mounts `root` inside a shadow root passes that shadow root here,
+   * since document.head styles never cross the shadow boundary. The panel keeps
+   * its own shadow regardless — this only steers the rebuild layer's styles.
+   */
+  styleRoot?: Document | ShadowRoot;
 }
 
 /**
@@ -35,6 +42,7 @@ export class SwarmTuner {
   private readonly panel: Panel;
   private readonly initial: SwarmBuilderOptions;
   private readonly lang: Lang;
+  private readonly styleRoot: Document | ShadowRoot | undefined;
   private swarm: SwarmBuilder | null = null;
 
   constructor(options: TuneOptions = {}) {
@@ -46,6 +54,7 @@ export class SwarmTuner {
     this.config = { ...DEFAULT_CONFIG, ...pickPlain(options.initial ?? {}) };
     this.initial = options.initial ?? {};
     this.lang = resolveLang(options.lang);
+    this.styleRoot = options.styleRoot;
 
     this.panel = new Panel(this.config, {
       onChange: (next) => {
@@ -88,6 +97,7 @@ export class SwarmTuner {
     this.swarm = new SwarmBuilder({
       ...this.config,
       root: this.root,
+      ...(this.styleRoot ? { styleRoot: this.styleRoot } : {}),
       ignore: [CHROME_SELECTOR, ...(this.config.ignore ?? [])],
       autoStart: false,
       // HUD 一条线接管状态行、进度、班组点和工具条：面板读的是和宿主同一份

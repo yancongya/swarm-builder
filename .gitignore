@@ -6,3 +6,6 @@ dist/
 .shots/
 .consumer/
 *.tgz
+*.zip
+minitool/dist/
+minitool/build/smoke-*.png

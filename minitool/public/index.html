@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport"
+        content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <title>Swarm Builder · 为你的网页开始创造模式，集群构建前端！</title>
+  <link rel="stylesheet" href="./app.css" />
+</head>
+<body>
+  <main class="win">
+    <div class="tabs" role="tablist" aria-label="案例" data-tabs>
+      <span class="lights" aria-hidden="true"><i></i><i></i><i></i></span>
+      <button class="newtab" type="button" data-newtab title="新标签页：输入一个地址，让光标把它盖出来" aria-label="新标签页">+</button>
+    </div>
+
+    <div class="nav">
+      <button class="icon" type="button" data-back title="后退" disabled>&larr;</button>
+      <button class="icon" type="button" data-fwd title="前进" disabled>&rarr;</button>
+      <button class="icon" type="button" data-reload title="重新载入这一页">&#x21bb;</button>
+      <div class="addr" data-addr>
+        <svg class="lock" viewBox="0 0 12 12" aria-hidden="true"><path d="M3.5 5.2V4a2.5 2.5 0 0 1 5 0v1.2M2.6 5.2h6.8v4.6H2.6z" fill="none" stroke="currentColor" stroke-width="1.1" stroke-linejoin="round"/></svg>
+        <span data-url></span>
+      </div>
+      <button class="creator" type="button" data-creator aria-pressed="false"
+              title="创造者模式：所有参数都在这一个面板里改，改完点「应用并重跑」">创造者模式</button>
+      <button class="icon lang" type="button" data-lang title="界面语言：中文 / English" aria-label="切换界面语言">中/EN</button>
+      <!-- 容器禁开新窗口（target=_blank）与站外跳转：链接保留原址，点击由外壳捕获阶段拦截并提示离线。 -->
+      <a class="gh" data-github href="https://github.com/yancongya/swarm-builder"
+         rel="noreferrer" aria-label="GitHub 仓库：源码、Issue 与发行说明"
+         title="GitHub 仓库：源码、Issue 与发行说明">
+        <svg viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M8 .2a8 8 0 0 0-2.5 15.6c.4.1.5-.2.5-.4v-1.4c-2.2.5-2.7-1-2.7-1-.4-.9-.9-1.2-.9-1.2-.7-.5.1-.5.1-.5.8.1 1.2.8 1.2.8.7 1.2 1.9.9 2.4.7.1-.5.3-.9.5-1.1-1.8-.2-3.6-.9-3.6-4 0-.9.3-1.6.8-2.1-.1-.2-.4-1 .1-2.1 0 0 .7-.2 2.2.8a7.4 7.4 0 0 1 4 0c1.5-1 2.2-.8 2.2-.8.5 1.1.2 1.9.1 2.1.5.5.8 1.2.8 2.1 0 3.1-1.8 3.8-3.6 4 .3.3.6.8.6 1.5v2.2c0 .2.1.5.5.4A8 8 0 0 0 8 .2z"/></svg>
+      </a>
+    </div>
+
+    <!-- 去 iframe：案例页面以 shadow 根挂进这里；viewport 是固定定位的滚动容器（见 shell-extra.css）。 -->
+    <div class="viewport" data-viewport>
+      <div class="blank" data-blank hidden>
+        <div class="blank-inner">
+          <svg class="mark" viewBox="0 0 32 32" aria-hidden="true">
+            <circle cx="16" cy="16" r="15" fill="#232220" stroke="#4a443b" />
+            <ellipse cx="16" cy="16" rx="13" ry="6" fill="none" stroke="#c9793c" stroke-width="1.3" transform="rotate(-24 16 16)" />
+            <path d="M9 20l3.4-8.2 1.5 3.1 3-.6z" fill="#eceadf" />
+            <circle cx="23.4" cy="10.4" r="1.8" fill="#c9793c" />
+          </svg>
+          <p class="blank-title">输入一个地址，看这群光标把它盖出来</p>
+          <form class="blank-form" data-blank-form>
+            <input class="blank-input" data-blank-input type="text" spellcheck="false" autocomplete="off"
+                   placeholder="https:// 或 ./tune.html" aria-label="网址" />
+            <button class="blank-go" type="submit">重建</button>
+          </form>
+          <div class="blank-chips" data-blank-chips></div>
+          <!-- 新文案不在 demos/dicts 字典里（母本不可改），双语由外壳按 data-say 二选一填充。 -->
+          <p class="blank-note" data-say
+             data-say-zh="小工具容器不联网：第三方地址抓不进来。内置的七个案例就是全部内容——点标签栏切换，或用下面两条现成地址。"
+             data-say-en="This mini-tool container is offline: third-party addresses cannot be fetched. The seven built-in cases are the whole content — switch via the tabs, or use the two ready-made addresses below.">
+            小工具容器不联网：第三方地址抓不进来。内置的七个案例就是全部内容——点标签栏切换，或用下面两条现成地址。
+          </p>
+        </div>
+      </div>
+    </div>
+
+    <div class="statusbar" data-statusbar data-phase="idle">
+      <span class="dot" aria-hidden="true"></span>
+      <span data-hint>准备中</span>
+      <span class="sp"></span>
+      <span data-meta></span>
+    </div>
+  </main>
+
+  <!-- 经典脚本：容器禁 type=module 与内联 script；外壳逻辑与案例挂载都在 app.js 里。 -->
+  <script src="./app.js"></script>
+</body>
+</html>

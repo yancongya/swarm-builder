@@ -70,9 +70,12 @@
 问题：minitool/ 整个 untracked；`shell.ts`（33KB）是 `demos/browser.ts`（638 行）的手工 fork，今天已出现「母本修了外壳没修」的漂移。
 
 改动：
-- [ ] 1.1 完成后删减 shell 里的环境补丁层，量化 fork diff 面缩小。
+- [x] 1.1 完成后删减 shell 里的环境补丁层，量化 fork diff 面缩小。
+      删减量化：shell.ts 742→718 行、shell-extra.css 90→79 行；`.case-scroll` 注入层、
+      `style[data-sb-lib]` 抄写、`--sb-chrome-pad` 垫高三块全删，改走库的 `styleRoot`
+      （tune 透传）与「viewport 即滚动容器」（detectEnv 跨 shadow + viewBand 实测矩形）。
 - [ ] browser.ts 与 shell.ts 的共享逻辑抽公共模块（外壳骨架、案例挂载），容器差异留在适配层。
-- [ ] minitool 正式 commit 进主仓（独立构建入口保留；`dist/`、zip 不入库，`.gitignore` 补 `minitool/dist/` 与 `*.zip` 规则）。
+- [x] minitool 正式 commit 进主仓（独立构建入口保留；`dist/`、zip 不入库，`.gitignore` 补 `minitool/dist/` 与 `*.zip` 规则）。
 
 验收：git 跟踪 minitool 源码与构建链；两壳共享模块后各自案例冒烟全绿。
 依赖：1.1。

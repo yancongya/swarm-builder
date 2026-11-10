@@ -1,0 +1,80 @@
+/* 去 iframe 后的外壳滚动模型（demos/browser.css 是 iframe+grid 模型，本文件只覆盖差异）。
+   ------------------------------------------------------------------
+   - tabs + nav 固定视口顶部、statusbar 固定底部，三者不透明，永远压住内容；
+   - 顶部出血：小红书容器里系统状态栏浮在 webview 上方，fixed top:0 会被盖住。
+     --sb-safe-top 由 shell.ts 调容器官方 getWindowInfo().statusBarHeight 写入
+     （文档明令禁止硬编码；浏览器直跑 / 旧客户端没有 window.xhs → 0px 兜底，
+     桌面本就没有状态栏）。不用 env(safe-area-inset-)：Chrome 61 不识别会把
+     整条声明打成无效；
+   - 进场（html.pre-build）：顶栏（tabs+nav）整体上移藏起，构建完成
+     （onComplete → revealChrome）才落回——先看全屏构建，chrome 后登场；
+     viewport.top 同步从 safe-top 过渡到 safe-top + chrome-h；
+   - viewport 既是固定定位的外壳开窗，也是滚动容器自己（overflow-y:auto）：
+     引擎上游已支持 shadow 宿主——detectEnv 跨 shadow 边界找到宿主滚动者，
+     viewBand 按它的实测矩形算可见段（demos/shadow.html 同几何基准）。
+     案例正文直接挂 shadow 根，不再垫 .case-scroll 层、也不用 padding 承接
+     chrome 偏移（旧 frontier 按窗口顶算才需要那套垫高，假设已上游化删除）；
+     预扫描、镜头 tour、用户手动滚都落在 viewport 上，外壳文档自身永不滚动；
+   - z-index 取 2147483001：比引擎 overlay（2147483000）高一位，光标画框
+     永远爬不上浏览器 chrome——真实浏览器里页面内容也画不到浏览器 UI 上；
+   - --sb-tabs-h / --sb-chrome-h / --sb-status-h 由 shell.ts 实测写入
+     （双语换行、标签增减都会改高度），这里给兜底初值。 */
+
+html { overflow: hidden; }
+.win { display: block; height: 100vh; min-height: 0; overflow: hidden; }
+body { height: 100vh; min-height: 0; overflow: hidden; }
+
+.tabs {
+  position: fixed;
+  top: var(--sb-safe-top, 0px);
+  left: 0;
+  right: 0;
+  z-index: 2147483001;
+  transition: transform 0.4s ease;
+}
+.nav {
+  position: fixed;
+  left: 0;
+  right: 0;
+  top: calc(var(--sb-safe-top, 0px) + var(--sb-tabs-h, 36px));
+  z-index: 2147483001;
+  transition: transform 0.4s ease;
+}
+
+.viewport {
+  position: fixed;
+  left: 0;
+  right: 0;
+  /* 让开状态栏与顶栏 chrome；进场态顶栏藏起时回到 safe-top（见下）。 */
+  top: calc(var(--sb-safe-top, 0px) + var(--sb-chrome-h, 78px));
+  bottom: var(--sb-status-h, 25px);
+  /* viewport 自己就是滚动者：shadow 里的案例内容随它滚，引擎 detectEnv
+     跨 shadow 找到这里，viewBand 量它的实际可见矩形。 */
+  overflow-x: hidden;
+  overflow-y: auto;
+  transition: top 0.4s ease;
+}
+html.pre-build .viewport { top: var(--sb-safe-top, 0px); }
+.statusbar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 2147483001;
+}
+
+/* 进场态：顶栏移出屏外（tabs 底 = safe+tabsH，nav 底 = safe+chromeH）。
+   构建完成 revealChrome 摘掉类 → 同一条 transition 落回；
+   viewport.top 同步 safe-top → safe-top+chrome-h，与顶栏同节奏。 */
+html.pre-build .tabs { transform: translateY(calc(-1 * (var(--sb-safe-top, 0px) + var(--sb-tabs-h, 36px)))); }
+html.pre-build .nav { transform: translateY(calc(-1 * (var(--sb-safe-top, 0px) + var(--sb-chrome-h, 78px)))); }
+
+/* 新标签页（.blank 是 viewport 的 light DOM 子元素，靠 mountCase 的 <slot> 投射）：
+   - 引擎 overlay z=2147483000，blank 要高一位才盖得住重建层；
+   - viewport.top 已让开 chrome，blank 只需自己的 24px 起首间距；
+   - 新标签页没有可滚内容，blank 态把滚动锁住。 */
+.viewport > .blank {
+  z-index: 2147483001;
+  padding-top: 24px;
+}
+.viewport.is-blank { overflow: hidden; }
