@@ -59,7 +59,7 @@ const SECTIONS: SectionDef[] = [
   },
   {
     key: 'look', title: '外观与可访问性', short: '外观',
-    tip: '施工线配色，以及读者要求减少动效时演不演。',
+    tip: '施工线配色、读者要求减少动效时演不演，以及给无键盘宿主挂的极简 HUD。',
   },
 ];
 
@@ -210,6 +210,10 @@ const FIELDS: Field[] = [
     key: 'theme', label: '施工线色', kind: 'select', section: 'look',
     hint: 'auto 按页面底色判断明暗。',
     choices: [['auto', '跟随页面'], ['light', '浅色'], ['dark', '深色']],
+  },
+  {
+    key: 'hud', label: '极简 HUD', kind: 'check', section: 'look',
+    hint: '画面底部加一条小 HUD：进度读数、可触摸的跳过、活被锁住时的滚动提示。手机等没有键盘的宿主打开它，读者才能提前收工。默认关。',
   },
 ];
 

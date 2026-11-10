@@ -50,9 +50,9 @@
 问题：Esc/M 是键盘专属（`src/api.ts:746`），overlay `pointer-events:none`——手机读者想跳过只能干等；`needsScroll`（`src/api.ts:692`）有状态出口没画面，每个宿主都得重画「scroll to keep building」。
 
 改动：
-- [ ] 新选项 `hud?: boolean`（默认 `false`，不破坏现有宿主）。
-- [ ] 开启时渲染：进度读数 + 可触摸的「跳过」chip + `needsScroll` 提示文案。
-- [ ] 样式走 `styleRoot`（依赖 1.1），shadow 宿主同样可用。
+- [x] 新选项 `hud?: boolean`（默认 `false`，不破坏现有宿主）。
+- [x] 开启时渲染：进度读数 + 可触摸的「跳过」chip + `needsScroll` 提示文案。
+- [x] 样式走 `styleRoot`（依赖 1.1），shadow 宿主同样可用。
 
 验收：移动端视口 E2E——无键盘可跳过；活被锁住时提示出现、滚动后消失。
 

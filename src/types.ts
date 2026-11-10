@@ -210,6 +210,13 @@ export interface SwarmConfig {
    * when the host owns those keys entirely.
    */
   keys?: boolean;
+  /**
+   * Minimal on-screen HUD for hosts without a keyboard: a progress readout, a
+   * touchable skip chip and the "scroll to keep building" hint, pinned to the
+   * viewport bottom. Default false — hosts that draw their own chrome (like
+   * the tuning panel) keep it off.
+   */
+  hud?: boolean;
 }
 
 export interface SwarmBuilderOptions extends SwarmConfig {

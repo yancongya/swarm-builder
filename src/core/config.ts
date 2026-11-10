@@ -57,6 +57,7 @@ export const DEFAULT_OPTIONS: Required<SwarmConfig> = {
   score: 'generative',
   reducedMotion: 'skip',
   keys: true,
+  hud: false,
 };
 
 export function normalizeOptions(input: SwarmBuilderOptions | undefined): NormalizedOptions {
@@ -95,6 +96,7 @@ export function normalizeOptions(input: SwarmBuilderOptions | undefined): Normal
     score: options.score ?? d.score,
     reducedMotion: options.reducedMotion ?? d.reducedMotion,
     keys: options.keys ?? d.keys,
+    hud: options.hud ?? d.hud,
   };
 }
 

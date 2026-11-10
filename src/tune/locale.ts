@@ -81,8 +81,8 @@ const UI: Record<string, string> = {
     'Whether the capture walks the DOM once or pre-scrolls first, plus the rules for repeats, guides, headings and skips.',
   '合成音效与生成式配乐。浏览器要页面先有一次用户手势才放行音频。':
     'Synthesised cues and the generative score. The browser wants one user gesture on the page before audio is allowed.',
-  '施工线配色，以及读者要求减少动效时演不演。':
-    'The ink used for construction lines, and whether to play when the reader asks for reduced motion.',
+  '施工线配色、读者要求减少动效时演不演，以及给无键盘宿主挂的极简 HUD。':
+    'The ink used for construction lines, whether to play when the reader asks for reduced motion, and the minimal HUD for keyboard-less hosts.',
   '开': 'On',
   '关': 'Off',
 
@@ -146,6 +146,9 @@ const UI: Record<string, string> = {
   '滚动跟着施工前沿走（扩展 HUD 上的 Tour），运行中也能开关，结束交还页首。页面比视口高时打开。它跟的是光标在哪儿：多光标各守一条带时，镜头会被最靠后那只一把拽到页底，看着像开局就滚完了；配「随滚动解锁」才会一段一段往下走。':
     'Scroll follows the construction frontier (the Tour button on the extension’s HUD), can be toggled mid-run, and returns to the top when the run ends. Turn it on when the page is taller than the viewport. It follows where the cursors are: with several cursors each holding a band, the rearmost one yanks the camera to the bottom and it looks like the page scrolled away in the opening second. Pair it with "Unlock as you scroll" and it advances screen by screen instead.',
   '键盘快捷键': 'Keyboard shortcuts',
+  '极简 HUD': 'Minimal HUD',
+  '画面底部加一条小 HUD：进度读数、可触摸的跳过、活被锁住时的滚动提示。手机等没有键盘的宿主打开它，读者才能提前收工。默认关。':
+    'A small HUD at the bottom of the screen: progress readout, a touchable skip chip and a scroll hint while work is locked. Turn it on for keyboard-less hosts (phones) so readers can end a run early; off by default.',
   'Esc 收工、M 静音，任何键或按下都用来解锁浏览器扣住的音频。扩展还接管 Alt+Shift+S 启停；库跑在页面里不抢这组键。输入框与可编辑区域里的按键原样留给宿主。':
     'Esc stops the run and M mutes it; any key or press also unlocks audio the browser is holding. The extension also binds Alt+Shift+S; the library runs inside the page and leaves that combination alone. Keys typed into inputs and editable areas stay with the host.',
   '合成音效，无音频文件。浏览器要求页面已有用户手势；被扣住时工具条会显示「解锁」，按一下任意键或点一下页面就放行。':

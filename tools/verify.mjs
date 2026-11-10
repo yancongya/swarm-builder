@@ -1522,7 +1522,7 @@ for (const width of WIDTHS) {
   if (fold.secKeys.join(',') !== 'scale,order,cursors,capture,sound,look') problems.push(`六页顺序不对：${fold.secKeys.join(',')}`);
   if (fold.labels.join(',') !== '规模,顺序,光标,采集,声音,外观') problems.push(`页签短名不对：${fold.labels.join(',')}`);
   if (fold.active.join(',') !== 'scale' || fold.activeTab.join(',') !== 'scale') problems.push(`默认停在「规模」页不对：${fold.active.join(',')}/${fold.activeTab.join(',')}`);
-  if (fold.shown !== 6 || fold.hidden !== 23) problems.push(`默认只该露出「规模」6 行、其余 23 行收起，实测 ${fold.shown}/${fold.hidden}（共 ${fold.rows}）`);
+  if (fold.shown !== 6 || fold.hidden !== fold.rows - 6) problems.push(`默认只该露出「规模」6 行、其余收起，实测 ${fold.shown}/${fold.hidden}（共 ${fold.rows}）`);
   if (fold.tips.some((tip) => !tip.length)) problems.push('有页签没有 hover 提示');
   if (!fold.tips[1].includes('自上而下') || !fold.tips[1].includes('随滚动解锁')) problems.push(`顺序页签的提示没写当前值：${fold.tips[1]}`);
   if (!fold.tips[4].includes('开') || !fold.tips[4].includes('生成式配乐')) problems.push(`声音页签的提示没写当前值：${fold.tips[4]}`);
@@ -2914,6 +2914,75 @@ ${'<div class="strip"><img loading="lazy" width="320" height="120" src="/img/x.p
   report('shadow @1280', problems, [
     `注入: shadow=${injection.inShadow} head=${injection.inHead} · overlay 定位=${mid.position} 在外=${mid.inDoc}`,
     `滚动: #host 峰值 ${Math.round(done.scrollMax)}px · 窗口 ${Math.round(done.winY)}px · 建成 ${done.built} 项 · 完成=${finished}`,
+  ]);
+  await ctx.close();
+}
+
+// ---------------------------------------------------------------------------
+// 场景 29：极简 HUD——移动端触摸跳过；滚动提示出现、滚动后消失
+// ---------------------------------------------------------------------------
+{
+  const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
+  const page = await ctx.newPage();
+  const errors = [];
+  page.on('console', (m) => m.type() === 'error' && errors.push(m.text()));
+  page.on('pageerror', (e) => errors.push(String(e)));
+  await page.goto(`${BASE}/demos/hud.html`, { waitUntil: 'load' });
+
+  let hintSeen = true;
+  try {
+    await page.waitForFunction(() => {
+      const h = document.querySelector('.sb-hud__hint');
+      return !!h && !h.hidden;
+    }, null, { timeout: 20000 });
+  } catch { hintSeen = false; }
+
+  const before = await page.evaluate(() => {
+    const bar = document.querySelector('.sb-hud__bar');
+    const r = bar?.getBoundingClientRect();
+    return {
+      hud: !!document.querySelector('.sb-hud'),
+      progress: document.querySelector('.sb-hud__progress')?.textContent ?? '',
+      bar: r ? { w: r.width, h: r.height, bottom: r.bottom } : null,
+    };
+  });
+
+  let hintGone = false;
+  if (hintSeen) {
+    await page.evaluate(() => window.scrollTo(0, 900));
+    try {
+      await page.waitForFunction(() => document.querySelector('.sb-hud__hint')?.hidden === true, null, { timeout: 5000 });
+      hintGone = true;
+    } catch { /* 判红 */ }
+  }
+
+  let skipped = false;
+  if (before.hud) {
+    await page.tap('.sb-hud__skip');
+    try {
+      await page.waitForFunction(() => window.__hudDone === true, null, { timeout: 10000 });
+      skipped = true;
+    } catch { /* 判红 */ }
+  }
+  const after = await page.evaluate(() => ({
+    hud: !!document.querySelector('.sb-hud'),
+    overlay: !!document.querySelector('.sb-overlay'),
+    hidden: document.querySelectorAll('.sb-hidden').length,
+  }));
+  await page.screenshot({ path: `${OUT}hud-390.png` });
+
+  const problems = [];
+  if (!before.hud) problems.push('hud:true 没渲染 .sb-hud');
+  if (!hintSeen) problems.push('活被锁住时滚动提示没出现');
+  if (hintSeen && !hintGone) problems.push('滚动后提示没消失');
+  if (before.bar && (before.bar.h < 40 || before.bar.bottom > 844)) problems.push(`跳过条触摸区不够或出屏：${Math.round(before.bar.h)}px / bottom ${Math.round(before.bar.bottom)}`);
+  if (!skipped) problems.push('触摸跳过没让运行收工');
+  if (after.hud || after.overlay) problems.push('跳过后 HUD/overlay 没清掉');
+  if (after.hidden !== 0) problems.push('跳过后原页面没恢复');
+  if (errors.length) problems.push(`控制台报错 ${errors.length} 条: ${errors[0]}`);
+  report('hud @390', problems, [
+    `HUD=${before.hud} 进度=${before.progress} 跳过条=${before.bar ? `${Math.round(before.bar.w)}x${Math.round(before.bar.h)}` : '无'}`,
+    `提示: 出现=${hintSeen} 滚后消失=${hintGone} · 触摸跳过=${skipped} · 清场 hud=${after.hud} overlay=${after.overlay}`,
   ]);
   await ctx.close();
 }

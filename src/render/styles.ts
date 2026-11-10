@@ -49,6 +49,17 @@ export const CSS = `
 .sb-ghost{position:absolute;left:0;top:0;width:14px;height:14px;margin:-7px 0 0 -7px;
   border:1px solid currentColor;border-radius:2px;display:none}
 .sb-cursor.is-dragging .sb-ghost{display:block}
+.sb-hud{position:fixed;left:0;right:0;bottom:12px;bottom:calc(12px + env(safe-area-inset-bottom,0px));
+  z-index:2147483001;display:flex;flex-direction:column;align-items:center;gap:6px;pointer-events:none;
+  font:12px/1.4 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+.sb-hud__hint{padding:4px 12px;border-radius:999px;background:rgba(11,13,16,.82);color:#fff}
+.sb-hud__hint[hidden]{display:none}
+.sb-hud__bar{display:flex;align-items:center;gap:10px;padding:5px 6px 5px 14px;border-radius:999px;
+  background:rgba(11,13,16,.82);color:#fff;pointer-events:auto}
+.sb-hud__progress{font-variant-numeric:tabular-nums}
+.sb-hud__skip{min-height:34px;padding:6px 16px;border:1px solid rgba(255,255,255,.4);border-radius:999px;
+  background:transparent;color:#fff;font:inherit;cursor:pointer}
+.sb-hud__skip:active{background:rgba(255,255,255,.2)}
 `;
 
 export function injectStyle(target: Document | ShadowRoot = document): void {

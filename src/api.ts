@@ -20,6 +20,7 @@ import { planItem } from './tasks/index';
 import { Overlay } from './render/overlay';
 import { CursorLayer } from './render/cursor_layer';
 import { injectStyle } from './render/styles';
+import { Hud } from './render/hud';
 import { pageTheme } from './render/theme';
 
 /** 一屏蓝图坐标：物理的圆心、挑选的带、配乐的声像共用这一份测量。 */
@@ -155,6 +156,7 @@ export class SwarmBuilder {
   private readonly root: HTMLElement;
   private engine: Engine | null = null;
   private overlay: Overlay | null = null;
+  private hud: Hud | null = null;
   private cursors: CursorLayer | null = null;
   private scheduler: Scheduler | null = null;
   private blueprint: Blueprint | null = null;
@@ -265,6 +267,7 @@ export class SwarmBuilder {
     const theme = this.opts.theme === 'auto' ? pageTheme(this.root, blueprint.backdrop) : this.opts.theme;
     const overlay = Overlay.create(this.root, blueprint.width, blueprint.height, blueprint.rootOffset, blueprint.backdrop, theme);
     const cursors = new CursorLayer(overlay.el);
+    if (this.opts.hud) this.hud = new Hud(this.root, () => this.skip());
     const scheduler = new Scheduler(blueprint, {
       agentCount: this.opts.agentCount,
       order: this.opts.order,
@@ -434,7 +437,7 @@ export class SwarmBuilder {
     this.camera = camera;
 
     if (this.options.onProgress) engine.add(new ProgressTicker(engine, scheduler, this.options.onProgress));
-    if (this.options.onStatus) {
+    if (this.options.onStatus || this.hud) {
       const done = (): boolean => scheduler.pending === 0 && agents.every((agent) => agent.isFinished);
       engine.add(new StatusTicker(engine, () => this.report(), done));
     }
@@ -513,6 +516,8 @@ export class SwarmBuilder {
     // 参考版是收尾和弦先响，真页面亮出来那一下再落一个下落扫频，余响里把声部关掉。
     this.score?.finale();
     this.overlay?.reveal();
+    this.hud?.destroy();
+    this.hud = null;
     this.score?.release();
     this.cursors?.destroy();
     // 场上已经没光标了：读数不能还挂着一群被强行停住的替身。
@@ -708,12 +713,12 @@ export class SwarmBuilder {
 
   /** 200ms 的节拍：跟参考版 HUD 的刷新率一样，`force` 只给阶段切换用。 */
   private report(force = false): void {
-    const callback = this.options.onStatus;
-    if (!callback) return;
     const now = performance.now();
     if (!force && now - this.lastStatusAt < STATUS_MS) return;
     this.lastStatusAt = now;
-    callback(this.status);
+    const status = this.status;
+    this.hud?.update(status);
+    this.options.onStatus?.(status);
   }
 
   private teardown(soundAfter: number): void {
@@ -727,6 +732,8 @@ export class SwarmBuilder {
     this.stopKeys = null;
     this.cursors?.destroy();
     this.overlay?.destroy();
+    this.hud?.destroy();
+    this.hud = null;
     this.sound?.close(soundAfter);
     this.sound = null;
     this.score = null;

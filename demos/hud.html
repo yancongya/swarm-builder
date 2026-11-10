@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="zh">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Swarm Builder · 极简 HUD</title>
+  <style>
+    body { margin: 0; font: 14px/1.6 system-ui, sans-serif; background: #fbfbfa; color: #222; }
+    #app { padding: 24px; }
+    h1 { margin: 0 0 8px; font-size: 24px; }
+    .sub { margin: 0 0 16px; color: #666; }
+    .card { box-sizing: border-box; margin: 16px 0; padding: 16px; background: #fff;
+      border: 1px solid #ddd; border-radius: 8px; }
+    .card h3 { margin: 0 0 8px; }
+    .card p { margin: 0; }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <h1>极简 HUD 基准</h1>
+    <p class="sub">无键盘宿主：底部进度 + 触摸跳过；活被锁住时出滚动提示，滚了就消失。</p>
+    <div class="card"><h3>第一段</h3><p>视口内的活先建完，然后前沿停下等读者。</p></div>
+    <div class="card"><h3>第二段</h3><p>needsScroll 亮起时 HUD 给出「滚动以继续施工」。</p></div>
+    <div class="card"><h3>第三段</h3><p>读者往下滚，提示在下一个状态节拍里消失。</p></div>
+    <div class="card"><h3>第四段</h3><p>不想等完就点跳过：立刻收工，交还真实页面。</p></div>
+    <div class="card"><h3>第五段</h3><p>跳过走的是 skip()：全部计为建成，overlay 与 HUD 一起清掉。</p></div>
+    <div class="card"><h3>第六段</h3><p>HUD 挂在 root 上，不在 aria-hidden 的 overlay 里，读屏够得着。</p></div>
+    <div class="card"><h3>第七段</h3><p>样式走 injectStyle 的同一份 CSS，shadow 宿主里同样成立。</p></div>
+    <div class="card"><h3>第八段</h3><p>默认 hud:false——自带 chrome 的宿主不受影响。</p></div>
+  </div>
+  <script type="module" src="./hud.ts"></script>
+</body>
+</html>
