@@ -43,6 +43,7 @@ export const ROWS: [string, string][] = [
   ['取这一页的 HTML…', "Fetching this page's HTML…"],
   ['这一页没有装上创造者模式', 'This page did not pick up Creator mode'],
   ['这一页取到了，但创造者模式没装上', "This page came through, but Creator mode did not pick up"],
+  ['创造者模式装到这一页时失败了：{0}', 'Creator mode failed to install on this page: {0}'],
   ['新标签页：输入一个地址，回车就开工', 'New tab: type an address and press Enter to start'],
   ['这个地址读不懂（只认 http/https，或站内相对路径）', 'That address cannot be read (only http/https, or a path relative to this site)'],
   ["读不到这一页的 DOM（{0}）：只能原样显示，重建不了", "Cannot read this page's DOM ({0}): it can only be shown as-is, not rebuilt"],

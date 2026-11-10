@@ -51,6 +51,7 @@ export class Score {
   private graph: Graph | null = null;
   private t0 = 0;
   private disposed = false;
+  private enabled: boolean;
   private readonly slots = new Map<string, number[]>();
   private readonly lastKey = new Map<number, number>();
   private keyTimes: number[] = [];
@@ -58,9 +59,72 @@ export class Score {
   /** 每个还在响的钢琴声部什么时候安静下来，用来限住复音数。 */
   private ends: number[] = [];
 
+  constructor(on = true) {
+    this.enabled = on;
+  }
+
+  get on(): boolean {
+    return this.enabled;
+  }
+
+  /** 参考版 run() 里那句 sfx.init()：先把上下文建起来，blocked 才有东西可报。 */
+  init(): void {
+    this.open();
+  }
+
+  get blocked(): boolean {
+    return this.graph !== null && this.graph.ctx.state !== 'running';
+  }
+
+  setOn(on: boolean): void {
+    this.enabled = on;
+    const g = this.graph;
+    if (!g) {
+      if (on) this.open();
+      return;
+    }
+    const t = g.ctx.currentTime;
+    g.out.gain.cancelScheduledValues(t);
+    g.out.gain.setTargetAtTime(on ? 1 : 0, t, 0.05);
+    if (on) this.resume();
+  }
+
+  resume(): void {
+    const ctx = this.graph?.ctx;
+    if (ctx?.state === 'suspended') void ctx.resume().catch(() => {});
+  }
+
+  /** 开场那团光标在聚：一段气声 swell 压在低五度上（参考版 3363）。 */
+  intro(): void {
+    const g = this.cue();
+    if (!g) return;
+    const t = g.ctx.currentTime + 0.02;
+    const src = g.ctx.createBufferSource();
+    src.buffer = g.noise;
+    src.loop = true;
+    const bp = g.ctx.createBiquadFilter();
+    bp.type = 'bandpass';
+    bp.Q.value = 0.8;
+    bp.frequency.setValueAtTime(260, t);
+    bp.frequency.exponentialRampToValueAtTime(2400, t + 0.9);
+    bp.frequency.exponentialRampToValueAtTime(900, t + 1.8);
+    const env = this.bus(g, t, 0, 0.6);
+    env.gain.setValueAtTime(0, t);
+    env.gain.linearRampToValueAtTime(0.16, t + 0.7);
+    env.gain.exponentialRampToValueAtTime(0.0005, t + 2.2);
+    src.connect(bp);
+    bp.connect(env);
+    src.start(t);
+    src.stop(t + 2.3);
+    src.onended = () => env.disconnect();
+    for (const [midi, delay] of [[E2, 0], [E2 + 7, 0.08], [E2 + 12, 0.16]] as const) {
+      this.pad(g, midi, t + 0.3 + delay, 0.07, 2.6);
+    }
+  }
+
   /** 群蜂散开：E G# B E 琶音（参考版 3407）。 */
   start(): void {
-    const g = this.open();
+    const g = this.cue();
     if (!g) return;
     const { when } = this.grid(g, 4);
     // 参考版 3411 一个 16 分步长依次上行
@@ -72,7 +136,7 @@ export class Score {
 
   /** 一次机械按键：尖click 叠在短 thock 上（参考版 3280、3285）。 */
   key(x: number, viewportWidth: number, id = 0, n = 1, space = 0): void {
-    const g = this.open();
+    const g = this.cue();
     if (!g) return;
     const t = g.ctx.currentTime;
     // 参考版 3289 同一只光标 24ms 内不重复
@@ -92,7 +156,7 @@ export class Score {
 
   /** 鼠标按下：重 click 后跟一个更轻的松开（参考版 3304）。 */
   press(x: number, viewportWidth: number): void {
-    const g = this.open();
+    const g = this.cue();
     if (!g) return;
     const t = g.ctx.currentTime;
     this.pressTimes = this.pressTimes.filter((k) => t - k < 1);
@@ -107,7 +171,7 @@ export class Score {
 
   /** 一个元素落定：唯一的旋律事件（参考版 3318）。 */
   place(kind: string, x: number, y: number, w: number, h: number, vw: number, vh: number): void {
-    const g = this.open();
+    const g = this.cue();
     if (!g) return;
     // 参考版 3322 只有盒子、图片、副本、参考线会唱，文字与线条保持打击乐
     if (kind === 'text' || kind === 'edit' || kind === 'line') return;
@@ -145,7 +209,7 @@ export class Score {
 
   /** 标题逐级放大：一小段上行（参考版 3346）。 */
   grow(x: number, y: number, vw: number, vh: number): void {
-    const g = this.open();
+    const g = this.cue();
     if (!g) return;
     // 参考版由调用方传阶梯步号；这里按落点在页面里的纵向位置换算
     const step = Math.floor(clamp(y / Math.max(1, vh), 0, 1) * 8);
@@ -154,7 +218,7 @@ export class Score {
 
   /** 拖拽吸附到参考线（参考版 3353，只用到横向声像）。 */
   snap(x: number, _y: number, vw: number, _vh: number): void {
-    const g = this.open();
+    const g = this.cue();
     if (!g) return;
     const t = g.ctx.currentTime + 0.004;
     const pan = this.pan(x, vw);
@@ -164,7 +228,7 @@ export class Score {
 
   /** 最后一个和弦响起：E 大调 add9，扫弦（参考版 3416）。 */
   finale(): void {
-    const g = this.open();
+    const g = this.cue();
     if (!g) return;
     const { when } = this.grid(g, 2);
     const chord = [E2, E2 + 7, E2 + 12, E2 + 16, E2 + 19, E2 + 26, E2 + 28, E2 + 31, E2 + 36, E2 + 43];
@@ -176,7 +240,7 @@ export class Score {
 
   /** 回到真页面：下落扫频（参考版 3426）。 */
   release(): void {
-    const g = this.open();
+    const g = this.cue();
     if (!g) return;
     const t = g.ctx.currentTime + 0.01;
     const src = g.ctx.createBufferSource();
@@ -197,7 +261,8 @@ export class Score {
     this.piano(g, E2 + 12, t + 0.05, 0.3, 0, 2.5);
   }
 
-  dispose(): void {
+  close(after = 0): void {
+    if (this.disposed) return;
     const g = this.graph;
     this.graph = null;
     this.disposed = true;
@@ -206,8 +271,8 @@ export class Score {
     const t = g.ctx.currentTime;
     g.out.gain.cancelScheduledValues(t);
     g.out.gain.setValueAtTime(g.out.gain.value, t);
-    g.out.gain.linearRampToValueAtTime(0, t + 0.05);
-    setTimeout(() => void g.ctx.close().catch(() => {}), 250);
+    g.out.gain.linearRampToValueAtTime(0, t + Math.max(0.05, after));
+    setTimeout(() => void g.ctx.close().catch(() => {}), (after + 0.2) * 1000);
   }
 
   private pan(x: number, vw: number): number {
@@ -376,8 +441,14 @@ export class Score {
     return buffer;
   }
 
+  /** 参考版 ready()：上下文在跑、而且没静音，才真的排一个音下去。 */
+  private cue(): Graph | null {
+    const g = this.open();
+    return g && this.enabled && g.ctx.state === 'running' ? g : null;
+  }
+
   private open(): Graph | null {
-    if (this.disposed) return null;
+    if (this.disposed || !this.enabled) return null;
     if (!this.graph) {
       const Ctor = window.AudioContext;
       if (!Ctor) return null;
@@ -429,9 +500,17 @@ export interface ScoreStage {
  * 所以 Score 本身可以照原样只懂音乐。
  */
 export class ScoreBus implements SoundSink {
-  private readonly score = new Score();
+  private readonly score: Score;
 
-  constructor(private readonly stage: () => ScoreStage) {}
+  constructor(private readonly stage: () => ScoreStage, on = true) {
+    this.score = new Score(on);
+    this.score.init();
+  }
+
+  get on(): boolean { return this.score.on; }
+  get blocked(): boolean { return this.score.blocked; }
+  setOn(on: boolean): void { this.score.setOn(on); }
+  resume(): void { this.score.resume(); }
 
   play(event: SoundEvent, spot?: SoundSpot): void {
     const st = this.stage();
@@ -469,8 +548,9 @@ export class ScoreBus implements SoundSink {
     return spot.kind === 'media' ? 'image' : spot.kind;
   }
 
+  intro(): void { this.score.intro(); }
   start(): void { this.score.start(); }
   finale(): void { this.score.finale(); }
   release(): void { this.score.release(); }
-  dispose(): void { this.score.dispose(); }
+  close(after = 0): void { this.score.close(after); }
 }

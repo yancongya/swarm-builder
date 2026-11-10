@@ -16,17 +16,22 @@ export type TriggerMode = 'immediate' | 'scroll';
 export type ScanMode = 'single' | 'pre-scroll';
 export type ScoreMode = 'off' | 'generative';
 export type ReducedMotionMode = 'run' | 'skip';
-
-export interface SwarmBuilderOptions {
-  /** Element whose subtree is rebuilt. Defaults to document.body. */
-  root?: HTMLElement;
-  /** Number of cursors working in parallel. 1-24, default 6. */
+/**
+ * The serialisable half of the options: everything a tuning panel can show, a
+ * snippet can export and `DEFAULT_OPTIONS` can list. The element handle and the
+ * callbacks live on `SwarmBuilderOptions` instead.
+ */
+export interface SwarmConfig {
+  /**
+   * Home crew size. 1-24, default 8 — the reference extension's MIN_AGENTS.
+   * With `agents: 'auto'` this is the floor, not the headcount.
+   */
   agentCount?: number;
   /** Global time multiplier. 0.25-8, default 1. */
   speed?: number;
   /** CSS selector(s); matched elements and their descendants are skipped. */
   ignore?: string | string[];
-  /** Upper bound on rebuild items, protects long pages. Default 400. */
+  /** Upper bound on rebuild items. Default 4000, the reference's MAX_ITEMS. */
   maxItems?: number;
   /** Build repeated siblings once and stamp the rest. Default true. */
   duplicate?: boolean;
@@ -38,16 +43,24 @@ export interface SwarmBuilderOptions {
   maxGuides?: number;
   /** Headings grow to their real size while being typed. Default true. */
   grow?: boolean;
-  /** Synthesised typing and drag clicks. Default false: sound needs a user gesture. */
+  /**
+   * Sound. Default true, as in the extension. Browsers hold the AudioContext
+   * until a gesture, so the run reports `soundBlocked` and the first keydown or
+   * pointerdown unlocks it; `keys` binds M to mute.
+   */
   sound?: boolean;
   /** Cursors steer around each other mid-flight. Default true. */
   flocking?: boolean;
-  /** Scrolls the page so the work stays in view. Default false: the host owns the scroll. */
+  /**
+   * Scrolls the page so the work stays in view. Default false, exactly as the
+   * extension: the reader scrolls (or presses Tour) and the frontier follows.
+   * With `trigger: 'scroll'` and no tour, a long page waits below the fold.
+   */
   tour?: boolean;
   /** Palette for the construction lines. 'auto' reads the page background. */
   theme?: 'auto' | 'light' | 'dark';
   /**
-   * Seconds to stretch or squeeze the entrance to; 0 keeps the natural pace.
+   * Seconds to stretch or squeeze the run to; 0 keeps the natural pace.
    * Overrides `speed` for the run, because the pace is now a fixed goal.
    */
   targetDuration?: number;
@@ -59,10 +72,11 @@ export interface SwarmBuilderOptions {
   performanceMode?: 'auto' | 'high' | 'low';
   /**
    * Which order the cursors take the page in.
-   * 'group' (default) keeps a subtree on one cursor and balances the cursors by
-   * size — fastest, and the swarm spreads over the whole page at once.
-   * 'rows' splits the page into one horizontal band per cursor and each cursor
-   * sweeps downward, so a tall page visibly builds top to bottom (pairs with `tour`).
+   * 'rows' (default) splits the page into one horizontal band per cursor. With
+   * the default `pick: 'live'` the bands only seed the spawn order — work is
+   * priced each frame, so the swarm sweeps the visible screen top to bottom.
+   * 'group' keeps a subtree on one cursor and balances the cursors by size,
+   * which spreads the swarm over the whole page at once.
    * 'cols' is 'rows' turned on its side: one vertical band per cursor, the page
    * fills left to right. It needs a page that is actually wider than one column —
    * a single-column page degenerates to one busy cursor, so bands fall back to
@@ -86,112 +100,173 @@ export interface SwarmBuilderOptions {
    */
   balance?: boolean;
   /**
-   * Seed for `order: 'random'`. 0 (default) draws a fresh sequence every run;
-   * any other value makes that run reproducible.
+   * Seed for `order: 'random'` and for the opening cluster's entry points.
+   * 0 (default) draws a fresh sequence every run; any other value replays it.
    */
   seed?: number;
-  /** Start on the next frame instead of waiting for start(). */
-  autoStart?: boolean;
-
-  // ---------------------------------------------------------------------
-  // 复刻两套参考实现的开关。全部默认关：关掉时运行算法与上面那组选项完全一致，
-  // 不会多一次滚动、多一个光标，也不会多一声配音。
-  // ---------------------------------------------------------------------
 
   /**
    * What a cursor does while it has nothing to build.
-   * 'idle' (default) parks it exactly where its last action landed.
-   * 'live' flies it on the extension's own model: velocity integration around a
-   * breathing orbit ring (R = 135px ±18%), a tanh swirl, a radial spring clamped
-   * to [-2600, 1400], per-cursor curl, and velocity alignment with neighbours
-   * inside 90px (0.7 own / 0.3 neighbour). Glyphs lean into their heading and
-   * flatten while pressing.
+   * 'live' (default) flies it on the extension's own model: velocity integration
+   * around a breathing orbit ring (R = 135px ±18%), a tanh swirl, a radial spring
+   * clamped to [-2600, 1400], per-cursor curl, and velocity alignment with
+   * neighbours inside 90px (0.7 own / 0.3 neighbour). Glyphs lean into their
+   * heading and flatten while pressing.
+   * 'idle' parks it exactly where its last action landed.
    */
   flight?: FlightMode;
   /**
-   * How the real pointer is treated. The pointermove listener is only attached
-   * when this is not 'ignore'.
-   * 'ignore' (default) - the swarm never notices the reader.
-   * 'follow' - the orbit centre is the pointer itself.
+   * How the real pointer is treated. The pointermove listener is attached when
+   * this is not 'ignore', or when `gather` needs it to spot a touch.
+   * 'follow' (default) - the orbit centre is the pointer itself, as in the
+   * extension; with no pointer on the page the centre drifts.
    * 'repel' - a 48px ring around the pointer shoves cursors out, with an outward
    * impulse when they move into it. Only reads the pointer inside the orbit
    * field, so it needs `flight: 'live'` to do anything.
+   * 'ignore' - the swarm never notices the reader.
    */
   pointer?: PointerMode;
   /**
    * Whether the crew size is fixed.
-   * 'fixed' (default) - exactly agentCount cursors; one hides when its queue empties.
-   * 'auto' - agentCount becomes the floor and 48 the ceiling; the target rises
-   * with scroll velocity (every 40px/s) and with half the unlocked work, at most
-   * one arrival every 35ms from a random edge, and a cursor that has worked and
-   * then sat idle for 2.5s leaves.
+   * 'auto' (default) - agentCount is the floor and 48 the ceiling; the target
+   * rises with scroll velocity (every 40px/s) and with half the unlocked work,
+   * at most one arrival every 35ms from a random edge, and a cursor that has
+   * worked and then sat idle for 2.5s leaves.
+   * 'fixed' - exactly agentCount cursors; one hides when its queue empties.
    */
   agents?: AgentPool;
   /**
+   * The extension's opening. Default true: 18 cursors fly in from the left and
+   * right edges (40-240px out, spread over 5-95% of the viewport height) and
+   * orbit the viewport centre at 0.7 of the usual radius; the first `agentCount`
+   * of them are the home crew, the rest temps. With `agents: 'fixed'` the
+   * opening uses exactly `agentCount` instead. Work is released as soon as the
+   * reader wheels, or a cursor comes within 48px of the pointer; left alone it
+   * starts after 2.4s. The camera, the crew hiring and the score all wait for
+   * that moment.
+   */
+  gather?: boolean;
+  /**
    * How work is claimed.
-   * 'queued' (default) - queues are cut up front by `order`; a cursor takes from
-   * its own queue and steals only when that queue is blocked.
-   * 'live' - the extension's runtime pick: every unlocked task is priced from
-   * the cursor (unreached x 1e6 + distance off the visible band x 0.6 +
-   * |y - cursorY| x 0.4, guides get a -5e5 bonus) and the cheapest wins, so
+   * 'live' (default) - the extension's runtime pick: every unlocked task is
+   * priced from the cursor (unreached x 1e6 + distance off the visible band x
+   * 0.6 + |y - cursorY| x 0.4, guides get a -5e5 bonus) and the cheapest wins, so
    * cursors chase the work in front of them instead of their assigned band.
+   * 'queued' - queues are cut up front by `order`; a cursor takes from its own
+   * queue and steals only when that queue is blocked.
    */
   pick?: PickMode;
   /**
    * When an item is allowed to be picked up.
-   * 'immediate' (default) - the whole blueprint is open from the first frame.
-   * 'scroll' - only items above the scroll frontier are ready. The frontier is
-   * the line 12% above the bottom of the visible area (the reference's
-   * rootMargin -12%, i.e. its `trigger: 0.88`); it only ever moves downward, and
+   * 'scroll' (default) - only items whose top edge has entered the visible area
+   * are ready: the frontier is the bottom of the viewport, exactly where the
+   * extension puts it (`frontier = viewBot`). It only ever moves downward, and
    * it needs `tour` or a host that scrolls.
+   * 'immediate' - the whole blueprint is open from the first frame.
    */
   trigger?: TriggerMode;
   /**
    * Raise the clock while work piles up: speed x min(1 + backlog x 0.45, 4),
-   * recomputed every frame from the unlocked-but-unclaimed count. Off by
-   * default, because it turns `speed` and `targetDuration` into a floor instead
-   * of the pace.
+   * recomputed every frame from the unlocked-but-unclaimed count. Default true,
+   * as both references pace themselves by the work in front of them; it turns
+   * `speed` and `targetDuration` into a floor instead of the pace.
    */
   adaptiveSpeed?: boolean;
   /**
    * How much of the page the capture pass sees.
-   * 'single' (default) - one synchronous walk of `root`; what is laid out is
-   * what gets built.
-   * 'pre-scroll' - the extension's pass: wait for fonts and images (bounded),
-   * find the element that actually scrolls (a `main{overflow:auto}` page is not
-   * the window), walk it down in up to 28 viewport-sized steps so lazy and
-   * content-visibility content materialises, return to the top, settle, then
-   * capture. It also drops what a real reader cannot see - screen-reader-only
+   * 'pre-scroll' (default) - the extension's pass: wait for fonts and images
+   * (bounded), find the element that actually scrolls (a `main{overflow:auto}`
+   * page is not the window), walk it down in up to 28 viewport-sized steps so
+   * lazy and content-visibility content materialises, return to the top, settle,
+   * then capture. It also drops what a real reader cannot see - screen-reader-only
    * boxes, content-visibility:hidden subtrees, closed <details> - and orders
    * items by paint order (z-index, then positioning, then document order).
+   * 'single' - one synchronous walk of `root`; what is laid out is what gets built.
    */
   scan?: ScanMode;
   /**
    * The audio layer, once `sound` is on.
-   * 'off' (default) - synthesised key/draw/stamp clicks only.
-   * 'generative' - the extension's score: 104 BPM sixteenth grid, E-minor
-   * pentatonic from MIDI 40, glass-piano voices with an inharmonic 2.756
+   * 'generative' (default) - the extension's score: 104 BPM sixteenth grid,
+   * E-minor pentatonic from MIDI 40, glass-piano voices with an inharmonic 2.756
    * partial, box area choosing the octave and x choosing the degree, at most one
    * note per slot and 28 voices live, a generated 3.2s room impulse, key clacks
-   * panned by cursor position, and an E-major-add9 strum when the run finishes.
+   * panned by cursor position, an opening swell, and an E-major-add9 strum when
+   * the run finishes.
+   * 'off' - synthesised key/draw/stamp clicks only.
    */
   score?: ScoreMode;
   /**
    * Behaviour for prefers-reduced-motion: reduce.
-   * 'run' (default) - animate anyway; this is decoration, not a parallax trap,
-   * and the host asked for it.
-   * 'skip' - the reference library's rule: build nothing, reveal the real page,
-   * report immediately.
+   * 'skip' (default) - build nothing, reveal the real page, report immediately.
+   * 'run' - animate anyway; this is decoration, not a parallax trap, and the host
+   * asked for it.
    */
   reducedMotion?: ReducedMotionMode;
+  /**
+   * Keyboard shortcuts, default true as in the extension: Escape stops the run
+   * and hands the page back, M toggles sound, and any key unlocks audio held by
+   * the autoplay policy. Unlike the extension, keystrokes typed into a form
+   * field are left alone, so the host's own inputs keep working. Turn it off
+   * when the host owns those keys entirely.
+   */
+  keys?: boolean;
+}
+
+export interface SwarmBuilderOptions extends SwarmConfig {
+  /** Element whose subtree is rebuilt. Defaults to document.body. */
+  root?: HTMLElement;
+  /** Start on the next frame instead of waiting for start(). */
+  autoStart?: boolean;
   onStart?: (agents: AgentInfo[]) => void;
   onProgress?: (built: number, total: number) => void;
   onComplete?: (result: SwarmResult) => void;
+  /**
+   * Called whenever the run's readable state changes, at most every 200ms —
+   * the same throttle the extension's HUD refreshes on. The panel and any
+   * host-drawn status line read this instead of reaching into the run.
+   */
+  onStatus?: (status: SwarmStatus) => void;
+}
+
+/** Where the run is in its lifecycle; `paused` wins over the phase it froze in. */
+export type SwarmPhase = 'idle' | 'scanning' | 'gathering' | 'building' | 'paused' | 'done';
+
+export interface SwarmStatus {
+  phase: SwarmPhase;
+  /** Items finished so far. */
+  built: number;
+  /** Items the capture produced, guides included. */
+  total: number;
+  /** Cursors on stage right now, temps included. */
+  agents: number;
+  /** Of those, how many are holding a job. */
+  busy: number;
+  /** The last few cursors holding a job — the extension's row of crew dots. */
+  busyCrew: readonly AgentInfo[];
+  /** Current clock multiplier, adaptive gate included. */
+  speed: number;
+  /** Base multiplier before the adaptive gate; the 1x/2x/3x button reads this. */
+  pace: number;
+  /** Whether sound is enabled (not whether it is audible). */
+  sound: boolean;
+  /** AudioContext is held by the autoplay policy: one gesture unlocks it. */
+  soundBlocked: boolean;
+  /** The camera is following the frontier in this run. */
+  tour: boolean;
+  /**
+   * Work is waiting behind the scroll frontier and nothing is ready in front of
+   * it — the extension's 「scroll to keep building」 state.
+   */
+  needsScroll: boolean;
+  /** Seconds since start(); frozen once the run is done. */
+  elapsed: number;
 }
 
 export interface SwarmResult {
   built: number;
   dropped: number;
+  /** How many cursors did at least one job, the extension's 「N agents」 count. */
+  agents: number;
   durationMs: number;
   /**
    * The seed the run shuffled with. Passing 0 means "draw one", so this is the

@@ -1,10 +1,10 @@
 import { SwarmBuilder } from '../index';
-import type { AgentInfo, SwarmBuilderOptions, SwarmResult } from '../types';
+import type { SwarmBuilderOptions, SwarmConfig, SwarmResult } from '../types';
 import { Panel, type Corner, type Phase } from './panel';
 import { resolveLang, type Lang } from './locale';
-import { CHROME_SELECTOR, DEFAULT_CONFIG, buildSnippet, describeRoot, pickPlain, type PlainConfig } from './snippet';
+import { CHROME_SELECTOR, DEFAULT_CONFIG, buildSnippet, describeRoot, pickPlain } from './snippet';
 
-export type { PlainConfig } from './snippet';
+export type { SwarmConfig } from '../types';
 export type { Corner, Phase } from './panel';
 export { DEFAULT_CONFIG } from './snippet';
 
@@ -30,7 +30,7 @@ export interface TuneOptions {
  * with the page it is tuning.
  */
 export class SwarmTuner {
-  private config: PlainConfig;
+  private config: SwarmConfig;
   private readonly root: HTMLElement;
   private readonly panel: Panel;
   private readonly initial: SwarmBuilderOptions;
@@ -70,6 +70,11 @@ export class SwarmTuner {
       onCopy: () => void this.copy(),
       onReset: () => this.reset(),
       onRestore: () => this.restore(),
+      // 下面四颗钮改的是正在跑的这一局，和参数行（下一局才生效）分开走。
+      onTour: () => this.swarm?.toggleTour(),
+      onSpeed: () => this.swarm?.cycleSpeed(),
+      onSound: () => this.swarm?.toggleSound(),
+      onReplay: () => (this.swarm ? this.swarm.replay() : this.apply()),
     }, options.position ?? 'bottom-right', options.open ?? false, this.lang);
     document.body.appendChild(this.panel.host);
   }
@@ -85,21 +90,11 @@ export class SwarmTuner {
       root: this.root,
       ignore: [CHROME_SELECTOR, ...(this.config.ignore ?? [])],
       autoStart: false,
-      onStart: (agents: AgentInfo[]) => {
-        this.panel.setPhase('running');
-        this.panel.setStatus('施工中 · {0} 个光标', agents.length);
-        this.initial.onStart?.(agents);
-      },
-      onProgress: (built: number, total: number) => {
-        this.panel.setStatus('重建中 {0}/{1}', built, total);
-        this.panel.setProgress(built, total);
-        this.initial.onProgress?.(built, total);
-      },
+      // HUD 一条线接管状态行、进度、班组点和工具条：面板读的是和宿主同一份
+      // `SwarmStatus`，不再自己拼「重建中 x/y」那种会盖掉实时状态的临时句。
+      onStatus: (status) => this.panel.setHud(status),
       onComplete: (result: SwarmResult) => {
-        this.panel.setPhase('done');
-        const seconds = (result.durationMs / 1000).toFixed(1);
-        if (result.dropped > 0) this.panel.setStatus('完成 {0} 项 · {1}s · 丢弃 {2}', result.built, seconds, result.dropped);
-        else this.panel.setStatus('完成 {0} 项 · {1}s', result.built, seconds);
+        this.panel.setResult(result);
         this.initial.onComplete?.(result);
       },
     });

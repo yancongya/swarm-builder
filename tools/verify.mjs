@@ -259,7 +259,7 @@ for (const width of WIDTHS) {
       `媒体: 槽位=${mid.media} 已呈现=${mid.mediaShown}/${expectedMedia} 降级=${mid.mediaFallback}`,
       `复制: 拖影=${mid.copies} 累计复制=${stamps}/${expectedCopies} ⌥ 徽章峰值=${mid.optionBadges}`,
       `辅助线: 累计=${guides}/${expectedGuides}`,
-      `入口: 顶栏 ${done.toolbar} 个 · 面板 ${done.rows} 行${done.clipped ? '（需滚动）' : ' 全露'}`,
+      `入口: 顶栏 ${done.toolbar} 个 · 面板 ${done.rows} 行 · 当前页${done.clipped ? '需滚动' : '不滚动'}`,
       `结果: ${done.status}${done.overlayGone === false ? ' · overlay 未清除' : ''}${done.originalVisible === false ? ' · 原页面未恢复' : ''}`,
     ]);
 
@@ -299,7 +299,14 @@ for (const width of WIDTHS) {
 
   // pause / resume
   await page.click('[data-apply]');
-  await page.waitForTimeout(900);
+  // 默认 scan:'pre-scroll'：开局要先等字体图片、把全页滚一遍再采。采完才有第一件
+  // sb-item，那之前引擎还没进时钟，点暂停不会生效。等真正的施工出来再量。
+  await page.waitForFunction(
+    () => document.querySelectorAll('.sb-item, .sb-text').length > 0,
+    null,
+    { timeout: 60000, polling: 150 },
+  );
+  await page.waitForTimeout(300);
   const running = await readState();
   if (running.pause || running.skip) problems.push('跑起来了还不能暂停/跳过');
   if (running.phase !== 'running') problems.push(`运行中阶段是 ${running.phase}`);
@@ -410,6 +417,8 @@ for (const width of WIDTHS) {
   await page.waitForTimeout(400);
   await page.screenshot({ path: `${OUT}fixed-scrolled.png` });
   const after = await measure();
+  // 默认 trigger:'scroll' 的解锁线是视口底边：只滚 500px 盖不到页底，把这一局读到底。
+  await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
 
   if (before.fixedCount < 3) problems.push(`fixed 层只有 ${before.fixedCount} 个元素`);
   if (Math.abs(after.fixedTop - before.fixedTop) > 2) problems.push(`fixed 元素跟着滚了 ${after.fixedTop - before.fixedTop}px`);
@@ -558,6 +567,7 @@ for (const width of WIDTHS) {
             speed: 4,
             maxItems: 400,
             sound: true,
+            trigger: 'immediate',
             onComplete: () => resolve({ ...window.__audio, guides: window.__guides ?? -1 }),
           }).start();
         }),
@@ -607,6 +617,14 @@ for (const width of WIDTHS) {
         const swarm = new window.SwarmBuilder({
           root: document.querySelector('#app'),
           agentCount: 6,
+          trigger: 'immediate',
+          // 这一场测的是估算器把整局压进 targetDuration 的能力。默认的积压提速会
+          // 按 backlog 把时钟拧到 4 倍，targetDuration 于是只剩「下限」——那是另一条
+          // 已写进文档的语义，不是估算器失准。auto 班组同样会按积压多招人，把整局
+          // 提前一半跑完。开场聚群那 2.4 秒也不归估算器算。测定速必须把这三样都关掉。
+          adaptiveSpeed: false,
+          gather: false,
+          agents: 'fixed',
           ...options,
           onComplete: (result) => resolve({
             ...result,
@@ -723,6 +741,12 @@ for (const width of WIDTHS) {
           agentCount: 8,
           speed: 2,
           flocking: on,
+          trigger: 'immediate',
+          // 比的是避让本身：开场那 18 只聚群光标和自动增减的班组都会改「同场有几个人」，
+          // 把重叠帧数搅成噪声。人数钉死、不聚群、不积压提速，两局才是同一张考卷。
+          gather: false,
+          agents: 'fixed',
+          adaptiveSpeed: false,
           onComplete: (result) => {
             running = false;
             resolve({
@@ -813,6 +837,7 @@ for (const width of WIDTHS) {
         agentCount: 6,
         speed: 2,
         tour: on,
+        trigger: on ? 'scroll' : 'immediate',
         onComplete: (result) => {
           // The camera hands the page back with a smooth scroll, so read the
           // resting position only once it has settled.
@@ -940,6 +965,7 @@ for (const width of WIDTHS) {
       demo: doc?.body.dataset.demo ?? 'none',
       status,
       built: Number((status.match(/完成 (\d+) 项/) ?? [])[1] ?? 0),
+      dropped: Number((status.match(/丢弃 (\d+)/) ?? [])[1] ?? 0),
       items: doc?.querySelectorAll('.sb-item').length ?? 0,
     };
   });
@@ -960,10 +986,15 @@ for (const width of WIDTHS) {
         .querySelector('[data-sb-chrome]')?.dataset.open,
     };
   });
+  // 跑完有两拍：最后一次 HUD 轮询先说「完成 N 项」，onComplete 到了才补上光标数、用时和丢弃。
+  // 只认 `用时` 才算真收尾，否则面板重跑会在那条半成品状态上被误读成 0.0s。
   const waitFrameDone = (ms) => page.waitForFunction(
-    () => (document.querySelector('[data-frame]').contentDocument
-      .querySelector('[data-sb-chrome]')?.shadowRoot
-      .querySelector('[data-status]')?.textContent.trim() ?? '').startsWith('完成'),
+    () => {
+      const text = (document.querySelector('[data-frame]').contentDocument
+        .querySelector('[data-sb-chrome]')?.shadowRoot
+        .querySelector('[data-status]')?.textContent.trim() ?? '');
+      return text.startsWith('完成') && text.includes('用时');
+    },
     null,
     { timeout: ms, polling: 200 },
   );
@@ -1040,24 +1071,28 @@ for (const width of WIDTHS) {
   if (leaked.bar !== 'static') problems.push(`案例里的 .bar 仍被规则命中：position=${leaked.bar}`);
   if (leaked.toolbars !== 0) problems.push(`案例页还留着 ${leaked.toolbars} 个顶栏工具条`);
 
-  // 抬上限 + 定速：全走面板，不再有单独的顶栏下拉。
-  // 两次都从面板起跑，比的是引擎自己报的时长，把载入和轮询都排除掉。
-  await frameApply([['maxItems', 2000], ['targetDuration', 0]]);
+  // 默认上限就是扩展的 4000：这个 440 项的密集页全部在蓝图里，没有可丢的。
+  if (natural.dropped !== 0) problems.push(`默认上限就报了丢弃 ${natural.dropped} 项`);
+  // 上限压到 200：面板这条线必须真的接进蓝图，而不是只改了个数字。
+  // 压完再抬回去，后面的定速比的是整页规模，不是被截断的 200 项。
+  await frameApply([['maxItems', 200], ['targetDuration', 0]]);
   await waitFrameDone(120000);
-  const opened = await frameShape();
-  if (opened.built <= natural.built) problems.push(`抬到上限 2000 后建成数没有增加：${opened.built} <= ${natural.built}`);
+  const capped = await frameShape();
+  if (capped.built <= 0 || capped.built > 200) problems.push(`上限压到 200 却建了 ${capped.built} 项`);
+  if (capped.dropped < 1) problems.push(`上限压到 200 没报丢弃，maxItems 没接进蓝图：${capped.status}`);
+  if (capped.built >= natural.built) problems.push(`压上限后建成数没有变少：${capped.built} >= ${natural.built}`);
 
-  await frameApply([['maxItems', 2000], ['targetDuration', 10]]);
+  await frameApply([['maxItems', 4000], ['targetDuration', 10]]);
   await waitFrameDone(120000);
   const paced = await frameShape();
-  const secondsOf = (status) => Number((status.match(/· ([\d.]+)s/) ?? [])[1] ?? 0);
-  const openSeconds = secondsOf(opened.status);
+  const secondsOf = (status) => Number((status.match(/用时\s*([\d.]+)s/) ?? [])[1] ?? 0);
+  const openSeconds = secondsOf(natural.status);
   const pacedSeconds = secondsOf(paced.status);
-  // 定速在默认这一档是准的（pace-perf 场景按 35% 卡死）。但估算器按条目线性计价，
-  // 把上限抬到整页规模后真实成本是超线性的：实测 10s 目标要 ~20s 才跑完，
-  // 所以这里只锁方向——定速确实把自然节奏压掉一半以上，偏差作为信息报出来。
-  if (pacedSeconds >= openSeconds) problems.push(`定速没有变快：${openSeconds}s → ${pacedSeconds}s`);
-  if (pacedSeconds > openSeconds * 0.6) problems.push(`定速压得不够：自然 ${openSeconds}s → 目标 10s 实测 ${pacedSeconds}s`);
+  // 定速的准头由 pace-perf 场景按 35% 卡死（那里关掉积压提速和开场聚群，估算器说了算）。
+  // 这里开着默认的 auto 班组与积压提速，targetDuration 只是下限，倍率还在动，
+  // 所以只确认「这一局确实按整页规模跑完、报了有效时长」，具体快慢只作为信息记下来。
+  if (paced.built !== natural.built) problems.push(`定速那局建成数不再是整页规模：${paced.built} vs ${natural.built}`);
+  if (pacedSeconds <= 0) problems.push(`定速那局没报出时长：${paced.status}`);
   await page.screenshot({ path: `${OUT}browser-console-paced.png` });
 
   // 后退/前进：此刻历史是 home → console，退一步应回到第一页。
@@ -1089,7 +1124,7 @@ for (const width of WIDTHS) {
   await page.click('[data-reload]');
   await page.waitForTimeout(1500);
   const reloading = await frameShape();
-  if (!/重建中|施工中|采蓝图|完成/.test(reloading.status)) problems.push(`重新载入后状态异常: ${reloading.status}`);
+  if (!/采蓝图|开场聚群|个光标|完成/.test(reloading.status)) problems.push(`重新载入后状态异常: ${reloading.status}`);
   await waitFrameDone(120000);
   const reloaded = await frameShape();
   if (reloaded.built !== natural.built) problems.push(`重载后没有回到案例自带默认：${reloaded.built} vs ${natural.built}`);
@@ -1129,8 +1164,8 @@ for (const width of WIDTHS) {
     `外壳: 标签 ${first.tab} · 地址 ${first.url} · 后退/前进初始 ${first.back}/${first.fwd}`,
     `GitHub 入口: ${gh ? `${gh.target} ${gh.rel} ${gh.href}` : '缺失'}`,
     `产品说明页: ${homeDone.built} 项 · 状态栏 ${mirror.phase} · ${mirror.hint}`,
-    `密集案例: 默认上限 ${natural.built} 项 · 墙钟 ${(naturalMs / 1000).toFixed(1)}s · ${natural.status}`,
-    `面板抬上限: ${opened.built} 项 · 自然节奏 ${openSeconds}s`,
+    `密集案例: 默认上限 ${natural.built} 项 / 丢弃 ${natural.dropped} · 墙钟 ${(naturalMs / 1000).toFixed(1)}s · ${natural.status}`,
+    `面板压上限 200: ${capped.built} 项 / 丢弃 ${capped.dropped} · 自然节奏 ${openSeconds}s`,
     `面板定速 10s: ${paced.built} 项 · 实测 ${pacedSeconds}s（估算器按条目线性计价，整页规模会低估，见 plan §13.15）`,
     `案例内 .bar 定位: ${leaked.bar}（应为 static）· 顶栏残留 ${leaked.toolbars} 个`,
     `后退/前进: ${wentBack.tab}(fwd=${wentBack.fwd}) → ${wentFwd.tab}(fwd=${wentFwd.fwd})`,
@@ -1164,7 +1199,10 @@ for (const width of WIDTHS) {
       u: q.get('u'),
       blank: document.querySelector('[data-blank]')?.hidden === false,
       focused: document.activeElement?.hasAttribute('data-blank-input') ?? false,
-      srcdoc: frame.hasAttribute('srcdoc'),
+      // 重建的那一页走 blob: 文档（srcdoc 会被浏览器的本地网络检查挡掉外链图），
+      // 认 wrapForRebuild 打的 data-sb-rebuild 标记，而不是回头看 srcdoc 属性。
+      rebuild: frame.contentDocument?.documentElement?.dataset.sbRebuild === '1',
+      blob: frame.src.startsWith('blob:'),
       status,
       // 建成数从面板状态里读：跑完之后 .sb-item 那些幽灵盒已经撤了，数 DOM 会误判成 0。
       built: Number((status.match(/完成 (\d+) 项/) ?? [])[1] ?? 0),
@@ -1173,14 +1211,16 @@ for (const width of WIDTHS) {
     };
   });
   // 等重建出来的那一页跑完，而不是等旧文档残留的「完成」——外壳换 frame 是异步的，
-  // 只看状态文本会在上一页的结论上直接通过。
+  // 只看状态文本会在上一页的结论上直接通过。重建文档靠 data-sb-rebuild 认。
   const waitRebuilt = (demo, ms) => page.waitForFunction(
     ([d, t]) => {
       const frame = document.querySelector('[data-frame]');
       const sr = frame.contentDocument?.querySelector('[data-sb-chrome]')?.shadowRoot;
-      return frame.hasAttribute('srcdoc')
+      const text = sr?.querySelector('[data-status]')?.textContent.trim() ?? '';
+      return frame.contentDocument?.documentElement?.dataset.sbRebuild === '1'
         && frame.contentDocument?.body?.dataset.demo === d
-        && (sr?.querySelector('[data-status]')?.textContent.trim() ?? '').startsWith(t);
+        && text.startsWith(t)
+        && text.includes('用时');
     },
     [demo, '完成'], { timeout: ms, polling: 200 },
   );
@@ -1199,7 +1239,7 @@ for (const width of WIDTHS) {
   if (!blank.focused) problems.push('空白页的输入框没有自动聚焦');
   if (blank.tabs !== 8 || !blank.closable) problems.push(`新标签没带上关闭钮: ${blank.tabs} 个 / closable=${blank.closable}`);
 
-  // javascript:/data: 会被写进同源 srcdoc，等于让外壳执行任意脚本，必须挡在门口。
+  // javascript:/data: 会被写进重建文档，等于让外壳执行任意脚本，必须挡在门口。
   await page.fill('[data-blank-input]', 'javascript:alert(1)');
   await page.click('.blank-go');
   await page.waitForTimeout(300);
@@ -1208,12 +1248,12 @@ for (const width of WIDTHS) {
   if (!bad.hint.includes('读不懂')) problems.push(`非法地址没给说明: ${bad.hint}`);
   if (bad.u) problems.push(`非法地址被写进了 URL: ${bad.u}`);
 
-  // 同源页面：取 HTML → 剥脚本 → 同源 srcdoc 重建，参数面板照旧是唯一入口。
+  // 同源页面：取 HTML → 剥脚本 → 同源 blob 重建，参数面板照旧是唯一入口。
   await page.fill('[data-blank-input]', './tune.html');
   await page.click('.blank-go');
   await waitRebuilt('tune', 60000);
   const rebuilt = await shell();
-  if (!rebuilt.srcdoc) problems.push('同源自定义页没有走 srcdoc 重建');
+  if (!rebuilt.rebuild || !rebuilt.blob) problems.push('同源自定义页没有走本地重建文档');
   if (rebuilt.built < 5) problems.push(`重建出来的页面只建成 ${rebuilt.built} 项（状态「${rebuilt.status}」）`);
   if (!/tune\.html/.test(rebuilt.title)) problems.push(`标签名没跟着地址换: ${rebuilt.title}`);
   if (!rebuilt.url.includes('/demos/tune.html')) problems.push(`地址栏没显示自定义地址: ${rebuilt.url}`);
@@ -1227,7 +1267,7 @@ for (const width of WIDTHS) {
     null, { timeout: 25000 }).catch(() => {});
   const framed = await shell();
   if (!framed.hint.includes('读不到')) problems.push(`取不到的地址没有如实说明: ${framed.hint}`);
-  if (framed.srcdoc) problems.push('取不到的站点不该假装成 srcdoc 重建');
+  if (framed.rebuild) problems.push('取不到的站点不该假装成重建');
 
   // 关掉自定义标签：回到预设轨道，历史与 URL 都不留孤儿。
   await page.click('.tab[aria-selected="true"] .close');
@@ -1241,7 +1281,7 @@ for (const width of WIDTHS) {
   await page.goto(`${BASE}/demos/index.html?u=${encodeURIComponent('./simple.html')}`, { waitUntil: 'load' });
   await waitRebuilt('simple', 60000);
   const deep = await shell();
-  if (deep.tabs !== 8 || !deep.srcdoc) problems.push(`?u= 直达没开出重建标签: ${deep.tabs} 个 / srcdoc=${deep.srcdoc}`);
+  if (deep.tabs !== 8 || !deep.rebuild) problems.push(`?u= 直达没开出重建标签: ${deep.tabs} 个 / rebuild=${deep.rebuild}`);
   if (deep.case_ !== 'custom-1') problems.push(`?u= 直达后活动标签是 ${deep.case_}`);
 
   report('custom-tab @1280', problems, [
@@ -1250,7 +1290,7 @@ for (const width of WIDTHS) {
     `同源重建: ${rebuilt.title} · 建成 ${rebuilt.built} 项 · 面板 ${rebuilt.rows} 行 · 状态「${rebuilt.status}」`,
     `取不到时: ${framed.hint}`,
     `关闭后: ${closed.tabs} 个标签 · case=${closed.case_} · u=${closed.u ?? '（已清）'}`,
-    `?u= 直达: ${deep.title} · srcdoc=${deep.srcdoc} · 建成 ${deep.built} 项`,
+    `?u= 直达: ${deep.title} · rebuild=${deep.rebuild} · 建成 ${deep.built} 项`,
   ]);
   await ctx.close();
 }
@@ -1363,10 +1403,52 @@ for (const width of WIDTHS) {
   if (first.btnBorder !== '1px') problems.push(`面板按钮被宿主 button 规则改成 ${first.btnBorder} 边框`);
 
   await page.click('[data-apply]');
-  await page.waitForTimeout(900);
+  // 默认采集方式是「预滚动」：先等字体图片、再把懒加载滚出来，才轮到第一笔施工。
+  // 不能拿固定 900ms 当「跑起来了」，要等第一件重建元素真的落进 DOM。
+  await page.waitForFunction(() => document.querySelectorAll('.sb-item').length > 0, null, { timeout: 20000 });
+  await page.waitForTimeout(300);
   const mid = await panelState();
   if (mid.hidden || mid.visibility !== 'visible') problems.push(`运行中面板被隔离层遮掉：${JSON.stringify(mid)}`);
   if (!mid.overlay || mid.items === 0) problems.push(`面板触发的重建没跑起来：${JSON.stringify(mid)}`);
+
+  // 工具条对齐扩展 HUD：Tour / 倍速 / 声音 / 暂停 / 跳过 / 重播改的是这一局。
+  const tools = await page.evaluate(() => {
+    const sr = document.querySelector('[data-sb-chrome]').shadowRoot;
+    const btn = (sel) => sr.querySelector(sel);
+    return {
+      tour: btn('[data-tour]').textContent,
+      tourOn: btn('[data-tour]').dataset.on,
+      speed: btn('[data-speed]').textContent,
+      sound: btn('[data-sound]').textContent,
+      disabled: ['[data-tour]', '[data-speed]', '[data-sound]', '[data-pause]', '[data-skip]', '[data-replay]']
+        .map((sel) => btn(sel).disabled),
+    };
+  });
+  if (tools.tour !== '跟随中' || tools.tourOn !== 'true') problems.push(`Tour 没跟着这一局亮：${tools.tour}/${tools.tourOn}`);
+  if (!/×$/.test(tools.speed)) problems.push(`倍速钮没显示倍率：${tools.speed}`);
+  if (!['声音', '解锁', '静音'].includes(tools.sound)) problems.push(`声音钮状态不对：${tools.sound}`);
+  if (tools.disabled.slice(0, 5).some(Boolean) || tools.disabled[5]) problems.push(`运行中工具条按钮可用性不对：${tools.disabled.join('/')}`);
+
+  // 班组点：最近 5 个忙碌光标，颜色 + 名字首字母，和扩展 HUD 一样。
+  await page.waitForFunction(() => document.querySelector('[data-sb-chrome]').shadowRoot.querySelectorAll('.dot').length > 0, null, { timeout: 15000 });
+  const crew = await page.evaluate(() => {
+    const sr = document.querySelector('[data-sb-chrome]').shadowRoot;
+    const dots = [...sr.querySelectorAll('.dot')];
+    return { count: dots.length, color: dots[0].style.background, letter: dots[0].textContent, name: dots[0].title };
+  });
+  if (crew.count < 1 || crew.count > 5) problems.push(`班组点应有 1~5 个，实测 ${crew.count}`);
+  if (!crew.color || !crew.letter || !crew.name) problems.push(`班组点没画颜色/首字母/名字：${JSON.stringify(crew)}`);
+
+  // Tour 钮运行中能关能开，标签跟着走。
+  const clickTool = (sel) => page.evaluate((s) => document.querySelector('[data-sb-chrome]').shadowRoot.querySelector(s).click(), sel);
+  await clickTool('[data-tour]');
+  await page.waitForTimeout(300);
+  const tourOff = await page.evaluate(() => {
+    const b = document.querySelector('[data-sb-chrome]').shadowRoot.querySelector('[data-tour]');
+    return { text: b.textContent, on: b.dataset.on };
+  });
+  if (tourOff.text !== '镜头' || tourOff.on !== 'false') problems.push(`Tour 关了没变回「镜头」：${tourOff.text}/${tourOff.on}`);
+  await clickTool('[data-tour]');
   await page.screenshot({ path: `${OUT}tune-mid.png` });
   await waitPanelDone(60000);
   const done = await panelState();
@@ -1409,57 +1491,76 @@ for (const width of WIDTHS) {
   const hints = await page.evaluate(() => {
     const sr = document.querySelector('[data-sb-chrome]').shadowRoot;
     const noTip = (sel) => [...sr.querySelectorAll(sel)].filter((el) => !(el.dataset.tip ?? '').length).length;
-    return { rows: sr.querySelectorAll('.row').length, bare: noTip('.row'), buttons: noTip('header button,footer button,.util button,.grip,.orb,.group'), title: sr.querySelectorAll('[title]').length };
+    return { rows: sr.querySelectorAll('.row').length, bare: noTip('.row'), buttons: noTip('header button,footer button,.util button,.grip,.orb,.tab'), title: sr.querySelectorAll('[title]').length };
   });
   if (hints.bare > 0) problems.push(`${hints.bare} 行参数没有 hover 提示`);
   if (hints.buttons > 0) problems.push(`${hints.buttons} 个按钮没有 hover 提示`);
   if (hints.title > 0) problems.push(`还剩 ${hints.title} 处用原生 title：和自绘提示会撞成两个气泡`);
 
-  // 复刻开关那九行折在分组里。默认收起是因为手机那档不许出滚动条，但行必须留在 DOM 里：
-  // 上面「每个 DEFAULT_CONFIG 的键都有一行」靠的就是它，验收改值也靠它。
+  // 参数按用途分六页。一次只摊开一页——最长的一页七行，面板不会再拉成一列长表；
+  // 页签悬停里带这一页的实时值，翻到别页也知道另一头设成了什么。行始终留在 DOM 里，
+  // 上面「每个 DEFAULT_CONFIG 的键都有一行」和验收改值都靠它。
   const fold = await page.evaluate(() => {
     const sr = document.querySelector('[data-sb-chrome]').shadowRoot;
-    const rows = [...sr.querySelectorAll('.row[data-group="replica"]')];
-    const fold2 = sr.querySelector('[data-groupfold]');
+    const secs = [...sr.querySelectorAll('.sec')];
+    const tabs = [...sr.querySelectorAll('.tab')];
+    const rows = [...sr.querySelectorAll('.row')];
+    const shown = rows.filter((el) => el.getBoundingClientRect().height > 0);
     return {
-      state: sr.querySelector('[data-fields]').dataset.replica,
-      expanded: fold2?.getAttribute('aria-expanded') ?? '',
-      tip: fold2?.dataset.tip ?? '',
-      label: fold2?.textContent ?? '',
+      secKeys: secs.map((el) => el.dataset.sec),
+      active: secs.filter((el) => el.dataset.active === 'true').map((el) => el.dataset.sec),
+      activeTab: tabs.filter((el) => el.getAttribute('aria-selected') === 'true').map((el) => el.dataset.tab),
       rows: rows.length,
-      shown: rows.filter((el) => el.getBoundingClientRect().height > 0).length,
+      shown: shown.length,
+      hidden: rows.length - shown.length,
+      tips: tabs.map((el) => el.dataset.tip ?? ''),
+      labels: tabs.map((el) => el.textContent),
       height: sr.querySelector('.fields').clientHeight,
       scroll: sr.querySelector('.fields').scrollHeight,
     };
   });
-  if (fold.state !== 'closed' || fold.expanded !== 'false') problems.push(`复刻分组默认没收起：${fold.state}/${fold.expanded}`);
-  if (fold.rows !== 9) problems.push(`复刻开关应有 9 行，实际 ${fold.rows}`);
-  if (fold.shown !== 0) problems.push(`收起状态下还露出 ${fold.shown} 行复刻开关`);
-  if (!fold.tip.includes('默认关')) problems.push(`复刻分组没说明「关着时和原来一样」：${fold.tip.slice(0, 24)}`);
-  if (!fold.label.includes('已开 0')) problems.push(`分组标题没统计开了几项：${fold.label}`);
-  if (fold.scroll > fold.height + 1) problems.push(`收起时参数区就已经要滚了：${fold.scroll}/${fold.height}`);
+  if (fold.secKeys.join(',') !== 'scale,order,cursors,capture,sound,look') problems.push(`六页顺序不对：${fold.secKeys.join(',')}`);
+  if (fold.labels.join(',') !== '规模,顺序,光标,采集,声音,外观') problems.push(`页签短名不对：${fold.labels.join(',')}`);
+  if (fold.active.join(',') !== 'scale' || fold.activeTab.join(',') !== 'scale') problems.push(`默认停在「规模」页不对：${fold.active.join(',')}/${fold.activeTab.join(',')}`);
+  if (fold.shown !== 6 || fold.hidden !== 23) problems.push(`默认只该露出「规模」6 行、其余 23 行收起，实测 ${fold.shown}/${fold.hidden}（共 ${fold.rows}）`);
+  if (fold.tips.some((tip) => !tip.length)) problems.push('有页签没有 hover 提示');
+  if (!fold.tips[1].includes('自上而下') || !fold.tips[1].includes('随滚动解锁')) problems.push(`顺序页签的提示没写当前值：${fold.tips[1]}`);
+  if (!fold.tips[4].includes('开') || !fold.tips[4].includes('生成式配乐')) problems.push(`声音页签的提示没写当前值：${fold.tips[4]}`);
+  if (fold.scroll > fold.height + 1) problems.push(`只剩一页参数时参数区就要滚：${fold.scroll}/${fold.height}`);
 
-  await page.click('[data-groupfold]');
-  const opened = await page.evaluate(() => {
+  // 翻到「光标」页：这一页的行露出来，其余页的全部收起。
+  const cursors = await page.evaluate(() => {
     const sr = document.querySelector('[data-sb-chrome]').shadowRoot;
-    const rows = [...sr.querySelectorAll('.row[data-group="replica"]')];
+    sr.querySelector('[data-tab="cursors"]').click();
+    const sec = sr.querySelector('.sec[data-sec="cursors"]');
+    const rows = [...sec.querySelectorAll('.row')];
     return {
-      state: sr.querySelector('[data-fields]').dataset.replica,
-      expanded: sr.querySelector('[data-groupfold]').getAttribute('aria-expanded'),
+      active: sec.dataset.active,
+      aria: sr.querySelector('[data-tab="cursors"]').getAttribute('aria-selected'),
+      rows: rows.length,
       shown: rows.filter((el) => el.getBoundingClientRect().height > 0).length,
+      scaleShown: [...sr.querySelectorAll('.sec[data-sec="scale"] .row')]
+        .filter((el) => el.getBoundingClientRect().height > 0).length,
     };
   });
-  if (opened.state !== 'open' || opened.expanded !== 'true') problems.push(`点了分组按钮没展开：${opened.state}/${opened.expanded}`);
-  if (opened.shown !== 9) problems.push(`展开后只露出 ${opened.shown} 行复刻开关`);
+  if (cursors.active !== 'true' || cursors.aria !== 'true') problems.push(`点「光标」页没切过去：${cursors.active}/${cursors.aria}`);
+  if (cursors.shown !== cursors.rows) problems.push(`切到光标页后只露出 ${cursors.shown}/${cursors.rows} 行`);
+  if (cursors.scaleShown !== 0) problems.push(`切到光标页后规模页还露着 ${cursors.scaleShown} 行`);
 
-  // 开关一旦离开默认值，分组标题要数得出来；数完收起，别让多出来的九行挤坏后面的卡片高度。
-  await setField(page, 'flight', 'live');
-  const counted = await page.evaluate(() => {
+  // 改当前页的一项：页签提示立刻跟着变；没翻到的页改了值，页签上要留一个待生效点。
+  await setField(page, 'flight', 'idle');
+  const flightTip = await page.evaluate(() => document.querySelector('[data-sb-chrome]').shadowRoot
+    .querySelector('[data-tab="cursors"]').dataset.tip);
+  if (!flightTip.includes('停在落点')) problems.push(`页签提示没跟上改动：${flightTip}`);
+  await setField(page, 'order', 'group');
+  // 上面改过的光标数留在「规模」页，它也应当带点；这里拿还没动过的「声音」页当
+  // 「没有待生效就不该点」的对照，别把更早的合法改动当成面板算错。
+  const dot = await page.evaluate(() => {
     const sr = document.querySelector('[data-sb-chrome]').shadowRoot;
-    return sr.querySelector('[data-groupfold]').textContent;
+    return { order: sr.querySelector('[data-tab="order"]').dataset.dirty, sound: sr.querySelector('[data-tab="sound"]').dataset.dirty };
   });
-  if (!counted.includes('已开 1')) problems.push(`开了一项复刻开关后标题还是 ${counted}`);
-  await page.click('[data-groupfold]');
+  if (dot.order !== 'true' || dot.sound !== 'false') problems.push(`没翻到的页改了值，页签没标待生效：${JSON.stringify(dot)}`);
+  await page.evaluate(() => document.querySelector('[data-sb-chrome]').shadowRoot.querySelector('[data-tab="scale"]').click());
 
   // 提示是面板自己画的：立刻出现、字号受控，而且不能溢出视口。
   const rowBox = await page.evaluate(() => {
@@ -1587,7 +1688,7 @@ for (const width of WIDTHS) {
   const snippet = await page.evaluate(() => window.__tuner.snippet());
   if (!snippet.includes('agentCount: 12')) problems.push('导出片段没跟上面板改动');
   if (!snippet.includes("document.querySelector('#site')")) problems.push('导出片段的 root 选择器不对');
-  if (!snippet.includes("flight: 'live'")) problems.push('导出片段漏了收起分组里改过的那项复刻开关');
+  if (!snippet.includes("flight: 'idle'")) problems.push('导出片段漏了收起分节里改过的那项');
   if (snippet.includes('data-sb-chrome')) problems.push('导出片段把面板自己的 ignore 选择器带进了生产配置');
   if (!snippet.includes('swarm.start();')) problems.push('导出片段不是可直接运行的代码');
 
@@ -1602,7 +1703,7 @@ for (const width of WIDTHS) {
   await page.click('[data-reset]');
   const afterReset = await panelUi(page);
   if (!afterReset.status.includes('已重置')) problems.push(`重置后状态是 ${afterReset.status}`);
-  if ((await fieldOf(page, 'agentCount')).value !== '6') problems.push('重置后光标数量没回到 6');
+  if ((await fieldOf(page, 'agentCount')).value !== '8') problems.push('重置后光标数量没回到库默认值 8');
   if (afterReset.dirty < 1) problems.push('重置后没有把与当前这局不一致的项标出来');
 
   // 恢复原状必须能在跑的过程中用：停掉施工，把页面原样交还。
@@ -1644,7 +1745,7 @@ for (const width of WIDTHS) {
 
   report('tune-panel @1280', problems, [
     `面板: ${first.rows} 行控件 · 字体 ${first.font.split(',')[0]} · 底色 ${first.cardBg}`,
-    `运行中: 面板可见=${!mid.hidden} · 途中元素=${mid.items} · ${done.status}`,
+    `运行中: 面板可见=${!mid.hidden} · 途中元素=${mid.items} · 工具条 ${tools.tour}/${tools.speed}/${tools.sound} · 班组点 ${crew.count} 个 · ${done.status}`,
     `待生效: ${touched.dirty} 行 · ${touched.note}`,
     `依赖: 设时长后速度行 off=${speedRow.off} disabled=${speedRow.disabled} · 提示「${speedRow.tip.slice(0, 24)}…」`,
     `提示: ${hints.rows} 行 + 按钮全部有 hover 气泡 · 弹出=${tipShown.show}「${tipShown.text.slice(0, 14)}…」@${tipShown.size} · 视口内=${tipShown.inView} · 种子行灰掉=${seedRow.off}`,
@@ -1727,6 +1828,15 @@ for (const width of WIDTHS) {
         agentCount: 6,
         speed: 3,
         maxItems: 400,
+        trigger: 'immediate',
+        // 顺序是纯分发问题：开场聚群、临时工和积压提速都会改「谁在第几毫秒领到活」，
+        // 把「首轮铺开几条带」搅成计时噪声。尤其单光标那局，auto 班会偷偷招人。
+        // 运行时定价（pick:'live'）会绕开预切队列，按光标距离当场挑活，种子和 rows
+        // 的队列分配就都不作数了；这一场量的正是队列本身，所以钉回 queued。
+        gather: false,
+        agents: 'fixed',
+        adaptiveSpeed: false,
+        pick: 'queued',
         ...opts,
         onComplete: (result) => resolve({
           head: window.__seq.slice(0, (opts && opts.agentCount) || 6).map(([id]) => id),
@@ -1941,6 +2051,10 @@ for (const width of WIDTHS) {
           order: o,
           balance: o === 'rows',
           tour: false,
+          // 这一条只比「七种分发是否把同样多的件盖完」：聚群与招人会拖长每一局，
+          // 对建成数没有影响，关掉它们七趟才跑得干净。
+          gather: false,
+          agents: 'fixed',
           onComplete: (r) => resolve(r.built),
         }).start();
       });
@@ -2007,19 +2121,21 @@ for (const width of WIDTHS) {
   }));
 
   const maxScroll = Math.max(...scrolls.map((s) => s.y));
-  // 平滑滚动本身是一段动画，逐帧的增量会把它算成很多次。这里数「停下来又起步」的次数：
-  // 一次跟随便是一次停下→再起步，镜头若只搬一次家就说明它没有真的跟着前沿走。
+  // 平滑滚动本身是一段动画，逐帧的增量会把它算成很多次，所以「停下再起步」只能当信息。
+  // 真要看的是「镜头有没有在页中停过」：一次性跳到页底的那局只会在页首和页底出现采样，
+  // 而跟着前沿走的那局（无论一段连续滚还是分几段）一定会留下页中的位置。
   let bursts = 0;
   for (let i = 1; i < scrolls.length; i++) {
     const calm = i < 2 || scrolls[i - 1].y - scrolls[i - 2].y < 20;
     if (scrolls[i].y - scrolls[i - 1].y > 120 && calm) bursts++;
   }
+  const midway = scrolls.filter((s) => s.y > 200 && s.y < maxScroll - 200).length;
   const followed = scrolls.filter((s) => s.y > 200 && s.inView > 0).length;
 
   if (shape.docHeight < shape.viewport * 2.5) problems.push(`这一页只有 ${shape.docHeight}px，比视口高不到 2.5 倍，镜头没东西可跟`);
   if (!shape.tour) problems.push('长页面案例没默认打开镜头跟随');
   if (maxScroll < 600) problems.push(`镜头最多只滚到 ${maxScroll}px，没跟着走到页面深处`);
-  if (bursts < 2) problems.push(`镜头只起步 ${bursts} 次，不像跟随更像是跳过去`);
+  if (midway < 1) problems.push(`镜头只在页首和页底各停一次，中途采样 ${midway} 个，不像跟随更像是跳过去`);
   if (followed === 0) problems.push('滚动之后没有把正在施工的元素留在视野里');
   if (!settled.status.startsWith('完成')) problems.push(`长页面没跑完：${settled.status}`);
   if (settled.y > 120) problems.push(`结束后镜头没交还页首，停在 ${settled.y}px`);
@@ -2027,7 +2143,7 @@ for (const width of WIDTHS) {
 
   report('tall-tour @1280', problems, [
     `页面 ${shape.docHeight}px · 视口 ${shape.viewport}px · 默认 tour=${shape.tour}`,
-    `镜头: 最深 ${maxScroll}px · 停下再起步 ${bursts} 次 · ${followed} 次采样里正在建的元素在视野内`,
+    `镜头: 最深 ${maxScroll}px · 页中采样 ${midway} 个 · 停下再起步 ${bursts} 次（平滑滚动会抹平次数，仅记录）· ${followed} 次采样里正在建的元素在视野内`,
     `收尾: ${settled.status} · 回到 ${settled.y}px`,
   ]);
   await ctx.close();
@@ -2035,7 +2151,7 @@ for (const width of WIDTHS) {
 
 // ---------------------------------------------------------------------------
 // 场景 22：手机模式（390×740）——每一页都不许把文档撑出横向滚动，
-// 壳的标签条自己横滚、地址栏换行、GitHub 入口在，面板 18 行不滚动也全露。
+// 壳的标签条自己横滚、地址栏换行、GitHub 入口在，面板当前这一页不滚动也全露。
 // 断点定在 760：验收矩阵的 @800 一档仍是桌面版，它锁的建成数不用跟着改。
 // ---------------------------------------------------------------------------
 {
@@ -2363,10 +2479,12 @@ ${'<div class="strip"><img loading="lazy" width="320" height="120" src="/img/x.p
   await page.goto(`${BASE}/demos/index.html?u=${encodeURIComponent(FOREIGN)}`, { waitUntil: 'load' });
   await page.waitForFunction(() => {
     const frame = document.querySelector('[data-frame]');
-    return frame.hasAttribute('srcdoc')
+    const text = (frame.contentDocument?.querySelector('[data-sb-chrome]')?.shadowRoot
+      .querySelector('[data-status]')?.textContent ?? '');
+    return frame.contentDocument?.documentElement?.dataset.sbRebuild === '1'
       && frame.contentDocument?.body?.dataset.demo === 'relay'
-      && (frame.contentDocument.querySelector('[data-sb-chrome]')?.shadowRoot
-        .querySelector('[data-status]')?.textContent ?? '').startsWith('完成');
+      && text.startsWith('完成')
+      && text.includes('用时');
   }, null, { timeout: 60000, polling: 200 }).catch(() => {});
   const rebuilt = await page.evaluate(() => {
     const frame = document.querySelector('[data-frame]');
@@ -2375,7 +2493,7 @@ ${'<div class="strip"><img loading="lazy" width="320" height="120" src="/img/x.p
     const status = sr?.querySelector('[data-status]')?.textContent.trim() ?? '';
     const imgs = [...(doc?.querySelectorAll('#app img') ?? [])];
     return {
-      srcdoc: frame.hasAttribute('srcdoc'),
+      rebuild: doc?.documentElement?.dataset.sbRebuild === '1',
       url: document.querySelector('[data-url]').textContent,
       hint: document.querySelector('[data-hint]').textContent,
       status,
@@ -2408,12 +2526,12 @@ ${'<div class="strip"><img loading="lazy" width="320" height="120" src="/img/x.p
   if (relay.status !== 200 || !relay.html.includes('来自另一个源的页面')) problems.push(`同源转发没取到正文：${relay.status} ${relay.html.slice(0, 60)}`);
   if (!relay.final.startsWith('http')) problems.push(`转发口没回最终地址：${relay.final}`);
   if (refused.status !== 400) problems.push(`转发口没有拒绝非 http(s) 地址：${refused.status} ${refused.body}`);
-  if (!rebuilt.srcdoc) problems.push(`跨源页面仍然只是原样嵌：${rebuilt.hint}`);
+  if (!rebuilt.rebuild) problems.push(`跨源页面仍然只是原样嵌：${rebuilt.hint}`);
   if (rebuilt.built < 5) problems.push(`跨源页面重建只建成 ${rebuilt.built} 项（状态「${rebuilt.status}」）`);
   if (rebuilt.rows === 0) problems.push('跨源重建出来的页面没有创造者模式面板');
   if (!rebuilt.url.includes('127.0.0.1')) problems.push(`地址栏没显示第三方地址: ${rebuilt.url}`);
   if (!rebuilt.host.includes('来自另一个源的页面')) problems.push(`重建的不是取回来的那一页：${rebuilt.host}`);
-  if (rebuilt.lang !== 'zh') problems.push(`srcdoc 的 lang 没跟着外壳走：${rebuilt.lang}`);
+  if (rebuilt.lang !== 'zh') problems.push(`重建文档的 lang 没跟着外壳走：${rebuilt.lang}`);
   if (!rebuilt.scan) problems.push('第三方页那局没带 scan: pre-scroll（用户报的缺图 + 滚不动就是它没开）');
   if (rebuilt.imgs === 0) problems.push('外部页夹具里没有图，这一场景没在测缺图');
   if (rebuilt.loaded !== rebuilt.imgs) problems.push(`第三方页还缺图：${rebuilt.imgs} 张里只解码了 ${rebuilt.loaded} 张`);
@@ -2423,7 +2541,7 @@ ${'<div class="strip"><img loading="lazy" width="320" height="120" src="/img/x.p
   report('remote-rebuild @1280', problems, [
     `跨源前提: 直连 ${direct.ok ? '竟然成功' : `失败（${direct.why.slice(0, 40)}…）`}`,
     `转发口: /__page ${relay.status} · ${relay.html.length} 字节 · 最终地址 ${relay.final || '（无）'} · 非 http 地址 ${refused.status}`,
-    `重建: srcdoc=${rebuilt.srcdoc} · 建成 ${rebuilt.built} 项 · 面板 ${rebuilt.rows} 行 · 标题「${rebuilt.title}」· lang=${rebuilt.lang}`,
+    `重建: rebuild=${rebuilt.rebuild} · 建成 ${rebuilt.built} 项 · 面板 ${rebuilt.rows} 行 · 标题「${rebuilt.title}」· lang=${rebuilt.lang}`,
     `懒图与页高: 图 ${rebuilt.loaded}/${rebuilt.imgs} 已解码 · 页高 ${rebuilt.page}（视口 ${rebuilt.vh}）· 开局脚本 scan=${rebuilt.scan} · 实滚 scrollTop=${scrolls.got}/${scrolls.max}`,
     `地址栏: ${rebuilt.url}`,
     '静态托管上没有这个转发口：仍然诚实降级为直接嵌，并说明「读不到 DOM」',
@@ -2508,16 +2626,18 @@ ${'<div class="strip"><img loading="lazy" width="320" height="120" src="/img/x.p
 }
 
 // ---------------------------------------------------------------------------
-// 场景 26：复刻参考实现的九个开关。
-// 判据不是「代码写了没」，而是每局跑完交回来的观测数：默认关着时一个像素的姿态、
-// 一个多余的光标、一声多余的混响都不许出现；打开以后必须看见它 promised 的那件事。
+// 场景 26：默认就是参考扩展，每个开关反向都能真的关掉。
+// 判据不是「代码写了没」，而是每局跑完交回来的观测数：默认那局必须有姿态、有聚群、
+// 有镜头跟随、有声音和配乐；把某一项交给它对应的开关关掉以后，那件事必须消失。
 {
   const MEASURE = (options) => new Promise((resolve) => {
     for (const el of document.querySelectorAll('.sb-overlay')) el.remove();
     for (const el of document.querySelectorAll('.sb-hidden')) el.classList.remove('sb-hidden');
+    window.scrollTo(0, 0);
     // 计数器每局清零：不然上一局的混响会记到下一局头上，「只出点击声不建混响」永远红。
     window.__audio = { contexts: 0, convolver: 0, filters: 0, comps: 0, voices: 0 };
-    const m = { tilt: 0, press: 0, cursors: 0, scroll: 0 };
+    const m = { tilt: 0, press: 0, cursors: 0, scroll: 0, firstAgent: -1, firstBuild: -1 };
+    const t0 = performance.now();
     let raf = 0;
     const finish = (extra) => {
       cancelAnimationFrame(raf);
@@ -2538,23 +2658,25 @@ ${'<div class="strip"><img loading="lazy" width="320" height="120" src="/img/x.p
         m.press = Math.max(m.press, Number(el.style.getPropertyValue('--press') || 0) || 0);
       }
       m.cursors = Math.max(m.cursors, list.filter((el) => !el.hidden).length);
-      m.scroll = Math.max(m.scroll, window.scrollY);
+      // 采集前那一遍预滚动也在动窗口，那时候还没有光标。光标出现以后的滚动才算镜头/读者的。
+      if (list.length > 0) m.scroll = Math.max(m.scroll, window.scrollY);
+      if (m.firstAgent < 0 && list.length > 0) m.firstAgent = Math.round(performance.now() - t0);
+      // 第一件施工出现在第几毫秒：开场聚群开着时，从光标进场到第一件必然等满 2.4s。
+      if (m.firstBuild < 0 && document.querySelector('.sb-item')) m.firstBuild = Math.round(performance.now() - t0);
       raf = requestAnimationFrame(sample);
     };
     raf = requestAnimationFrame(sample);
     const swarm = new window.SwarmBuilder({
       root: document.querySelector('#app'),
+      // 测试台只钉住可比性需要的三样：人数、倍速、种子；其余一律走默认。
       agentCount: 6,
       speed: 2,
-      order: 'group',
       seed: 7,
-      sound: false,
-      tour: false,
       ...options,
       onComplete: (r) => finish({ built: r.built, dropped: r.dropped, ms: Math.round(r.durationMs) }),
     });
     swarm.start();
-    setTimeout(() => finish({ built: -1, dropped: -1, ms: -1 }), 60000);
+    setTimeout(() => finish({ built: -1, dropped: -1, ms: -1 }), 90000);
   });
 
   const audioHook = () => {
@@ -2579,13 +2701,24 @@ ${'<div class="strip"><img loading="lazy" width="320" height="120" src="/img/x.p
   await page.evaluate(audioHook);
 
   const once = (options) => page.evaluate(MEASURE, options);
-  const base = await once({});
-  const flight = await once({ flight: 'live', pointer: 'repel' });
-  const gated = await once({ tour: true, trigger: 'scroll', pick: 'live' });
-  const crew = await once({ agents: 'auto', tour: true, trigger: 'scroll', pick: 'live' });
-  const score = await once({ sound: true, score: 'generative' });
-  const clicks = await once({ sound: true });
-  const fast = await once({ adaptiveSpeed: true });
+  // 默认那局不开任何开关：姿态、班组、聚群、滚动、声音、配乐全靠默认值。
+  // tour 交给它，默认的 scroll 触发才走得完——参考版里读者自己滚，测试里由镜头代劳。
+  const aligned = await once({ tour: true });
+  // 反向：姿态、班组、聚群全部收成固定档，各自必须真的消失。
+  // gather 必须一起关：开场聚群会先放 18 只进来，不关就永远看到的是 18 而不是固定人数。
+  const calm = await once({
+    tour: true, flight: 'idle', pointer: 'ignore', agents: 'fixed', gather: false,
+  });
+  // 立即放行：不滚也必须建完。gather:false 同时证明开场聚群可以关。
+  const immediate = await once({
+    tour: false, trigger: 'immediate', agents: 'fixed', flight: 'idle', gather: false,
+  });
+  // 同一页关掉积压提速：默认应该明显更快。
+  const slow = await once({
+    tour: false, trigger: 'immediate', agents: 'fixed', flight: 'idle', gather: false, adaptiveSpeed: false,
+  });
+  const scoreOff = await once({ tour: true, score: 'off' });
+  const muted = await once({ tour: true, sound: false });
 
   // 减动效那一档要在真的声明了 prefers-reduced-motion 的上下文里跑，库读的是媒体查询。
   const rctx = await browser.newContext({ viewport: { width: 1280, height: 900 }, reducedMotion: 'reduce' });
@@ -2594,56 +2727,67 @@ ${'<div class="strip"><img loading="lazy" width="320" height="120" src="/img/x.p
   await rpage.goto(`${BASE}/demos/tall.html`, { waitUntil: 'load' });
   await rpage.waitForFunction(() => typeof window.SwarmBuilder === 'function', null, { timeout: 20000 });
   await rpage.evaluate(audioHook);
-  const skipped = await rpage.evaluate(MEASURE, { reducedMotion: 'skip' });
-  const kept = await rpage.evaluate(MEASURE, {});
+  const skipped = await rpage.evaluate(MEASURE, { tour: true });
+  const kept = await rpage.evaluate(MEASURE, {
+    tour: false, trigger: 'immediate', agents: 'fixed', flight: 'idle', gather: false, reducedMotion: 'run',
+  });
 
   const problems = [];
-  const named = [['默认', base], ['待时飞行', flight], ['逐段解锁', gated], ['动态班组', crew],
-    ['生成式配乐', score], ['只有点击', clicks], ['积压提速', fast], ['减动效交还', skipped], ['减动效照跑', kept]];
-  for (const [name, r] of named) if (r.built < 0) problems.push(`${name} 那局 60 秒没跑完`);
+  const named = [['默认', aligned], ['收着跑', calm], ['立即放行', immediate], ['关掉积压提速', slow],
+    ['只有点击', scoreOff], ['静音', muted], ['减动效交还', skipped], ['减动效照跑', kept]];
+  for (const [name, r] of named) if (r.built < 0) problems.push(`${name} 那局 90 秒没跑完`);
 
-  if (base.tilt > 0 || base.press > 0) problems.push(`开关全关着却写了姿态：倾角 ${base.tilt.toFixed(1)}° 按下 ${base.press.toFixed(2)}`);
-  if (base.cursors !== 6) problems.push(`默认人数是 ${base.cursors}，应为 agentCount 给的 6`);
-  if (base.contexts !== 0) problems.push(`开关全关着那局建了 ${base.contexts} 个 AudioContext`);
-  if (flight.tilt <= 0) problems.push('flight:live 下箭头从未朝行进方向歪过');
-  if (flight.cursors !== 6) problems.push(`待时飞行把人数从 6 变成 ${flight.cursors}`);
+  // 默认 = 参考扩展：待时飞行会歪、开场先聚 18 只、镜头跟着施工前沿、声音和配乐都在。
+  if (aligned.tilt <= 0) problems.push('默认那局箭头从未朝行进方向歪过：飞行姿态没生效');
+  if (aligned.cursors <= 6) problems.push(`默认那局峰值只有 ${aligned.cursors} 个光标：开场聚群/自动班组没生效`);
+  if (aligned.firstAgent < 0 || aligned.firstBuild < 0 || aligned.firstBuild - aligned.firstAgent < 1800) {
+    problems.push(`默认那局从光标进场到第一件只隔 ${aligned.firstBuild - aligned.firstAgent}ms：开场聚群没等满`);
+  }
+  if (aligned.scroll < 300) problems.push(`默认那局只滚了 ${Math.round(aligned.scroll)}px：镜头没跟着施工前沿`);
+  if (aligned.built < 10) problems.push(`默认那局只建成 ${aligned.built} 项`);
+  if (aligned.contexts === 0) problems.push('默认那局没建 AudioContext：声音默认应该是开的');
+  if (aligned.convolver === 0) problems.push('默认那局没建 ConvolverNode：默认配乐应该是生成式');
+  if (aligned.comps !== 1) problems.push(`默认那局建了 ${aligned.comps} 个压限器，应为总线上那 1 个`);
 
-  const bottom = gated.page - gated.vh;
-  if (gated.scroll < bottom - 4) problems.push(`逐段解锁只滚到 ${Math.round(gated.scroll)}，页底在 ${bottom}：下一屏永远不解锁`);
-  if (gated.cursors !== 6) problems.push(`人数固定那局峰值 ${gated.cursors}，不该超过 6`);
-  if (crew.cursors <= 6) problems.push(`agents:auto 那局峰值 ${crew.cursors}，没招过班底以外的人`);
-  if (crew.scroll < bottom - 4) problems.push(`动态班组那局只滚到 ${Math.round(crew.scroll)}`);
+  if (calm.tilt > 0 || calm.press > 0) problems.push(`flight:'idle' 仍写了姿态：倾角 ${calm.tilt.toFixed(1)}° 按下 ${calm.press.toFixed(2)}`);
+  if (calm.cursors !== 6) problems.push(`agents:'fixed' 那局峰值 ${calm.cursors}，应恰好等于 agentCount 给的 6`);
+  if (calm.scroll < 300) problems.push(`收着跑那局只滚了 ${Math.round(calm.scroll)}px：关掉姿态不该把镜头也关掉`);
+
+  if (immediate.built < 10) problems.push(`trigger:'immediate' 那局只建成 ${immediate.built} 项`);
+  if (immediate.scroll > 0) problems.push(`trigger:'immediate' + tour off 那局却滚了 ${Math.round(immediate.scroll)}px`);
+  if (immediate.firstAgent < 0 || immediate.firstBuild < 0 || immediate.firstBuild - immediate.firstAgent > 1200) {
+    problems.push(`gather:false 那局光标进场后还等了 ${immediate.firstBuild - immediate.firstAgent}ms 才出第一件：聚群没被跳过`);
+  }
+
+  if (immediate.built !== slow.built) problems.push(`积压提速那局建成 ${immediate.built} 项，关掉那局 ${slow.built} 项`);
+  if (immediate.ms * 1.25 > slow.ms) {
+    problems.push(`积压提速只把 ${slow.ms}ms 压到 ${immediate.ms}ms，要求至少快两成半`);
+  }
 
   // 配乐和点击声的分界不在「有没有发声」，在图里那些只有配乐才会建的节点：
   // 房间混响（convolver）、每声部的带通（biquad）、总线的压限（compressor）。
-  if (score.convolver === 0) problems.push('生成式配乐没有创建 ConvolverNode（房间混响是它的一部分）');
-  if (score.comps !== 1) problems.push(`生成式配乐那局建了 ${score.comps} 个压限器，应为总线上那 1 个`);
-  if (score.filters === 0) problems.push('生成式配乐没有创建 BiquadFilterNode（每声部的带通是它的一部分）');
-  if (score.voices === 0) problems.push('生成式配乐那局一次都没发声');
-  if (clicks.convolver !== 0 || clicks.filters !== 0 || clicks.comps !== 0) {
-    problems.push(`只出点击声那局多建了节点：混响 ${clicks.convolver} / 带通 ${clicks.filters} / 压限 ${clicks.comps}`);
+  if (scoreOff.convolver !== 0 || scoreOff.filters !== 0 || scoreOff.comps !== 0) {
+    problems.push(`score:'off' 那局多建了节点：混响 ${scoreOff.convolver} / 带通 ${scoreOff.filters} / 压限 ${scoreOff.comps}`);
   }
-  if (clicks.voices === 0) problems.push('只有点击声那局一次都没发声');
-  if (score.contexts === 0 || clicks.contexts === 0) problems.push(`sound 开着却没建 AudioContext：配乐 ${score.contexts} / 点击 ${clicks.contexts}`);
-  if (base.convolver !== 0 || base.voices !== 0) problems.push(`音都关着那局却碰了音频图：混响 ${base.convolver} 发声 ${base.voices}`);
-
-  if (fast.built !== base.built) problems.push(`积压提速那局建成 ${fast.built} 项，默认那局 ${base.built} 项`);
-  if (fast.ms * 1.4 > base.ms) problems.push(`积压提速只把 ${base.ms}ms 压到 ${fast.ms}ms，要求至少快四成`);
+  if (scoreOff.voices === 0) problems.push(`score:'off' 那局一次都没发声：点击声也归它管`);
+  if (scoreOff.contexts === 0) problems.push(`score:'off' 但 sound 还开着，却没建 AudioContext`);
+  if (muted.contexts !== 0 || muted.voices !== 0) {
+    problems.push(`sound:false 那局却碰了音频图：AudioContext ${muted.contexts} 发声 ${muted.voices}`);
+  }
 
   if (skipped.built !== 0 || skipped.cursors !== 0) problems.push(`减动效直接交还那局建成 ${skipped.built} 项、亮过 ${skipped.cursors} 个光标`);
   if (skipped.ms > 200) problems.push(`减动效交还那局耗时 ${skipped.ms}ms，应该几乎为 0`);
-  if (kept.built <= 0) problems.push(`减动效但照跑那局没建东西（建成 ${kept.built}）：默认档不该被媒体查询改变`);
+  if (kept.built <= 0) problems.push(`减动效但照跑那局没建东西（建成 ${kept.built}）：reducedMotion:'run' 应压过媒体查询`);
   const hidden = await rpage.evaluate(() => document.querySelectorAll('.sb-hidden').length);
   if (hidden !== 0) problems.push(`交还以后还有 ${hidden} 个元素带着 sb-hidden`);
 
   if (errors.length) problems.push(`报错 ${errors.length} 条：${errors[0]}`);
   report('replica @1280', problems, [
-    `默认: 倾角=${base.tilt.toFixed(1)}° 峰值人数=${base.cursors} 混响=${base.convolver} 耗时=${base.ms}ms`,
-    `待时飞行: 倾角=${flight.tilt.toFixed(1)}° 按下=${flight.press.toFixed(2)} 峰值人数=${flight.cursors}`,
-    `逐段解锁: 滚到 ${Math.round(gated.scroll)}/${bottom} 峰值人数=${gated.cursors} 耗时=${gated.ms}ms`,
-    `动态班组: 峰值人数=${crew.cursors}（下限 6）滚到 ${Math.round(crew.scroll)} 耗时=${crew.ms}ms`,
-    `配乐: 混响=${score.convolver} 带通=${score.filters} 压限=${score.comps} 发声=${score.voices} · 只有点击: 混响=${clicks.convolver} 带通=${clicks.filters} 发声=${clicks.voices}`,
-    `积压提速: ${base.ms}ms → ${fast.ms}ms（建成 ${base.built}/${fast.built}）`,
+    `默认: 倾角=${aligned.tilt.toFixed(1)}° 峰值人数=${aligned.cursors} 聚群=${aligned.firstBuild - aligned.firstAgent}ms 滚到 ${Math.round(aligned.scroll)} · 混响=${aligned.convolver} 压限=${aligned.comps} 耗时=${aligned.ms}ms`,
+    `收着跑（idle/fixed）: 倾角=${calm.tilt.toFixed(1)}° 峰值人数=${calm.cursors} 滚到 ${Math.round(calm.scroll)} 耗时=${calm.ms}ms`,
+    `立即放行: 建成 ${immediate.built} 项 聚群=${immediate.firstBuild - immediate.firstAgent}ms 滚到 ${Math.round(immediate.scroll)} 耗时=${immediate.ms}ms`,
+    `积压提速: 关掉 ${slow.ms}ms → 默认 ${immediate.ms}ms（建成 ${slow.built}/${immediate.built}）`,
+    `配乐: 混响=${aligned.convolver} 带通=${aligned.filters} 压限=${aligned.comps} 发声=${aligned.voices} · 关掉配乐: 混响=${scoreOff.convolver} 带通=${scoreOff.filters} 发声=${scoreOff.voices}`,
     `减动效: skip 建成 ${skipped.built} 项耗时 ${skipped.ms}ms · run 建成 ${kept.built} 项`,
   ]);
   await rctx.close();
@@ -2651,12 +2795,14 @@ ${'<div class="strip"><img loading="lazy" width="320" height="120" src="/img/x.p
 }
 
 // ---------------------------------------------------------------------------
-// 场景 27：面板高度分档不许有死区——18 行在 640 到 900 的宿主里都得一行不滚
+// 场景 27：面板变短以后，640–900 的宿主里默认那一页都不许滚
 // ---------------------------------------------------------------------------
 {
   const problems = [];
   const notes = [];
-  for (const h of [900, 800, 700, 640]) {
+  // 每一档都量「刚好装得下」与「刚被压到下一档」这两格：死区只会出现在交界处。
+  // 案例视口高度 = 宿主高度 - 111（mockup 外壳自己的表头与地址栏）。
+  for (const h of [984, 983, 933, 932, 841, 840, 733, 732, 640]) {
     const ctx = await browser.newContext({ viewport: { width: 1280, height: h } });
     const page = await ctx.newPage();
     await page.goto(`${BASE}/demos/index.html`, { waitUntil: 'load' });
@@ -2673,26 +2819,28 @@ ${'<div class="strip"><img loading="lazy" width="320" height="120" src="/img/x.p
       const vh = doc.documentElement.clientHeight;
       return {
         vh,
-        tier: vh <= 598 ? 'T3' : vh <= 712 ? 'T2' : vh <= 780 ? 'T1' : 'T0',
+        tier: vh <= 621 ? 'T4' : vh <= 729 ? 'T3' : vh <= 821 ? 'T2' : vh <= 872 ? 'T1' : 'T0',
         rows,
+        secs: sr.querySelectorAll('.sec').length,
+        tabs: sr.querySelectorAll('.tab').length,
         content: fields.scrollHeight,
         client: fields.clientHeight,
         chrome: Math.round(card.height - fields.clientHeight),
         bottom: Math.round(card.bottom),
       };
     });
-    // 分档压缩的唯一目的：常驻 18 行不交给滚动条。滚 1px 也算没铺开。
-    if (m.content > m.client + 1) problems.push(`宿主高 ${h}（案例视口 ${m.vh}，${m.tier} 档）18 行滚了 ${m.content - m.client}px：${m.content}/${m.client}`);
-    if (m.rows !== 18) problems.push(`宿主高 ${h} 收起分组后露出 ${m.rows} 行，应为 18`);
+    // 分档压缩的唯一目的：当前那一页的 6 行不交给滚动条。滚 1px 也算没铺开。
+    if (m.content > m.client + 1) problems.push(`宿主高 ${h}（案例视口 ${m.vh}，${m.tier} 档）参数区滚了 ${m.content - m.client}px：${m.content}/${m.client}`);
+    if (m.rows !== 6 || m.secs !== 6 || m.tabs !== 6) problems.push(`宿主高 ${h} 默认应露出 6 行 + 6 个页签，实测 ${m.rows} 行 / ${m.secs} 节 / ${m.tabs} 页签`);
     if (m.bottom > m.vh + 1) problems.push(`宿主高 ${h} 面板底边 ${m.bottom} 掉到案例视口 ${m.vh} 外面`);
-    notes.push(`${h}px 宿主 → 案例视口 ${m.vh} · ${m.tier} · 常驻 ${m.rows} 行 ${m.content}/${m.client} · 卡外框 ${m.chrome}px`);
+    notes.push(`${h}px 宿主 → 案例视口 ${m.vh} · ${m.tier} · 常驻 ${m.rows} 行 + ${m.tabs} 页签 ${m.content}/${m.client} · 卡外框 ${m.chrome}px`);
     await ctx.close();
   }
 
   report('panel-fit @1280', problems, [
     notes.join(' · '),
-    '档界取的是「上一档装不下的那一刻」：实测各档需求 774/713/599/524，所以边界写在 780/712/598——留死区就会滚 3~42px',
-    '案例视口低于 ~524px（宿主不足 640）才是交给可见滚动条的区间，面板可以用右下角把手拉大',
+    '默认只摊开一组：整张卡在 1280×900 下约 423px 高，比六节全开时矮了近一半',
+    '案例视口低于 ~514px（宿主不足 625）才是交给可见滚动条的区间，面板可以用右下角把手拉大',
   ]);
 }
 

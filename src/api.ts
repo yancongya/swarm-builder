@@ -1,9 +1,9 @@
-import type { SwarmBuilderOptions, SwarmResult, AgentInfo } from './types';
+import type { SwarmBuilderOptions, SwarmResult, SwarmStatus, SwarmPhase, AgentInfo } from './types';
 import type { Blueprint } from './core/blueprint';
 import type { Tickable } from './core/engine';
 import type { SoundSink } from './core/action';
 import type { FlightStage, Flyer } from './core/flight';
-import { normalizeOptions, applyPerformanceMode, clamp, SPEED_MIN, SPEED_MAX } from './core/config';
+import { normalizeOptions, applyPerformanceMode, clamp, SPEED_MIN, SPEED_MAX, SPEED_STEPS } from './core/config';
 import { estimateRun, itemWeight } from './core/estimate';
 import { Engine } from './core/engine';
 import { Agent } from './core/agent';
@@ -12,7 +12,7 @@ import { snapshot } from './core/snapshot';
 import { SoundBus } from './core/sound';
 import { ScoreBus } from './core/score';
 import { Flock } from './core/flocking';
-import { Crew, Flight } from './core/flight';
+import { Crew, Flight, POINTER_RADIUS } from './core/flight';
 import { TourCam, type TourView } from './core/tour';
 import { detectEnv, preScan, viewBand, type ScanEnv } from './core/scan';
 import { makeRng } from './core/rng';
@@ -37,6 +37,16 @@ const ADAPTIVE_MAX = 4;
 const MAX_REAL_MS = 50;
 /** 临时光标从画面外进场，参考版是视口左右各让 30~40px。 */
 const SPAWN_OFFSCREEN = 40;
+/** 开场聚群：参考版从左右各 40~240px 外进场，高度在视口 5%~95% 之间抽。 */
+const INTRO_SPREAD = 200;
+const INTRO_EDGE_MIN = 0.05;
+const INTRO_EDGE_RANGE = 0.9;
+/** 没人动鼠标也没人滚滚轮时的兜底：转够这么久就自己开工。参考版会一直等读者。 */
+const GATHER_MS = 2400;
+/** 参考版 INTRO_AGENTS：开场先飞进来 18 只，前 MIN_AGENTS 只是原始班底，其余算临时工。 */
+const INTRO_AGENTS = 18;
+/** 参考版 HUD 每 200ms 刷一次，状态回调跟同一个节拍，不去抖每一帧。 */
+const STATUS_MS = 200;
 
 class ProgressTicker implements Tickable {
   private last = -1;
@@ -79,6 +89,67 @@ class FrameTicker implements Tickable {
   }
 }
 
+/**
+ * 开场聚群那一段的闸门。参考版开局只跑轨道场，等读者滚一下滚轮、或者把鼠标伸进群里
+ * （任一光标进到指针 48px 内）才 `start()`。库不能把无人值守的宿主永远挂在这儿，所以
+ * 多一条兜底：没人动手就自己转够 GATHER_MS 再开工。计时用真实时间——倍速与积压提速
+ * 只该拧施工的快慢，不该把开场那团光标缩成一闪。
+ */
+class IntroTicker implements Tickable {
+  private last = performance.now();
+  private elapsed = 0;
+  private wheeled = false;
+  private released = false;
+  private readonly onWheel = (): void => { this.wheeled = true; };
+
+  constructor(
+    private readonly engine: Engine,
+    private readonly agents: () => readonly Agent[],
+    private readonly pointer: () => { x: number; y: number } | null,
+    private readonly release: () => void,
+  ) {
+    window.addEventListener('wheel', this.onWheel, { passive: true });
+  }
+
+  tick(): void {
+    const now = performance.now();
+    this.elapsed += Math.min(now - this.last, MAX_REAL_MS);
+    this.last = now;
+    const mouse = this.pointer();
+    const touched = mouse !== null
+      && this.agents().some((agent) => Math.hypot(agent.x - mouse.x, agent.y - mouse.y) < POINTER_RADIUS);
+    if (!this.wheeled && !touched && this.elapsed < GATHER_MS) return;
+    this.finish();
+  }
+
+  /** 读者按了 Tour / Replay 之类：不用等满 2.4 秒，立刻散开开工。 */
+  finish(): void {
+    if (this.released) return;
+    this.released = true;
+    this.dispose();
+    this.engine.remove(this);
+    this.release();
+  }
+
+  dispose(): void {
+    window.removeEventListener('wheel', this.onWheel);
+  }
+}
+
+/** 状态闸门：按 200ms 的节拍把状态交出去，自己跟跑完那一帧一起下车。 */
+class StatusTicker implements Tickable {
+  constructor(
+    private readonly engine: Engine,
+    private readonly report: () => void,
+    private readonly done: () => boolean,
+  ) {}
+
+  tick(): void {
+    this.report();
+    if (this.done()) this.engine.remove(this);
+  }
+}
+
 export class SwarmBuilder {
   private readonly opts;
   private readonly root: HTMLElement;
@@ -96,6 +167,23 @@ export class SwarmBuilder {
   private sound: SoundSink | null = null;
   private score: ScoreBus | null = null;
   private stopPointer: (() => void) | null = null;
+  /** 开场聚群的滚轮监听：交还页面、跳过、销毁时都要摘掉。 */
+  private stopIntro: (() => void) | null = null;
+  private intro: IntroTicker | null = null;
+  /** Esc / M / 手势解锁；`keys:false` 时不绑。 */
+  private stopKeys: (() => void) | null = null;
+  private camera: TourCam | null = null;
+  /** 这一局镜头在不在跟：`tour` 是配置，这一个才是现场状态。 */
+  private touring = false;
+  private phase: SwarmPhase = 'idle';
+  /** 暂停住的是哪一段；继续时原样退回去。 */
+  private frozen: SwarmPhase = 'idle';
+  /** 每次开始/收工换一个号：预滚动那一遍回来得晚，不能把下一局的场子搭歪。 */
+  private runId = 0;
+  private agents: Agent[] = [];
+  private lastStatusAt = 0;
+  /** 收工那一刻的时间戳：跑完之后 status.elapsed 不该继续涨。 */
+  private endedAt = 0;
   /** 这一轮定下的基准倍速；自适应速率在它之上乘，`setSpeed` 换的就是它。 */
   private pace = 1;
   /** 真实鼠标在蓝图坐标里的位置；读者不在页面上时是 null。 */
@@ -117,23 +205,34 @@ export class SwarmBuilder {
     if (this.started || this.destroyed) return;
     this.started = true;
     this.startedAt = performance.now();
+    this.endedAt = 0;
+    const run = ++this.runId;
 
     // 参考库的规则：读者要求减少动效，就什么都不演，直接把真页面交回去。
     if (this.opts.reducedMotion === 'skip' && matchMedia('(prefers-reduced-motion: reduce)').matches) {
       this.finished = true;
-      this.options.onComplete?.({ built: 0, dropped: 0, durationMs: 0, seed: this.opts.seed });
+      this.phase = 'done';
+      this.report(true);
+      this.options.onComplete?.({ built: 0, dropped: 0, agents: 0, durationMs: 0, seed: this.opts.seed });
       return;
     }
 
+    this.watchKeys();
     if (this.opts.scan === 'pre-scroll') {
+      this.phase = 'scanning';
+      this.report(true);
       // 采集前那一遍是异步的：等图片、等字体、把懒加载的内容滚出来。
       // 那一遍出任何岔子都不能把构建拖死，兜底直接按当前 DOM 采。
       void preScan(this.root)
         .then((env) => {
+          if (run !== this.runId) return;
           this.env = env;
           this.begin();
         })
-        .catch(() => this.begin());
+        .catch(() => {
+          if (run !== this.runId) return;
+          this.begin();
+        });
       return;
     }
     this.begin();
@@ -145,7 +244,7 @@ export class SwarmBuilder {
   }
 
   private begin(): void {
-    if (this.begun || this.destroyed) return;
+    if (this.begun || this.destroyed || !this.started) return;
     this.begun = true;
     applyPerformanceMode(this.opts, this.root.querySelectorAll('*').length);
     const blueprint = snapshot(this.root, this.opts);
@@ -154,7 +253,12 @@ export class SwarmBuilder {
     // Nothing measurable (hidden or zero-width host): skip the blank layer so
     // the real page never flickers off for a frame.
     if (blueprint.items.length === 0) {
-      this.options.onComplete?.({ built: 0, dropped: blueprint.dropped, durationMs: 0, seed: this.opts.seed });
+      this.finished = true;
+      this.phase = 'done';
+      this.stopKeys?.();
+      this.stopKeys = null;
+      this.report(true);
+      this.options.onComplete?.({ built: 0, dropped: blueprint.dropped, agents: 0, durationMs: 0, seed: this.opts.seed });
       return;
     }
 
@@ -179,10 +283,16 @@ export class SwarmBuilder {
       : this.opts.speed;
     engine.speed = this.pace;
 
-    const generative = this.opts.sound && this.opts.score === 'generative';
-    const score = generative ? new ScoreBus(() => ({ width: blueprint.width, top: this.band.top, height: this.band.height })) : null;
-    const clicks = this.opts.sound && !generative ? new SoundBus() : null;
-    const sound: SoundSink | null = score ?? clicks;
+    // 两套声部都先建出来，静音只是把出口拉到 0：这样 M 键、面板上的开关都能
+    // 在跑到一半时把它接回来，而不是等下一局。参考版也是开场就 init()。
+    const stage = (): { width: number; top: number; height: number } => ({
+      width: blueprint.width,
+      top: this.band.top,
+      height: this.band.height,
+    });
+    const generative = this.opts.score === 'generative';
+    const score = generative ? new ScoreBus(stage, this.opts.sound) : null;
+    const sound: SoundSink = score ?? new SoundBus(this.opts.sound);
     this.sound = sound;
     this.score = score;
 
@@ -191,7 +301,7 @@ export class SwarmBuilder {
     this.scheduler = scheduler;
     this.engine = engine;
 
-    const agents: Agent[] = [];
+    const agents: Agent[] = this.agents = [];
     const byFlyer = new Map<Flyer, Agent>();
     const flyers = (): Agent[] => agents.filter((agent) => !agent.isFinished);
     const addAgent = (x: number, y: number, home: boolean): Agent => {
@@ -221,34 +331,56 @@ export class SwarmBuilder {
     };
 
     const infos: AgentInfo[] = [];
-    for (let index = 0; index < this.opts.agentCount; index++) {
-      // Appear near the region each agent owns instead of one shared corner.
-      const head = scheduler.peek(index);
-      const startX = head ? head.x + 140 : blueprint.width / 2;
-      const startY = head ? head.y + 90 : blueprint.height / 2;
-      infos.push(addAgent(startX, startY, true).info);
+    // 聚群要按视口算进场点，而 this.band 要到下面 wantsFrame 那段才填，这里先取一次。
+    const opening = this.opts.gather ? viewBand(this.root, this.scroller) : null;
+    // 参考版的开场是 18 只一起飞进来，前 MIN_AGENTS 只是原始班底，其余由班组决定去留。
+    // 读者把班组钉成固定人数时（`agents:'fixed'`）就按那个数来，不额外招人。
+    const crewSize = opening && this.opts.agents === 'auto'
+      ? Math.max(this.opts.agentCount, INTRO_AGENTS)
+      : this.opts.agentCount;
+    for (let index = 0; index < crewSize; index++) {
+      const home = index < this.opts.agentCount;
+      if (!opening) {
+        // Appear near the region each agent owns instead of one shared corner.
+        const head = scheduler.peek(index);
+        const startX = head ? head.x + 140 : blueprint.width / 2;
+        const startY = head ? head.y + 90 : blueprint.height / 2;
+        infos.push(addAgent(startX, startY, home).info);
+        continue;
+      }
+      // 参考版的开场：左右轮流进场，各在画面外 40~240px，高度在视口 5%~95% 之间抽。
+      // 进场点用这一局的种子抽，回放才跑得出同一支队伍。
+      const off = SPAWN_OFFSCREEN + rng() * INTRO_SPREAD;
+      const startX = index % 2 === 0 ? -off : blueprint.width + off;
+      const startY = opening.top + opening.height * (INTRO_EDGE_MIN + rng() * INTRO_EDGE_RANGE);
+      infos.push(addAgent(startX, startY, home).info);
     }
 
     // 四套参考实现里只有这一处按帧读布局，其余都从 this.band 取缓存。
     const wantsFrame = this.opts.flight === 'live'
+      || this.opts.gather
       || this.opts.agents === 'auto'
       || this.opts.pick === 'live'
       || this.opts.trigger === 'scroll'
       || this.opts.adaptiveSpeed
       || generative;
+    let flight: Flight | null = null;
+    let crew: Crew | null = null;
+    // 聚群期间参考版只跑轨道场：不招人、不动镜头、不发活，所以这几样都等开工再进时钟。
+    let building = !this.opts.gather;
     if (wantsFrame) {
       this.band = viewBand(this.root, this.scroller);
-      const stage = (): FlightStage => ({
+      const flightStage = (): FlightStage => ({
         top: this.band.top,
         height: this.band.height,
         width: blueprint.width,
         pointer: this.pointer,
       });
-      const flight = this.opts.flight === 'live'
-        ? new Flight(flyers, stage, this.opts.pointer === 'follow', this.opts.pointer === 'repel')
+      flight = this.opts.flight === 'live' || this.opts.gather
+        ? new Flight(flyers, flightStage, this.opts.pointer === 'follow', this.opts.pointer === 'repel')
         : null;
-      if (flight && this.opts.pointer !== 'ignore') this.watchPointer();
-      const crew = this.opts.agents === 'auto'
+      if (this.opts.gather || (flight && this.opts.pointer !== 'ignore')) this.watchPointer();
+      crew = this.opts.agents === 'auto'
         ? new Crew({
             active: () => flyers().length,
             available: () => scheduler.available,
@@ -258,7 +390,7 @@ export class SwarmBuilder {
             leave: (flyer) => byFlyer.get(flyer)?.retire(),
             isHome: (flyer) => byFlyer.get(flyer)?.isHome ?? false,
             floor: this.opts.agentCount,
-            stage,
+            stage: flightStage,
             rng,
           }, flyers)
         : null;
@@ -269,7 +401,7 @@ export class SwarmBuilder {
           engine.speed = clamp(this.pace * Math.min(1 + scheduler.backlog * ADAPTIVE_GAIN, ADAPTIVE_MAX), SPEED_MIN, SPEED_MAX);
         }
         flight?.tick(realMs);
-        crew?.tick(realMs);
+        if (building) crew?.tick(realMs);
         // 位置归物理，姿态归物理，施工中的那一帧除外（它自己 moveTo 过）。
         if (flight) for (const agent of flyers()) agent.renderPose();
         return scheduler.pending === 0 && agents.every((agent) => agent.isFinished);
@@ -277,30 +409,67 @@ export class SwarmBuilder {
       engine.add(ticker);
     }
 
-    // The camera follows the cursors, so it leaves as soon as they do.
-    // 逐段解锁时还得往远处看：只有被前沿挡住的那件东西能告诉镜头下一屏在哪儿。
-    if (this.opts.tour) {
-      const camViews = (): readonly TourView[] => {
-        const live = flyers();
-        if (this.opts.trigger !== 'scroll') return live;
-        const ahead = scheduler.nextGatedY();
-        // 靶子按「挡住的那件往下 1/4 屏」交给镜头，镜头把它拉到视口下缘往上 90px，
-        // 于是真正的条目落在解锁线（88%）以上——按 12% 那条边距拉会差几十像素，滚到位了却没解锁。
-        return ahead === null ? live : [...live, { x: 0, y: ahead + this.band.height * 0.25 }];
-      };
-      engine.add(new TourCam(
-        camViews,
-        this.root,
-        () => scheduler.built >= scheduler.total,
-        (cam) => engine.remove(cam),
-        () => this.scroller,
-      ));
-    }
+    // 镜头只在这一局里存在，但先把它建好：Tour 是运行时开关，参考版的 HUD 上
+    // 那颗钮切的就是同一局里跟不跟，不是下一局的配置。
+    const camViews = (): readonly TourView[] => {
+      const live = flyers();
+      // 手里还有活（没领的、或已经领了正在飞的）就跟着人走；全闲下来才朝下一屏望。
+      if (this.opts.trigger !== 'scroll' || scheduler.available > 0 || live.some((a) => a.busy)) return live;
+      const ahead = scheduler.nextGatedY();
+      // 靶子按「挡住的那件往下 1/4 屏」交给镜头，镜头把它拉到视口下缘往上 90px，
+      // 于是真正的条目落在解锁线（视口底边）以上——只把条目本身交给镜头，它正好压着线，滚到位了却没解锁。
+      return ahead === null ? live : [...live, { x: 0, y: ahead + this.band.height * 0.25 }];
+    };
+    const camera = new TourCam(
+      camViews,
+      this.root,
+      () => scheduler.built >= scheduler.total,
+      (cam) => {
+        engine.remove(cam);
+        this.touring = false;
+        this.report(true);
+      },
+      () => this.scroller,
+    );
+    this.camera = camera;
 
     if (this.options.onProgress) engine.add(new ProgressTicker(engine, scheduler, this.options.onProgress));
+    if (this.options.onStatus) {
+      const done = (): boolean => scheduler.pending === 0 && agents.every((agent) => agent.isFinished);
+      engine.add(new StatusTicker(engine, () => this.report(), done));
+    }
 
-    score?.start();
-    this.options.onStart?.(infos);
+    const launch = (): void => {
+      building = true;
+      this.phase = 'building';
+      this.touring = this.opts.tour;
+      scheduler.release();
+      if (flight) flight.introCenter = null;
+      if (this.touring) engine.add(camera);
+      score?.start();
+      this.report(true);
+      this.options.onStart?.(infos);
+    };
+
+    if (this.opts.gather && flight) {
+      this.phase = 'gathering';
+      scheduler.hold();
+      // 圆心钉在视口正中：镜头这段时间不动，读者看到的就是一群光标在眼前绕圈。
+      flight.introCenter = { x: blueprint.width / 2, y: this.band.top + this.band.height / 2 };
+      const intro = new IntroTicker(engine, flyers, () => this.pointer, () => {
+        this.stopIntro = null;
+        this.intro = null;
+        launch();
+      });
+      this.intro = intro;
+      this.stopIntro = () => intro.dispose();
+      engine.add(intro);
+      // 参考版在开场那一下先放一段气声，群蜂散开时才接琶音。
+      score?.intro();
+      this.report(true);
+    } else {
+      launch();
+    }
     engine.whenIdle(() => this.complete());
   }
 
@@ -331,29 +500,51 @@ export class SwarmBuilder {
 
   private complete(): void {
     this.finished = true;
+    this.phase = 'done';
+    this.touring = false;
+    this.endedAt = performance.now();
     const result: SwarmResult = {
       built: this.scheduler?.built ?? 0,
       dropped: this.blueprint?.dropped ?? 0,
-      durationMs: Math.round(performance.now() - this.startedAt),
+      agents: this.agents.filter((agent) => agent.worked).length,
+      durationMs: Math.round(this.endedAt - this.startedAt),
       seed: this.scheduler?.seed ?? this.opts.seed,
     };
-    // 参考版是收尾和弦先响，真页面亮出来那一下再落一个下落扫频。
+    // 参考版是收尾和弦先响，真页面亮出来那一下再落一个下落扫频，余响里把声部关掉。
     this.score?.finale();
     this.overlay?.reveal();
     this.score?.release();
     this.cursors?.destroy();
+    // 场上已经没光标了：读数不能还挂着一群被强行停住的替身。
+    this.agents = [];
     this.stopPointer?.();
     this.stopPointer = null;
+    this.stopIntro?.();
+    this.stopIntro = null;
+    this.intro = null;
+    this.stopKeys?.();
+    this.stopKeys = null;
+    this.sound?.close(1.4);
+    this.sound = null;
+    this.score = null;
+    this.report(true);
     this.options.onComplete?.(result);
   }
 
   /** Freezes the clock mid-stroke; `resume()` continues from the same frame. */
   pause(): void {
-    this.engine?.pause();
+    if (!this.engine || this.finished || this.destroyed || this.phase === 'paused') return;
+    this.engine.pause();
+    this.frozen = this.phase;
+    this.phase = 'paused';
+    this.report(true);
   }
 
   resume(): void {
+    if (this.phase !== 'paused') return;
+    this.phase = this.frozen;
     this.engine?.resume();
+    this.report(true);
   }
 
   get isPaused(): boolean {
@@ -368,6 +559,15 @@ export class SwarmBuilder {
     // 下一帧就会重算成 pace * (1 + backlog * 0.45)。
     this.pace = speed;
     if (this.engine) this.engine.speed = speed;
+    this.report(true);
+  }
+
+  /** 参考版 HUD 那颗倍速钮：1× → 2× → 3× → 1×。 */
+  cycleSpeed(): number {
+    const at = SPEED_STEPS.indexOf(this.opts.speed as (typeof SPEED_STEPS)[number]);
+    const next = SPEED_STEPS[(at + 1) % SPEED_STEPS.length] ?? 1;
+    this.setSpeed(next);
+    return next;
   }
 
   /**
@@ -386,18 +586,207 @@ export class SwarmBuilder {
     this.complete();
   }
 
-  destroy(): void {
-    this.destroyed = true;
+  /** 参考版 toggle()：在跑的收工，跑完的重放，还没跑的开局。 */
+  toggle(): void {
+    if (this.started && !this.finished && !this.destroyed) this.stop();
+    else if (this.finished) this.replay();
+    else this.start();
+  }
+
+  /**
+   * Hands the page back now and forgets the run, the reference's `stop(reveal)`.
+   * `reveal` is the extension's 「Go live」: it plays the falling sweep on the way
+   * out, where a plain stop leaves silently. The instance stays usable —
+   * `start()` or `replay()` begins a fresh run on the same options.
+   */
+  stop(reveal = false): void {
+    if (this.destroyed) return;
+    if (reveal && !this.finished) this.score?.release();
+    this.runId++;
+    this.started = false;
+    this.begun = false;
+    this.finished = false;
+    this.phase = 'idle';
+    this.touring = false;
+    this.endedAt = 0;
+    this.teardown(reveal ? 1.4 : 0.25);
+    this.report(true);
+  }
+
+  /** 参考版 restart()：拆掉这一局，按同一份配置再采一遍、再演一遍。 */
+  replay(): void {
+    if (this.destroyed) return;
+    this.stop();
+    this.start();
+  }
+
+  setSound(on: boolean): void {
+    this.opts.sound = on;
+    this.sound?.setOn(on);
+    this.report(true);
+  }
+
+  get isSoundOn(): boolean {
+    return this.sound?.on ?? this.opts.sound;
+  }
+
+  /**
+   * The reference's speaker button. When sound is on but the browser is still
+   * holding the context, this unlocks it instead of muting — the 「Tap for
+   * sound」 state.
+   */
+  toggleSound(): void {
+    const sound = this.sound;
+    if (!sound) {
+      this.opts.sound = !this.opts.sound;
+      this.report(true);
+      return;
+    }
+    if (sound.on && sound.blocked) sound.resume();
+    else sound.setOn(!sound.on);
+    this.opts.sound = sound.on;
+    this.report(true);
+  }
+
+  /** The reference's Tour button: follows the frontier, mid-run, without a new capture. */
+  setTour(on: boolean): void {
+    this.opts.tour = on;
+    if (!this.engine || this.finished || this.destroyed || !this.camera) return;
+    this.touring = on;
+    if (on) {
+      // 参考版开 Tour 时顺手 engine.start()：聚群那一段不必等满 2.4 秒。
+      this.intro?.finish();
+      this.engine.add(this.camera);
+    } else {
+      this.engine.remove(this.camera);
+    }
+    this.report(true);
+  }
+
+  get isTouring(): boolean {
+    return this.touring;
+  }
+
+  toggleTour(): void {
+    this.setTour(!this.touring);
+  }
+
+  /** What the run is doing right now; the panel and any host chrome read this. */
+  get status(): SwarmStatus {
+    const scheduler = this.scheduler;
+    const live = this.agents.filter((agent) => !agent.isFinished);
+    const busyCrew = live.filter((agent) => agent.busy);
+    return {
+      phase: this.destroyed ? 'idle' : this.phase,
+      built: scheduler?.built ?? 0,
+      total: scheduler?.total ?? 0,
+      agents: live.length,
+      busy: busyCrew.length,
+      busyCrew: busyCrew.slice(-5).map((agent) => agent.info),
+      speed: this.engine?.speed ?? this.opts.speed,
+      pace: this.pace,
+      sound: this.sound?.on ?? this.opts.sound,
+      soundBlocked: this.sound?.blocked ?? false,
+      tour: this.touring,
+      // 参考版那句 "scroll to keep building"：活被解锁线挡着、眼前又没得干、镜头也没在跟。
+      needsScroll: this.phase === 'building'
+        && scheduler !== null
+        && !this.touring
+        && this.opts.trigger === 'scroll'
+        && scheduler.pending > 0
+        && scheduler.gated > 0
+        && scheduler.backlog === 0,
+      elapsed: this.elapsed,
+    };
+  }
+
+  private get elapsed(): number {
+    if (!this.started) return 0;
+    const end = this.finished || this.destroyed ? this.endedAt : performance.now();
+    return Math.max(0, end - this.startedAt) / 1000;
+  }
+
+  /** 200ms 的节拍：跟参考版 HUD 的刷新率一样，`force` 只给阶段切换用。 */
+  private report(force = false): void {
+    const callback = this.options.onStatus;
+    if (!callback) return;
+    const now = performance.now();
+    if (!force && now - this.lastStatusAt < STATUS_MS) return;
+    this.lastStatusAt = now;
+    callback(this.status);
+  }
+
+  private teardown(soundAfter: number): void {
     this.engine?.stop();
-    this.sound?.dispose();
-    this.sound = null;
-    this.score = null;
     this.stopPointer?.();
     this.stopPointer = null;
+    this.stopIntro?.();
+    this.stopIntro = null;
+    this.intro = null;
+    this.stopKeys?.();
+    this.stopKeys = null;
     this.cursors?.destroy();
     this.overlay?.destroy();
+    this.sound?.close(soundAfter);
+    this.sound = null;
+    this.score = null;
+    this.camera = null;
     this.engine = null;
     this.cursors = null;
     this.overlay = null;
+    this.scheduler = null;
+    this.blueprint = null;
+    this.agents = [];
+  }
+
+  /**
+   * 参考版绑在 window 上的那几个键：Esc 收工、M 静音、任何键与按下都用来解锁音频。
+   * 库跑在宿主页面里，读者在输入框里敲 m 不该把配乐关了——那一类目标是让开的。
+   */
+  private watchKeys(): void {
+    if (!this.opts.keys || this.stopKeys) return;
+    const editing = (event: Event): boolean => {
+      const target = event.composedPath()[0] ?? event.target;
+      const el = target instanceof HTMLElement ? target : null;
+      return el !== null && (el.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName));
+    };
+    const onKey = (event: KeyboardEvent): void => {
+      if (!editing(event)) {
+        if (event.key === 'Escape' && this.started && !this.finished) {
+          event.stopPropagation();
+          this.stop();
+        } else if ((event.key === 'm' || event.key === 'M') && !event.metaKey && !event.ctrlKey && !event.altKey) {
+          this.toggleSound();
+        }
+      }
+      this.unlockSound();
+    };
+    const onDown = (): void => this.unlockSound();
+    window.addEventListener('keydown', onKey, true);
+    window.addEventListener('pointerdown', onDown, true);
+    this.stopKeys = () => {
+      window.removeEventListener('keydown', onKey, true);
+      window.removeEventListener('pointerdown', onDown, true);
+    };
+  }
+
+  private unlockSound(): void {
+    const sound = this.sound;
+    if (!sound?.blocked) return;
+    sound.resume();
+    // resume() 是个 promise：上下文状态要到下一拍才翻，参考版也是等 80ms 再刷按钮。
+    setTimeout(() => {
+      if (!this.destroyed) this.report(true);
+    }, 80);
+  }
+
+  destroy(): void {
+    this.destroyed = true;
+    this.started = false;
+    this.phase = 'idle';
+    this.touring = false;
+    this.endedAt = 0;
+    this.teardown(0.1);
+    this.report(true);
   }
 }

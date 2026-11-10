@@ -29,7 +29,14 @@ export interface SoundSpot {
 
 export interface SoundSink {
   play(event: SoundEvent, spot?: SoundSpot): void;
-  dispose(): void;
+  /** Enabled, not necessarily audible: the browser may still be holding the context. */
+  readonly on: boolean;
+  setOn(on: boolean): void;
+  /** A context exists but the autoplay policy holds it; one keypress or click unlocks it. */
+  readonly blocked: boolean;
+  resume(): void;
+  /** Fade out over `after` seconds, then close the context. Safe to call twice. */
+  close(after?: number): void;
 }
 
 export interface RunContext {

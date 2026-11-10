@@ -23,17 +23,51 @@ const VOICES: Record<SoundEvent, Voice> = {
 /**
  * Synthesised clicks, so there is nothing to preload. The AudioContext is
  * created on the first event rather than in the constructor: browsers count
- * contexts against the autoplay policy, and most hosts never turn sound on.
+ * contexts against the autoplay policy, and a muted run never opens one.
  */
 export class SoundBus {
   private ctx: AudioContext | null = null;
   private master: GainNode | null = null;
+  private out: GainNode | null = null;
+  private enabled: boolean;
+  private closed = false;
   private readonly lastPlayed = new Map<SoundEvent, number>();
+
+  constructor(on = true) {
+    this.enabled = on;
+  }
+
+  get on(): boolean {
+    return this.enabled;
+  }
+
+  get blocked(): boolean {
+    return this.ctx !== null && this.ctx.state !== 'running';
+  }
+
+  setOn(on: boolean): void {
+    this.enabled = on;
+    const ctx = this.ctx;
+    const out = this.out;
+    if (!ctx || !out) {
+      if (on) this.open();
+      return;
+    }
+    const t = ctx.currentTime;
+    out.gain.cancelScheduledValues(t);
+    out.gain.setTargetAtTime(on ? 1 : 0, t, 0.05);
+    if (on) this.resume();
+  }
+
+  resume(): void {
+    if (this.ctx?.state === 'suspended') void this.ctx.resume().catch(() => {});
+  }
 
   play(event: SoundEvent): void {
     const ctx = this.open();
     const master = this.master;
-    if (!ctx || !master) return;
+    // 挂起的上下文不走时：照排下去会在解锁那一刻一起炸出来，所以等到它真在跑再发声。
+    if (!ctx || !master || !this.enabled || ctx.state !== 'running') return;
 
     const voice = VOICES[event];
     // Wall clock, not ctx.currentTime: a suspended context does not advance,
@@ -59,23 +93,41 @@ export class SoundBus {
     osc.stop(now + voice.dur + 0.02);
   }
 
-  dispose(): void {
-    if (this.ctx && this.ctx.state !== 'closed') void this.ctx.close();
+  close(after = 0): void {
+    if (this.closed) return;
+    this.closed = true;
+    const ctx = this.ctx;
+    const out = this.out;
     this.ctx = null;
     this.master = null;
+    this.out = null;
+    if (!ctx || ctx.state === 'closed') return;
+    // 硬关会在尾巴上爆一下，所以先淡出再关。
+    if (out) {
+      const t = ctx.currentTime;
+      out.gain.cancelScheduledValues(t);
+      out.gain.setValueAtTime(out.gain.value, t);
+      out.gain.linearRampToValueAtTime(0, t + Math.max(0.05, after));
+    }
+    setTimeout(() => void ctx.close().catch(() => {}), (after + 0.2) * 1000);
   }
 
   private open(): AudioContext | null {
+    if (this.closed || !this.enabled) return null;
     if (!this.ctx) {
       const Ctor = window.AudioContext;
       if (!Ctor) return null;
       this.ctx = new Ctor();
       const master = this.ctx.createGain();
       master.gain.value = 0.7;
-      master.connect(this.ctx.destination);
+      const out = this.ctx.createGain();
+      out.gain.value = 1;
+      master.connect(out);
+      out.connect(this.ctx.destination);
       this.master = master;
+      this.out = out;
     }
-    if (this.ctx.state === 'suspended') void this.ctx.resume();
+    this.resume();
     return this.ctx;
   }
 }

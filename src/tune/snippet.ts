@@ -1,48 +1,19 @@
-import type { SwarmBuilderOptions } from '../types';
+import type { SwarmBuilderOptions, SwarmConfig } from '../types';
+import { DEFAULT_OPTIONS } from '../core/config';
 import type { Lang } from './locale';
 
-/** The serialisable half of the options: `root` is an element and the callbacks are functions. */
-export type PlainConfig = Omit<SwarmBuilderOptions, 'root' | 'autoStart' | 'onStart' | 'onProgress' | 'onComplete'>;
+/** 拷一份出来：面板会往里写值，库的默认值表不能被改脏。 */
+export const DEFAULT_CONFIG: Required<SwarmConfig> = { ...DEFAULT_OPTIONS, ignore: [] };
 
-export const DEFAULT_CONFIG: Required<PlainConfig> = {
-  agentCount: 6,
-  speed: 1,
-  targetDuration: 0,
-  performanceMode: 'auto',
-  order: 'group',
-  balance: false,
-  seed: 0,
-  ignore: [],
-  maxItems: 400,
-  duplicate: true,
-  maxCopies: 12,
-  guides: true,
-  maxGuides: 16,
-  grow: true,
-  sound: false,
-  flocking: true,
-  tour: false,
-  theme: 'auto',
-  flight: 'idle',
-  pointer: 'ignore',
-  agents: 'fixed',
-  pick: 'queued',
-  trigger: 'immediate',
-  adaptiveSpeed: false,
-  scan: 'single',
-  score: 'off',
-  reducedMotion: 'run',
-};
+const KEYS = Object.keys(DEFAULT_CONFIG) as (keyof SwarmConfig)[];
 
-const KEYS = Object.keys(DEFAULT_CONFIG) as (keyof PlainConfig)[];
-
-export function pickPlain(source: SwarmBuilderOptions): PlainConfig {
+export function pickPlain(source: SwarmBuilderOptions): Partial<SwarmConfig> {
   const out: Record<string, unknown> = {};
   for (const key of KEYS) {
     const value = source[key];
     if (value !== undefined) out[key] = value;
   }
-  return out as PlainConfig;
+  return out as Partial<SwarmConfig>;
 }
 
 /** The panel is chrome, not content: it must never end up in an exported production config. */
@@ -73,7 +44,7 @@ export function describeRoot(root: HTMLElement): { selector: string; guessed: bo
  * a file and an agent asked to apply the settings. Only values that differ from
  * the defaults are listed, which keeps the snippet short and teaches the defaults.
  */
-export function buildSnippet(config: PlainConfig, root: { selector: string; guessed: boolean }, lang: Lang = 'zh'): string {
+export function buildSnippet(config: SwarmConfig, root: { selector: string; guessed: boolean }, lang: Lang = 'zh'): string {
   const en = lang === 'en';
   const rows = [`  root: document.querySelector('${root.selector}'),${root.guessed ? (en ? ' // guessed - swap in your own container' : ' // 猜的：换成你的容器') : ''}`];
   for (const key of KEYS) {

@@ -130,7 +130,45 @@ function nextLoad(): Promise<void> {
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
 /**
- * srcdoc 那一次导航不能死等 `load`：`load` 要等页面上每一个子资源返回，
+ * 转发口那条路的新文案自己管双语（跟 prompt.ts 一样按 getLang 二选一）：
+ * 字典 index.ts 管的是外壳原有的静态文案与老提示，这里不往里加键。
+ */
+const say = (zh: string, en: string): string => (getLang() === 'en' ? en : zh);
+
+/** 直连只有同源/CORS 站点能成，快进快出；转发口那边可能要开无头浏览器，给它留够时间。 */
+const DIRECT_TIMEOUT_MS = 8000;
+const RELAY_TIMEOUT_MS = 50000;
+
+/**
+ * 转发口的地址。?relay=off / ?relay=fail 是开发期的探针开关，原样传给 /__page：
+ * off 完全不走无头渲染，fail 让无头那一步必然失败——用来量「没有无头浏览器时外壳还工不工作」。
+ */
+function relayHref(url: string): string {
+  const knob = params.get('relay');
+  const render = knob === 'off' || knob === 'fail' || knob === 'auto' ? `&render=${knob}` : '';
+  return `${location.origin}/__page?url=${encodeURIComponent(url)}${render}`;
+}
+
+/** 转发口交回来的一页正文，外加它是怎么拿到的——外壳照实转述，不假装每次都是无头渲染。 */
+interface GrabbedPage {
+  html: string;
+  base: string;
+  render: string;
+  note: string;
+}
+
+/** 走了哪条路取到正文，就照实说哪条：这是开发工具，不假装每次都是无头渲染。 */
+let relayPath = '';
+function relayLabel(): string {
+  if (relayPath === 'headless') return say('无头渲染', 'headless render');
+  if (relayPath === 'fallback') return say('无头没成，退回静态 HTML', 'headless failed, static HTML');
+  if (relayPath === 'fetch') return say('静态 HTML', 'static HTML');
+  if (relayPath === 'direct') return say('直连', 'direct fetch');
+  return '';
+}
+
+/**
+ * 重建那一次导航不能死等 `load`：`load` 要等页面上每一个子资源返回，
  * 而第三方站点的一张外链图片挂住（不失败、也不回来）就把整次构建卡死在这里。
  * 改为认这一页自己的就绪状态——先确认换的是我们那份文档（`data-sb-rebuild` 是
  * wrapForRebuild 打的标记，用来躲开上一份 about:blank 的假阳性），再让样式与图片
@@ -147,14 +185,18 @@ async function waitRebuildReady(limitMs: number): Promise<void> {
 }
 
 // The case page creates its own tuner from a module script, which lands after load.
-function waitForTuner(limitMs: number): Promise<SwarmTuner | null> {
+// 冷启动时这份文档要现编译整条 /src 依赖图，8 秒不够——那不等于「装不上」，
+// 只是还没装上。等到上限之前先认 `__tunerBoot`（启动脚本自己报的失败），
+// 有了它才立刻收工，没有就继续等，上限只是「永远装不上」的兜底。
+function waitForTuner(limitMs: number): Promise<{ tuner: SwarmTuner | null; bootError: string }> {
   const mine = generation;
   return new Promise((resolve) => {
     let waited = 0;
     const poll = () => {
-      const win = frame.contentWindow as (Window & { __tuner?: SwarmTuner }) | null;
-      if (win?.__tuner) resolve(win.__tuner);
-      else if (mine !== generation || waited > limitMs) resolve(null);
+      const win = frame.contentWindow as (Window & { __tuner?: SwarmTuner; __tunerBoot?: string }) | null;
+      if (win?.__tuner) resolve({ tuner: win.__tuner, bootError: '' });
+      else if (win?.__tunerBoot) resolve({ tuner: null, bootError: win.__tunerBoot });
+      else if (mine !== generation || waited > limitMs) resolve({ tuner: null, bootError: '' });
       else {
         waited += 40;
         setTimeout(poll, 40);
@@ -171,7 +213,7 @@ function withLang(href: string): string {
   return `${url.pathname}${url.search}${url.hash}`;
 }
 
-/** 只认 http(s)：`javascript:` 与 `data:` 会被写进 srcdoc，等于让外壳执行任意脚本。 */
+/** 只认 http(s)：`javascript:` 与 `data:` 会被写进重建文档，等于让外壳执行任意脚本。 */
 function normalize(raw: string): string {
   const text = raw.trim();
   if (!text) return '';
@@ -238,18 +280,35 @@ function eagerImages(parsed: Document): void {
   }
 }
 
-/** 取到的 HTML 先剥脚本再放进同源 srcdoc：脚本留着会自己画一遍，参数面板就管不住它。 */
+/** 取到的 HTML 先剥脚本再包成一份本地文档：脚本留着会自己画一遍，参数面板就管不住它。 */
+let activeRebuildUrl = '';
+function rebuildDocUrl(html: string, base: string): string {
+  if (activeRebuildUrl) URL.revokeObjectURL(activeRebuildUrl);
+  activeRebuildUrl = URL.createObjectURL(new Blob([wrapForRebuild(html, base)], { type: 'text/html;charset=utf-8' }));
+  return activeRebuildUrl;
+}
+
 function wrapForRebuild(html: string, base: string): string {
   const parsed = new DOMParser().parseFromString(html, 'text/html');
   parsed.querySelectorAll('script, iframe').forEach((el) => el.remove());
+  // 内联事件属性（onload / onerror）指向的都是刚被剥掉的那些脚本里的函数，
+  // 留着每次重绘都抛一个 ReferenceError，还可能把 lazy 类名重新加回去。
+  parsed.querySelectorAll('*').forEach((el) => {
+    for (const name of Array.from(el.attributes)) {
+      if (name.name.toLowerCase().startsWith('on')) el.removeAttribute(name.name);
+    }
+  });
   parsed.querySelectorAll('meta[http-equiv]').forEach((el) => {
     const kind = (el.getAttribute('http-equiv') ?? '').toLowerCase();
-    if (kind === 'refresh' || kind === 'content-security-policy') el.remove();
+    if (kind === 'refresh' || kind === 'content-security-policy' || kind === 'referrer-policy') el.remove();
   });
   eagerImages(parsed);
-  // srcdoc 那份文档自己没有地址，发子资源请求时 Referer 用的是外壳自己的 origin；
-  // 按 Referer 做防盗链的站点会把外链图片一律拦掉，看起来就是「图全没了」。
-  // 声明 no-referrer，让图片按直接访问放行。
+  // 重建这份文档是外壳创建出来的，它没有自己的站名，发子资源请求时 Referer 用的是
+  // 外壳自己（localhost）；按 Referer 做防盗链的站点会把外链图片一律拦掉，
+  // 看起来就是「图全没了」。声明 no-referrer，让图片按直接访问放行。
+  // 原页自己常常也带一条 <meta name="referrer">（B 站带的是 no-referrer-when-downgrade），
+  // 而后写的那一条才作数——只 prepend 不删除等于没写，Referer 照样漏出去，CDN 照样 403。
+  parsed.querySelectorAll('meta[name="referrer" i]').forEach((el) => el.remove());
   const referrer = parsed.createElement('meta');
   referrer.name = 'referrer';
   referrer.content = 'no-referrer';
@@ -264,10 +323,14 @@ function wrapForRebuild(html: string, base: string): string {
   parsed.documentElement.lang = getLang();
   const boot = parsed.createElement('script');
   boot.type = 'module';
+  // 用 dynamic import 而不是 top-level import：静态 import 挂了是模块实例化失败，
+  // try/catch 抓不到，`__tunerBoot` 就永远没人写，外壳只能干等到超时。
   boot.textContent = [
-    `import { tune } from ${JSON.stringify(new URL('/src/tune/index.ts', location.href).href)};`,
-    'const root = document.querySelector("#app") || document.querySelector("main") || document.body;',
-    `window.__tuner = tune({ root, lang: ${JSON.stringify(getLang())}, initial: { sound: true, tour: true, scan: 'pre-scroll' }, open: true, position: "bottom-right" });`,
+    `const mod = await import(${JSON.stringify(new URL('/src/tune/index.ts', location.href).href)}).catch((err) => { window.__tunerBoot = String(err); return null; });`,
+    'if (mod) { try {',
+    '  const root = document.querySelector("#app") || document.querySelector("main") || document.body;',
+    `  window.__tuner = mod.tune({ root, lang: ${JSON.stringify(getLang())}, initial: { sound: true, tour: true, scan: 'pre-scroll' }, open: true, position: "bottom-right" });`,
+    '} catch (err) { window.__tunerBoot = String(err); } }',
   ].join('\n');
   parsed.body.append(boot);
   return `<!doctype html>${parsed.documentElement.outerHTML}`;
@@ -279,15 +342,17 @@ async function loadPreset(c: Case, mine: number): Promise<void> {
   frame.src = withLang(c.href);
   await settled;
 
-  const found = await waitForTuner(8000);
+  const got = await waitForTuner(20000);
   if (mine !== generation) return;
   addrEl.dataset.loading = 'false';
-  if (!found) {
-    hintEl.textContent = tr('这一页没有装上创造者模式');
+  if (!got.tuner) {
+    hintEl.textContent = got.bootError
+      ? trf('创造者模式装到这一页时失败了：{0}', got.bootError)
+      : tr('这一页没有装上创造者模式');
     return;
   }
 
-  tuner = found;
+  tuner = got.tuner;
   if (creatorOn) tuner.open();
   else tuner.close();
   tuner.apply();
@@ -297,27 +362,47 @@ async function loadPreset(c: Case, mine: number): Promise<void> {
  * 先直连，再走同源转发：直连只有同源页和愿意给 CORS 头的站点能成，
  * 公网大多数会在这里抛错——那不是「这页读不了」，是浏览器不让读，
  * 所以还有第二次机会：本地开发服务器上的 /__page 转发口。
+ * 转发口现在会先用无头浏览器把这一页跑一遍（站点自己的 JS 画出来的那些图，
+ * 静态 HTML 里根本没有），所以那一次的等待上限比直连长得多，并且在状态栏里说明正在做什么。
  */
-async function grabPage(url: string): Promise<{ html: string } | { why: string }> {
-  const tries: { how: string; href: string }[] = [{ how: tr('直连：'), href: url }];
-  if (new URL(url).origin !== location.origin) {
-    tries.push({ how: tr('同源转发：'), href: `${location.origin}/__page?url=${encodeURIComponent(url)}` });
+async function grabPage(url: string): Promise<GrabbedPage | { why: string }> {
+  const crossOrigin = new URL(url).origin !== location.origin;
+  const tries: { how: string; href: string; limit: number; relayed: boolean }[] = [
+    { how: tr('直连：'), href: url, limit: DIRECT_TIMEOUT_MS, relayed: false },
+  ];
+  if (crossOrigin) {
+    tries.push({ how: tr('同源转发：'), href: relayHref(url), limit: RELAY_TIMEOUT_MS, relayed: true });
   }
   const notes: string[] = [];
   for (const try_ of tries) {
-    // 断网/慢站点的 fetch 会一直挂着，标签就永远停在「取 HTML…」。给它 6 秒，
-    // 到点按「取不到」处理——降级为直接嵌本来就该比死等诚实。
+    if (try_.relayed) {
+      hintEl.textContent = say(
+        '正在用无头浏览器渲染这一页：让站点自己的 JS 把图画出来，可能要十几秒…',
+        'Rendering this page in a headless browser so its own JS can draw the images — this can take tens of seconds…',
+      );
+    }
+    // 断网/慢站点的 fetch 会一直挂着，标签就永远停在「取 HTML…」。到点按「取不到」处理——
+    // 降级为直接嵌本来就该比死等诚实。转发口的上限要盖住它自己那次无头渲染加静态回退。
     const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), 6000);
+    const timer = setTimeout(() => ctrl.abort(), try_.limit);
     try {
       const res = await fetch(try_.href, { credentials: 'omit', signal: ctrl.signal });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const type = res.headers.get('content-type') ?? '';
       if (!/html/i.test(type)) throw new Error(trf('不是 HTML（{0}）', type || tr('未知类型')));
-      return { html: await res.text() };
+      const html = await res.text();
+      // 转发口报的是上游跳转之后的地址：相对图址要按它解析，不是按用户输入的那条。
+      const base = res.headers.get('x-relay-final-url') || (try_.relayed ? url : res.url) || url;
+      return {
+        html,
+        base,
+        render: try_.relayed ? (res.headers.get('x-relay-render') || 'unknown') : 'direct',
+        note: res.headers.get('x-relay-note') ?? '',
+      };
     } catch (err) {
+      const secs = Math.round(try_.limit / 1000);
       const why = err instanceof DOMException && err.name === 'AbortError'
-        ? tr('超时（6 秒内没返回）')
+        ? say(`超时（${secs} 秒内没返回）`, `timed out (no reply within ${secs} seconds)`)
         : err instanceof Error ? err.message : String(err);
       notes.push(try_.how + why);
     } finally {
@@ -334,21 +419,32 @@ async function loadCustom(c: Case, mine: number): Promise<void> {
   if (mine !== generation) return;
 
   if ('html' in got) {
+    // 这一页是直连、静态转发还是无头渲染拿到的，状态栏那一行会一直带着它；
+    // 无头没成时，转发口把原因放在 note 里，挂到提示行的 title 上。
+    relayPath = got.render;
+    hintEl.title = got.note;
     c.mode = 'rebuild';
     // 两条路谁先到算谁：正常页靠 load，子资源挂住的页靠自己的 readyState。
     // settled 必须在赋值之前建好，否则会漏掉这次导航的 load 事件。
     const settled = nextLoad();
-    frame.srcdoc = wrapForRebuild(got.html, c.url as string);
+    // 不用 srcdoc：srcdoc 那份文档的「地址」就是外壳自己的 URL，dev server 跑在
+    // 127.0.0.1 上，浏览器于是把它的每一条子资源请求判成「本地页面要连公网」，
+    // 直接 ERR_BLOCKED_BY_LOCAL_NETWORK_ACCESS_CHECKS——图全灰、样式全丢，
+    // 而 dev server 加不加 flag 都改变不了这个判定。
+    // blob: 是这份文档自己创建出来的资源，同源可读 DOM，也不走那条检查。
+    frame.src = rebuildDocUrl(got.html, c.url as string);
     await Promise.race([settled, waitRebuildReady(6000)]);
     if (mine !== generation) return;
     addrEl.dataset.loading = 'false';
-    const found = await waitForTuner(8000);
+    const boot = await waitForTuner(20000);
     if (mine !== generation) return;
-    if (!found) {
-      hintEl.textContent = tr('这一页取到了，但创造者模式没装上');
+    if (!boot.tuner) {
+      hintEl.textContent = boot.bootError
+        ? trf('创造者模式装到这一页时失败了：{0}', boot.bootError)
+        : tr('这一页取到了，但创造者模式没装上');
       return;
     }
-    tuner = found;
+    tuner = boot.tuner;
     if (creatorOn) tuner.open();
     else tuner.close();
     tuner.apply();
@@ -504,7 +600,7 @@ creatorBtn.addEventListener('click', () => {
 setInterval(() => {
   if (!tuner) return;
   barEl.dataset.phase = tuner.phase;
-  hintEl.textContent = `${tr(caseOf(current()).title)} · ${tuner.status}`;
+  hintEl.textContent = `${tr(caseOf(current()).title)} · ${tuner.status}${relayLabel() ? ` · ${relayLabel()}` : ''}`;
   const items = frame.contentDocument?.querySelectorAll('.sb-item').length ?? 0;
   metaEl.textContent = items > 0 ? trf('{0} 个盒子在画', items) : '';
 }, 200);

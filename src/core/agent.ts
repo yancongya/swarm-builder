@@ -62,7 +62,8 @@ export class Agent implements AgentView, Tickable, Flyer {
   ) {
     this.x = startX;
     this.y = startY;
-    if (deps.opts.flight === 'live') Object.assign(this, makeFlyer(startX, startY, deps.rng));
+    // 聚群走的也是轨道场，所以只开 gather 没开 flight 时这套物理参数照样要抽。
+    if (deps.opts.flight === 'live' || deps.opts.gather) Object.assign(this, makeFlyer(startX, startY, deps.rng));
     this.ctx = {
       opts: deps.opts,
       overlay: deps.overlay,
@@ -141,6 +142,8 @@ export class Agent implements AgentView, Tickable, Flyer {
    */
   private retireWhenDone(): void {
     const scheduler = this.deps.scheduler;
+    // 开场聚群时领不到活是正常的，别把正在集合的人当成干完了收走。
+    if (scheduler.isHeld) return;
     if (scheduler.pending === 0) this.retire();
     else if (this.deps.home && scheduler.gated === 0 && scheduler.isEmpty(this.index)) this.retire();
   }

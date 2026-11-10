@@ -9,6 +9,8 @@ import { clamp } from './config';
 
 /** 轨道环半径（px），会随时间 ±18% 呼吸。 */
 const ORBIT_R = 135;
+/** 开场聚群时参考版把同一个场按 0.7 收：环更小、放宽距离更近，于是人挤成一团。 */
+const INTRO_SCALE = 0.7;
 /** 每个光标自己的轨道偏心量，参考版按 orbit∈[70,170] 抽。 */
 const ORBIT_BASE = 120;
 const ORBIT_WOBBLE = 0.3;
@@ -115,6 +117,13 @@ export class Flight implements Tickable {
   private time = 0;
   private readonly pointerVel = { x: 0, y: 0 };
   private lastPointer: { x: number; y: number } | null = null;
+  /**
+   * 开场聚群的圆心（蓝图坐标）。参考版开局调用的是 `follow(dt, cursors, 视口正中, 0.7)`：
+   * 同一个轨道场，但圆心钉死在视口中心、半径乘 0.7，也没人领活——一群光标从左右两边
+   * 飞进来绕着中心转，直到读者滚一下滚轮或者把鼠标伸进群里才开工。置回 null 就交还给
+   * 「指针 / 8 字漂移」那套待时圆心。
+   */
+  introCenter: { x: number; y: number } | null = null;
 
   constructor(
     private readonly flyers: () => readonly Flyer[],
@@ -131,9 +140,9 @@ export class Flight implements Tickable {
     const list = this.flyers().filter((c) => !c.busy);
     if (list.length === 0) return;
     const stage = this.stage();
-    const target = this.followPointer && stage.pointer
-      ? stage.pointer
-      : this.drift(stage);
+    const scale = this.introCenter ? INTRO_SCALE : 1;
+    const target = this.introCenter
+      ?? (this.followPointer && stage.pointer ? stage.pointer : this.drift(stage));
 
     if (stage.pointer && this.lastPointer && dt > 0) {
       const k = Math.min(1, dt * POINTER_TRACK);
@@ -144,7 +153,7 @@ export class Flight implements Tickable {
 
     const time = this.time;
     // 轨道环会呼吸，切向推力会反向：这两个慢周期让一群光标不会转成一条直线。
-    const ring = ORBIT_R * (1 + 0.18 * Math.sin(time * 0.55));
+    const ring = ORBIT_R * scale * (1 + 0.18 * Math.sin(time * 0.55));
     const swirl = Math.tanh(Math.cos(time * 0.11) * 3);
     const want: { x: number; y: number }[] = [];
     for (const c of list) {
@@ -154,7 +163,7 @@ export class Flight implements Tickable {
       const nx = vx / d;
       const ny = vy / d;
       const ang = Math.atan2(vy, vx);
-      const rr = ring * (1 + ORBIT_WOBBLE * Math.sin(3 * ang + time * 0.7)) + (c.orbit - ORBIT_BASE) * 0.55;
+      const rr = ring * (1 + ORBIT_WOBBLE * Math.sin(3 * ang + time * 0.7)) + (c.orbit - ORBIT_BASE) * 0.55 * scale;
       const tang = TANGENTIAL * (0.7 + c.spin * 0.2) * swirl;
       const rad = clamp((rr - d) * RADIAL_GAIN, RADIAL_MIN, RADIAL_MAX);
       const far = clamp((d - rr) / CURL_REACH, 0, 1);
@@ -186,7 +195,7 @@ export class Flight implements Tickable {
         fx = fx * ALIGN_SELF + (ax / wsum) * ALIGN_NEIGHBOUR;
         fy = fy * ALIGN_SELF + (ay / wsum) * ALIGN_NEIGHBOUR;
       }
-      const dist = Math.max(0, Math.hypot(c.x - target.x, c.y - target.y) - RELAX_FROM);
+      const dist = Math.max(0, Math.hypot(c.x - target.x, c.y - target.y) - RELAX_FROM * scale);
       const maxV = c.pace * (1.3 + Math.min(VRELAX_MAX, dist * VRELAX_PER_PX));
       const length = Math.hypot(fx, fy);
       if (length > maxV) {
@@ -207,7 +216,8 @@ export class Flight implements Tickable {
       c.y += c.vy * dt;
     }
 
-    if (stage.pointer && this.repelPointer) this.dodge(list, stage.pointer);
+    // 聚群时不把鼠标当排斥源：参考版正是靠「光标碰到鼠标」决定开工，弹开就永远碰不到。
+    if (stage.pointer && this.repelPointer && !this.introCenter) this.dodge(list, stage.pointer);
     for (const c of list) {
       if (Math.hypot(c.vx, c.vy) >= 30) {
         // 朝速度方向偏过去，走最短的角差，不然会绕远路抽一下。

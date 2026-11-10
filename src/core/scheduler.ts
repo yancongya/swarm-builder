@@ -29,8 +29,12 @@ export interface ViewBand {
   bottom: number;
 }
 
-/** cursor-swarm 的 `trigger` 默认值：元素顶边越过视口 88% 那条线才算到了。 */
-const UNLOCK_FRACTION = 0.88;
+/**
+ * 参考版的解锁线就是视口底边（`frontier = viewBot`）：元素顶边进了这一屏就算到了。
+ * 不是 88%——那条是轻量库 cursor-swarm 的 trigger，按它算，最后 12% 的元素在页面滚到底
+ * 以后仍然落在线下，短页永远收不了工。
+ */
+const UNLOCK_FRACTION = 1;
 /** 参考版 pick()：带外先付一百万，带内按纵向位置、再按离光标的距离加权。 */
 const OUTSIDE_PENALTY = 1e6;
 const GUIDE_BONUS = 5e5;
@@ -78,9 +82,12 @@ export class Scheduler {
   private readonly completed = new Set<string>();
   /** `pick: 'live'` 时唯一的工作来源；关着时是 null，一切照旧走 queues。 */
   private readonly pool: BlueprintItem[] | null;
+  private readonly spawnOrder: BlueprintItem[] | null;
   /** `trigger: 'scroll'` 时是已经滚到的最低那条线；关着时是 Infinity。 */
   private frontier: number;
   private band: ViewBand = { top: Number.NEGATIVE_INFINITY, bottom: Number.POSITIVE_INFINITY };
+  /** 开场聚群期间一件活都不发：参考版开局只跑轨道场，`started` 之后才有人领活。 */
+  private held = false;
   readonly total: number;
   /** The number this run shuffled with - 0 in means "pick one for me". */
   readonly seed: number;
@@ -94,6 +101,12 @@ export class Scheduler {
     for (const item of schedulable) this.known.add(item.id);
     const target = Math.max(1, Math.ceil(schedulable.length / opts.agentCount));
     this.pool = opts.pick === 'live' ? schedulable.slice() : null;
+    // 池子模式下光标「站在哪儿出场」的唯一依据：按文档序发牌在长页面里等于随机撒，
+    // 镜头跟着人走，第一帧就冲到最靠后的那个人那儿，前沿被镜头推着把整页提前解锁，
+    // 「随滚动解锁」当场形同虚设。出场顺序按顶边排，人就从页首一路往下散。
+    this.spawnOrder = this.pool
+      ? this.pool.slice().sort((a, b) => a.y - b.y || a.depth - b.depth || a.order - b.order)
+      : null;
     this.frontier = opts.trigger === 'scroll' ? 0 : Number.POSITIVE_INFINITY;
 
     for (const unit of unitsFor(blueprint, opts, schedulable, target, makeRng(this.seed))) {
@@ -105,6 +118,19 @@ export class Scheduler {
   isEmpty(agentIndex: number): boolean {
     if (this.pool) return this.pool.length === 0;
     return (this.queues[agentIndex]?.length ?? 0) === 0;
+  }
+
+  /** 开场聚群：扣住不发活，也不让班组和提速闸门看见「有活可领」。 */
+  hold(): void {
+    this.held = true;
+  }
+
+  release(): void {
+    this.held = false;
+  }
+
+  get isHeld(): boolean {
+    return this.held;
   }
 
   /**
@@ -128,6 +154,7 @@ export class Scheduler {
 
   /** 参考版的 backlog()：已解锁、还没落定的活。用来把时钟拧快。 */
   get backlog(): number {
+    if (this.held) return 0;
     let n = 0;
     this.eachUnclaimed((item) => { if (this.unlocked(item)) n++; });
     return n;
@@ -135,6 +162,7 @@ export class Scheduler {
 
   /** 已解锁又没人领、依赖也齐的活：班组按这个决定要不要再招人。 */
   get available(): number {
+    if (this.held) return 0;
     let n = 0;
     this.eachUnclaimed((item) => { if (this.ready(item)) n++; });
     return n;
@@ -167,8 +195,15 @@ export class Scheduler {
     return this.queues;
   }
 
-  /** Where the agent should appear, so cursors start dispersed over the page. */
+  /**
+   * Where the agent should appear, so cursors start dispersed over the page.
+   * `pick:'live'` 时不按队列：队列是「按队列认领」那条路的地盘，运行时挑的班底
+   * 追的是眼前的活。这里要是还按队列头摆人，6 个人一开局就站在 6 条带的头上，
+   * 镜头跟着人走 = 第一帧就冲到页底，前沿被镜头推着把整页提前解锁——
+   * 「随滚动解锁」当场失效，画面又变回满屏齐开。所以池子模式下按文档序发牌。
+   */
   peek(agentIndex: number): BlueprintItem | null {
+    if (this.spawnOrder) return this.spawnOrder[agentIndex] ?? this.spawnOrder[0] ?? null;
     return this.queues[agentIndex]?.[0] ?? null;
   }
 
@@ -178,6 +213,7 @@ export class Scheduler {
    * `live`：整页一个池子，按参考实现的代价挑最便宜的那个。
    */
   take(claimer: Claimer): BlueprintItem | null {
+    if (this.held) return null;
     if (this.pool) return this.pickLive(claimer);
     const offset = ((claimer.index % this.queues.length) + this.queues.length) % this.queues.length;
     for (let step = 0; step < this.queues.length; step++) {

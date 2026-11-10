@@ -112,8 +112,9 @@ writeFileSync(join(DIR, 'page.html'), [
   '<div class="box"></div><div class="box"></div><ul><li>第一条</li><li>第二条</li></ul></div>',
   '<script type="module">',
   'import { SwarmBuilder } from "/node_modules/swarm-builder/dist/swarm-builder.es.js";',
-  '// autoStart 默认是 true，这里关掉，让测试来决定起跑时刻。',
-  'window.__sb = new SwarmBuilder({ root: document.querySelector("#target"), agentCount: 3, speed: 1, autoStart: false });',
+  '// autoStart 默认是 true，这里关掉，让测试来决定起跑时刻；trigger 默认等滚动，',
+  '// 冒烟页没有真实读者会滚，所以让它开局就放行全部条目。',
+  'window.__sb = new SwarmBuilder({ root: document.querySelector("#target"), agentCount: 3, speed: 1, autoStart: false, trigger: "immediate" });',
   '</script></body></html>',
   '',
 ].join('\n'));
@@ -128,7 +129,7 @@ writeFileSync(join(DIR, 'iife.html'), [
   'const NS = window.SwarmBuilder;',
   'window.__shape = { ns: typeof NS, cls: typeof NS?.SwarmBuilder, mount: typeof NS?.mount };',
   'if (typeof NS?.SwarmBuilder === "function") {',
-  '  window.__sb2 = new NS.SwarmBuilder({ root: document.querySelector("#target"), agentCount: 2, speed: 1, autoStart: false });',
+  '  window.__sb2 = new NS.SwarmBuilder({ root: document.querySelector("#target"), agentCount: 2, speed: 1, autoStart: false, trigger: "immediate" });',
   '}',
   '</script></body></html>',
   '',
@@ -143,7 +144,7 @@ writeFileSync(join(DIR, 'tune.html'), [
   '<script>',
   'const NS = window.SwarmBuilderTune;',
   'window.__tuneShape = { ns: typeof NS, tune: typeof NS?.tune, cls: typeof NS?.SwarmTuner };',
-  'if (typeof NS?.tune === "function") { window.__tuner = NS.tune({ root: "#target", open: true }); }',
+  'if (typeof NS?.tune === "function") { window.__tuner = NS.tune({ root: "#target", open: true, initial: { trigger: "immediate" } }); }',
   '</script></body></html>',
   '',
 ].join('\n'));
@@ -176,18 +177,19 @@ page.on('pageerror', (err) => errors.push(String(err)));
 await page.goto(`http://127.0.0.1:${port}/page.html`, { waitUntil: 'load' });
 
 // 起跑由测试按下，这样截图能落在运行途中，而不是等跑完才去看一个已经撤掉的覆盖层。
+// 默认扫描是 pre-scroll，覆盖层要等采集完才挂上来，所以判定「跑完」看 phase，
+// 不看覆盖层在不在——开局那一瞬间它本来就还没出现。
 const ranPromise = page.evaluate(async () => {
   let items = 0, texts = 0, cursors = 0;
   window.__sb.start();
   const t0 = Date.now();
-  while (Date.now() - t0 < 30000) {
+  while (Date.now() - t0 < 30000 && window.__sb.status.phase !== 'done') {
     items = Math.max(items, document.querySelectorAll('.sb-item').length);
     texts = Math.max(texts, document.querySelectorAll('.sb-text').length);
     cursors = Math.max(cursors, document.querySelectorAll('.sb-cursor').length);
-    if (!document.querySelector('.sb-overlay')) break;
     await new Promise((r) => setTimeout(r, 60));
   }
-  return { items, texts, cursors, overlayGone: !document.querySelector('.sb-overlay') };
+  return { items, texts, cursors, phase: window.__sb.status.phase, overlayGone: !document.querySelector('.sb-overlay') };
 });
 await page.waitForTimeout(700);
 await page.screenshot({ path: join(ROOT, '.shots', 'consumer-page.png') });
@@ -201,18 +203,17 @@ if (shape?.ns !== 'object' || shape?.cls !== 'function' || shape?.mount !== 'fun
 }
 const errorsBefore = errors.length;
 const iife = await page.evaluate(async () => {
-  if (!window.__sb2) return { built: false, items: 0, overlayGone: false };
+  if (!window.__sb2) return { built: false, items: 0, phase: 'idle', overlayGone: false };
   let items = 0;
   window.__sb2.start();
   const t0 = Date.now();
-  while (Date.now() - t0 < 30000) {
+  while (Date.now() - t0 < 30000 && window.__sb2.status.phase !== 'done') {
     items = Math.max(items, document.querySelectorAll('.sb-item').length);
-    if (!document.querySelector('.sb-overlay')) break;
     await new Promise((r) => setTimeout(r, 60));
   }
-  return { built: true, items, overlayGone: !document.querySelector('.sb-overlay') };
+  return { built: true, items, phase: window.__sb2.status.phase, overlayGone: !document.querySelector('.sb-overlay') };
 });
-if (!iife.built || iife.items === 0 || !iife.overlayGone) problems.push(`script 标签页跑不起来：${JSON.stringify({ shape, iife })}`);
+if (!iife.built || iife.items === 0 || iife.phase !== 'done' || !iife.overlayGone) problems.push(`script 标签页跑不起来：${JSON.stringify({ shape, iife })}`);
 if (errors.length > errorsBefore) problems.push(`script 标签页控制台报错：${errors[errorsBefore]}`);
 lines.push(`script 标签: 全局形状 ${JSON.stringify(shape)} · 途中元素=${iife.items} · 覆盖层已清除=${iife.overlayGone}`);
 
@@ -227,17 +228,18 @@ await page.click('[data-apply]');
 const tuneRan = await page.evaluate(async () => {
   const host = document.querySelector('[data-sb-chrome]');
   if (!host) return { panel: false, done: false, snippet: '' };
+  const statusOf = () => host.shadowRoot.querySelector('[data-status]').textContent;
   let items = 0;
   const t0 = Date.now();
-  while (Date.now() - t0 < 30000) {
+  while (Date.now() - t0 < 30000 && !statusOf().startsWith('完成')) {
     items = Math.max(items, document.querySelectorAll('.sb-item').length);
-    if (!document.querySelector('.sb-overlay')) break;
     await new Promise((r) => setTimeout(r, 60));
   }
   return {
     panel: true,
     items,
-    done: host.shadowRoot.querySelector('[data-status]').textContent.startsWith('完成'),
+    done: statusOf().startsWith('完成'),
+    status: statusOf(),
     snippet: window.__tuner.snippet(),
   };
 });
@@ -249,7 +251,7 @@ lines.push(`创造者模式: 全局 ${JSON.stringify(tuneShape)} · 途中元素
 await browser.close();
 await new Promise((done) => server.close(done));
 
-if (!ran.overlayGone || ran.items === 0 || ran.texts === 0) problems.push(`页面里跑不起来：${JSON.stringify(ran)}`);
+if (!ran.overlayGone || ran.items === 0 || ran.texts === 0 || ran.phase !== 'done') problems.push(`页面里跑不起来：${JSON.stringify(ran)}`);
 if (errors.length) problems.push(`浏览器控制台报错 ${errors.length} 条：${errors[0]}`);
 lines.push(`真实页面: 途中峰值 元素=${ran.items} 文本=${ran.texts} 光标=${ran.cursors} · 结束覆盖层已清除=${ran.overlayGone} · 控制台报错=${errors.length}`);
 
