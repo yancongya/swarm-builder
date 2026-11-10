@@ -74,7 +74,11 @@
       删减量化：shell.ts 742→718 行、shell-extra.css 90→79 行；`.case-scroll` 注入层、
       `style[data-sb-lib]` 抄写、`--sb-chrome-pad` 垫高三块全删，改走库的 `styleRoot`
       （tune 透传）与「viewport 即滚动容器」（detectEnv 跨 shadow + viewBand 实测矩形）。
-- [ ] browser.ts 与 shell.ts 的共享逻辑抽公共模块（外壳骨架、案例挂载），容器差异留在适配层。
+- [x] browser.ts 与 shell.ts 的共享逻辑抽公共模块（外壳骨架、案例挂载），容器差异留在适配层。
+      收敛量化：新增 `demos/shell-core.ts`（341 行：案例元数据、标签条、历史栈、空白页、
+      地址校验、创造者钮、`__browser` 吊钩，经 hooks 注入容器差异）；browser.ts 638→389 行、
+      shell.ts 718→472 行。母本留 iframe 抓取/重建链路，容器留 shadow 挂载/离线提示/
+      pre-build 进场态；两壳各自冒烟全绿（主 verify + minitool gate/smoke）。
 - [x] minitool 正式 commit 进主仓（独立构建入口保留；`dist/`、zip 不入库，`.gitignore` 补 `minitool/dist/` 与 `*.zip` 规则）。
 
 验收：git 跟踪 minitool 源码与构建链；两壳共享模块后各自案例冒烟全绿。

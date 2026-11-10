@@ -1,5 +1,6 @@
 /**
- * 小工具外壳：demos/index.html + demos/browser.ts 的移植版。
+ * 小工具外壳的容器适配层：标签条、历史栈、空白页、地址校验、创造者钮与 __browser
+ * 吊钩都在 demos/shell-core.ts（与母本 demos/browser.ts 共用骨架）。
  *
  * 与母本的差异都来自容器硬约束（见 minitool skill 的 device-capabilities）：
  * - **去 iframe**：案例页面以 shadow 根挂进 [data-viewport]；viewport 自己就是
@@ -18,6 +19,7 @@ import { SwarmBuilder } from '../../src/index';
 import type { SwarmBuilderOptions } from '../../src/types';
 import { tune, type SwarmTuner } from '../../src/tune/index';
 import { applyLang, getLang, setLang, tr, trf } from '../../demos/lang';
+import { createShellCore, need, say, normalize, tabTitle, type Case } from '../../demos/shell-core';
 import caseCss from 'minitool:case-css';
 import panelCss from 'minitool:panel-css';
 import darkUiHtml from 'minitool:case-html:dark-ui';
@@ -27,18 +29,6 @@ import landingHtml from 'minitool:case-html:landing';
 import simpleHtml from 'minitool:case-html:simple';
 import tallHtml from 'minitool:case-html:tall';
 import tuneHtml from 'minitool:case-html:tune';
-
-interface Case {
-  key: string;
-  title: string;
-  href: string;
-  /** 地址栏显示的站名：让案例读起来像个站点而不是一个文件。 */
-  origin: string;
-  /** 用户自己开的标签：地址是他输入的，不是仓库里的文件。 */
-  custom?: boolean;
-  url?: string;
-  mode?: 'blank';
-}
 
 /** 构建期已剥 script/link/_blank 的案例 HTML，key 与 demos/<key>.html 一致。 */
 const CASE_HTML: Record<string, string> = {
@@ -51,23 +41,6 @@ const CASE_HTML: Record<string, string> = {
   tune: tuneHtml,
 };
 
-const CASES: Case[] = [
-  { key: 'home', title: '产品说明页', href: './home.html', origin: 'https://swarm-builder.dev' },
-  { key: 'simple', title: '简单页基准', href: './simple.html', origin: 'https://swarm.demo' },
-  { key: 'console', title: '密集控制台', href: './console.html', origin: 'https://orbit.demo/console' },
-  { key: 'landing', title: '深色落地页', href: './landing.html', origin: 'https://nova.demo' },
-  { key: 'dark-ui', title: '复杂工作台', href: './dark-ui.html', origin: 'https://studio.demo' },
-  { key: 'tall', title: '长页面跟随', href: './tall.html', origin: 'https://notes.demo/long' },
-  { key: 'tune', title: '别人的站点', href: './tune.html', origin: 'https://letterpress.demo' },
-];
-
-// 空白页上给三条现成地址：两条站内（切到内置案例），一条真的公网（只产出离线提示）。
-const CHIPS = [
-  { label: '这一页自己', href: './home.html' },
-  { label: '别人的站点', href: './tune.html' },
-  { label: 'example.com', href: 'https://example.com' },
-];
-
 /**
  * 各案例的重建根与初始参数。母本 creator.ts 统一找 #app；tune 案例的内联脚本
  * 用 #site 且自带初始值（它的 body 没有 data-swarm，被构建期剥掉的脚本里写着）。
@@ -76,15 +49,6 @@ const ROOT_SEL: Record<string, string> = { tune: '#site' };
 const CASE_INIT: Record<string, SwarmBuilderOptions> = {
   tune: { agentCount: 6, targetDuration: 8, sound: true, tour: true },
 };
-
-function need<T extends HTMLElement>(selector: string): T {
-  const el = document.querySelector<T>(selector);
-  if (!el) throw new Error(`minitool shell is missing ${selector}`);
-  return el;
-}
-
-/** 新文案不在母本字典里（demos/dicts 不可改），双语在源码里二选一。 */
-const say = (zh: string, en: string): string => (getLang() === 'en' ? en : zh);
 
 /**
  * home 提示词的英文整段（母本 demos/prompt.ts 的 PROMPT_EN 原样搬入——
@@ -128,39 +92,16 @@ function detectFlexGap(): boolean {
 export function start(): void {
   const tabsEl = need<HTMLElement>('[data-tabs]');
   const navEl = need<HTMLElement>('.nav');
-  const addrEl = need<HTMLElement>('[data-addr]');
-  const urlEl = need<HTMLElement>('[data-url]');
-  const hintEl = need<HTMLElement>('[data-hint]');
-  const metaEl = need<HTMLElement>('[data-meta]');
-  const barEl = need<HTMLElement>('[data-statusbar]');
-  const creatorBtn = need<HTMLButtonElement>('[data-creator]');
-  const backBtn = need<HTMLButtonElement>('[data-back]');
-  const fwdBtn = need<HTMLButtonElement>('[data-fwd]');
-  const reloadBtn = need<HTMLButtonElement>('[data-reload]');
-  const newTabBtn = need<HTMLButtonElement>('[data-newtab]');
   const langBtn = need<HTMLButtonElement>('[data-lang]');
   const viewportEl = need<HTMLElement>('[data-viewport]');
-  const blankEl = need<HTMLElement>('[data-blank]');
-  const blankForm = need<HTMLFormElement>('[data-blank-form]');
-  const blankInput = need<HTMLInputElement>('[data-blank-input]');
-  const blankChips = need<HTMLElement>('[data-blank-chips]');
 
   // flex gap 能力类：外壳 document 与案例 shadow 的 host 都要带（见 detectFlexGap 注释）。
   const flexGapOk = detectFlexGap();
   document.documentElement.classList.toggle('supports-flex-gap', flexGapOk);
   viewportEl.classList.toggle('supports-flex-gap', flexGapOk);
 
-  const params = new URLSearchParams(location.search);
-  const fromUrl = params.get('case') ?? '';
-  // 第一个案例就是打开时看到的那一页：预设页排在 CASES 最前面，不必再抄一遍 key。
-  const stack: string[] = [CASES.some((c) => c.key === fromUrl) ? fromUrl : (CASES[0] as Case).key];
-  let cursor = 0;
-  let customSeq = 0;
   let tuner: SwarmTuner | null = null;
-  // 创造者面板默认收起（用户要求）：顶栏「创造者模式」钮随时可展开。
-  let creatorOn = false;
   let shadow: ShadowRoot | null = null;
-  const tabEls = new Map<string, HTMLButtonElement>();
 
   // 进场态：顶栏（tabs+nav）藏起、视口让到状态栏下沿，构建完成才落回（见 shell-extra.css）。
   document.documentElement.classList.add('pre-build');
@@ -197,70 +138,13 @@ export function start(): void {
       });
   }
 
-  function caseOf(key: string): Case {
-    const found = CASES.find((c) => c.key === key);
-    if (!found) throw new Error(`unknown case ${key}`);
-    return found;
-  }
-
-  function current(): string {
-    return stack[cursor] as string;
-  }
-
   /** chrome 高度实测：双语换行、窄屏折行都会改它，viewport 开窗的 top/bottom 靠这三个变量对齐。 */
   function measureChrome(): void {
     const style = document.documentElement.style;
     style.setProperty('--sb-tabs-h', `${tabsEl.offsetHeight}px`);
     style.setProperty('--sb-chrome-h', `${tabsEl.offsetHeight + navEl.offsetHeight}px`);
-    style.setProperty('--sb-status-h', `${barEl.offsetHeight}px`);
+    style.setProperty('--sb-status-h', `${core.barEl.offsetHeight}px`);
   }
-
-  function paintChrome(): void {
-    const active = current();
-    for (const tab of tabsEl.querySelectorAll<HTMLButtonElement>('.tab')) {
-      tab.setAttribute('aria-selected', String(tab.dataset.key === active));
-    }
-    const c = caseOf(active);
-    urlEl.textContent = c.custom ? (c.url ?? '') : c.origin;
-    params.set('case', active);
-    if (c.custom && c.url) params.set('u', c.url);
-    else params.delete('u');
-    // replaceState 不在容器禁令里（只有 location.href= / location.assign 被禁）。
-    history.replaceState(null, '', `?${params}`);
-    backBtn.disabled = cursor === 0;
-    fwdBtn.disabled = cursor >= stack.length - 1;
-  }
-
-  function makeTab(item: Case): HTMLButtonElement {
-    const tab = document.createElement('button');
-    tab.type = 'button';
-    tab.className = 'tab';
-    tab.dataset.key = item.key;
-    tab.setAttribute('role', 'tab');
-    tab.setAttribute('aria-selected', 'false');
-    const dot = document.createElement('span');
-    dot.className = 'fav';
-    dot.setAttribute('aria-hidden', 'true');
-    const label = document.createElement('b');
-    label.textContent = tr(item.title);
-    tab.append(dot, label);
-    if (item.custom) {
-      const close = document.createElement('i');
-      close.className = 'close';
-      close.setAttribute('aria-label', tr('关闭标签'));
-      close.textContent = '×';
-      close.addEventListener('click', (e) => {
-        e.stopPropagation();
-        closeTab(item.key);
-      });
-      tab.append(close);
-    }
-    tab.addEventListener('click', () => go(item.key));
-    tabEls.set(item.key, tab);
-    return tab;
-  }
-
-  for (const item of CASES) tabsEl.append(makeTab(item));
 
   /** 面板挂在 document.body 上：把它从状态条后面抬起来（inline style 必胜，不赌层叠）。 */
   function liftPanel(): void {
@@ -279,7 +163,7 @@ export function start(): void {
   function mountCase(c: Case): void {
     const html = CASE_HTML[c.key];
     if (!html) {
-      hintEl.textContent = tr('这一页没有装上创造者模式');
+      core.hintEl.textContent = tr('这一页没有装上创造者模式');
       return;
     }
     const parsed = new DOMParser().parseFromString(html, 'text/html');
@@ -317,7 +201,7 @@ export function start(): void {
     const rootSel = ROOT_SEL[c.key] ?? '#app';
     const root = shadow.querySelector<HTMLElement>(rootSel);
     if (!root) {
-      hintEl.textContent = trf('这一页没有装上创造者模式：找不到 {0}', rootSel);
+      core.hintEl.textContent = trf('这一页没有装上创造者模式：找不到 {0}', rootSel);
       return;
     }
 
@@ -341,7 +225,7 @@ export function start(): void {
     tuner = tune({
       root,
       initial,
-      open: creatorOn,
+      open: core.creatorOn,
       position: 'bottom-right',
       lang: getLang(),
       // CSS 不跨 shadow 边界：引擎样式直接注进案例的 shadow 根（上游 styleRoot 选项），
@@ -352,7 +236,7 @@ export function start(): void {
     liftPanel();
     // 母本 loadPreset 每次挂载都显式开跑：面板只负责调参，不负责启动这一局。
     tuner.apply();
-    if (params.has('auto')) tuner.apply();
+    if (core.params.has('auto')) tuner.apply();
 
     // 面板 host 挂在 body 上（shadow 同步创建）：注入 Chrome 61 基线 compat + gap 能力类。
     const panelHost = document.querySelector<HTMLElement>('[data-sb-chrome]');
@@ -439,19 +323,21 @@ export function start(): void {
   }
 
   function load(): void {
-    addrEl.dataset.loading = 'true';
-    barEl.dataset.phase = 'idle';
-    hintEl.textContent = tr('载入中…');
-    metaEl.textContent = '';
-
-    const c = caseOf(current());
+    core.beginLoad();
+    const c = core.caseOf(core.current());
     if (c.custom) {
-      showBlank(c);
+      core.showBlank(c);
       return;
     }
-    blankEl.hidden = true;
     mountCase(c);
-    addrEl.dataset.loading = 'false';
+    core.addrEl.dataset.loading = 'false';
+  }
+
+  // 状态镜像每 200ms 覆写状态条：用户反馈类提示（离线、地址读不懂）要粘住几秒才看得清。
+  let hintHoldUntil = 0;
+  function hintSay(text: string, holdMs = 3000): void {
+    core.hintEl.textContent = text;
+    hintHoldUntil = performance.now() + holdMs;
   }
 
   function offlineHint(): void {
@@ -461,149 +347,52 @@ export function start(): void {
         'Offline container: external addresses cannot be fetched — pick a built-in case',
       ),
     );
-    metaEl.textContent = '';
-  }
-
-  // 状态镜像每 200ms 覆写状态条：用户反馈类提示（离线、地址读不懂）要粘住几秒才看得清。
-  let hintHoldUntil = 0;
-  function hintSay(text: string, holdMs = 3000): void {
-    hintEl.textContent = text;
-    hintHoldUntil = performance.now() + holdMs;
-  }
-
-  function showBlank(c: Case): void {
-    blankEl.hidden = false;
-    // 案例内容会把 viewport 撑到几千像素高，blank 居中就跑到视口外了——新标签页限回可视高度。
-    viewportEl.classList.add('is-blank');
-    blankInput.value = c.url ?? '';
-    addrEl.dataset.loading = 'false';
-    hintSay(tr('新标签页：输入一个地址，回车就开工'));
-    metaEl.textContent = '';
-    if (!blankChips.childElementCount) {
-      for (const chip of CHIPS) {
-        const btn = document.createElement('button');
-        btn.type = 'button';
-        btn.className = 'chip';
-        btn.textContent = tr(chip.label);
-        btn.addEventListener('click', () => pickChip(chip.href));
-        blankChips.append(btn);
-      }
-    }
-    blankInput.focus();
+    core.metaEl.textContent = '';
   }
 
   /** chip：站内地址切到内置案例，公网地址只产出离线提示。 */
   function pickChip(href: string): void {
-    const preset = CASES.find((c) => c.href === href);
+    const preset = core.cases.find((c) => c.href === href);
     if (preset) {
-      go(preset.key);
+      core.go(preset.key);
       return;
     }
     offlineHint();
-  }
-
-  function openBlank(): string {
-    const key = `custom-${++customSeq}`;
-    const item: Case = { key, title: '新标签页', href: '', origin: '', custom: true, mode: 'blank' };
-    CASES.push(item);
-    const tab = makeTab(item);
-    tabsEl.append(tab);
-    // 标签条在窄屏是要横滚的：新开的这一页得自己滚进视野，不然加号点了像没反应。
-    tab.scrollIntoView({ block: 'nearest', inline: 'nearest' });
-    stack.splice(cursor + 1, stack.length, key);
-    cursor = stack.length - 1;
-    paintChrome();
-    load();
-    return key;
   }
 
   /** 同源相对地址直接切内置案例；其余地址校验后只留提示——容器不联网，抓不进来。 */
   function navigate(key: string, raw: string): void {
-    const preset = CASES.find((c) => c.href === raw.trim());
+    const preset = core.cases.find((c) => c.href === raw.trim());
     if (preset) {
-      go(preset.key);
+      core.go(preset.key);
       return;
     }
-    const c = caseOf(key);
+    const c = core.caseOf(key);
     const url = normalize(raw);
     if (!url) {
-      blankInput.dataset.bad = 'true';
+      core.blankInput.dataset.bad = 'true';
       hintSay(tr('这个地址读不懂（只认 http/https，或站内相对路径）'));
       return;
     }
-    delete blankInput.dataset.bad;
+    delete core.blankInput.dataset.bad;
     c.url = url;
     c.title = tabTitle(url);
-    const label = tabEls.get(key)?.querySelector('b');
-    if (label) label.textContent = c.title;
-    blankInput.value = url;
-    paintChrome();
+    core.setTabTitle(key, c.title);
+    core.blankInput.value = url;
+    core.paintChrome();
     offlineHint();
   }
 
-  function closeTab(key: string): void {
-    const at = CASES.findIndex((c) => c.key === key);
-    if (at === -1 || !CASES[at]?.custom) return;
-    const wasCurrent = key === current();
-    CASES.splice(at, 1);
-    tabEls.get(key)?.remove();
-    tabEls.delete(key);
-    const keep: string[] = [];
-    for (const k of stack) if (k !== key) keep.push(k);
-    stack.length = 0;
-    stack.push(...(keep.length ? keep : [(CASES[0] as Case).key]));
-    cursor = Math.min(cursor, stack.length - 1);
-    paintChrome();
-    if (wasCurrent) load();
-  }
-
-  function go(key: string): void {
-    if (key === current()) {
-      load();
-      return;
-    }
-    stack.splice(cursor + 1, stack.length, key);
-    cursor = stack.length - 1;
-    paintChrome();
-    load();
-  }
-
-  /** 只认 http(s)：`javascript:` 与 `data:` 绝不能进提示流程。 */
-  function normalize(raw: string): string {
-    const text = raw.trim();
-    if (!text) return '';
-    const hasScheme = /^[a-z][a-z0-9+.-]*:/i.test(text);
-    const isPath = text.startsWith('/') || text.startsWith('./') || text.startsWith('../');
-    const abs = hasScheme || isPath ? new URL(text, location.href) : new URL(`https://${text}`);
-    if (!/^https?:$/.test(abs.protocol)) return '';
-    return abs.href;
-  }
-
-  /** 同源就报文件名，公网就报域名 */
-  function tabTitle(url: string): string {
-    const u = new URL(url);
-    if (u.origin === location.origin) return u.pathname.split('/').pop() || u.pathname;
-    return u.hostname;
-  }
-
-  backBtn.addEventListener('click', () => {
-    if (cursor === 0) return;
-    cursor -= 1;
-    paintChrome();
-    load();
-  });
-  fwdBtn.addEventListener('click', () => {
-    if (cursor >= stack.length - 1) return;
-    cursor += 1;
-    paintChrome();
-    load();
-  });
-  reloadBtn.addEventListener('click', () => load());
-  newTabBtn.addEventListener('click', () => openBlank());
-  blankForm.addEventListener('submit', (e) => {
-    // 容器规范认可的表单写法：保表单、拦提交，输入由 JS 处理。
-    e.preventDefault();
-    navigate(current(), blankInput.value);
+  const core = createShellCore({
+    load,
+    navigate,
+    chip: pickChip,
+    tuner: () => tuner,
+    hint: (text) => hintSay(text),
+    // 案例内容会把 viewport 撑到几千像素高，blank 居中就跑到视口外了——新标签页限回可视高度。
+    blankShown: () => viewportEl.classList.add('is-blank'),
+    // 创造者面板默认收起（用户要求）：顶栏「创造者模式」钮随时可展开。
+    creatorDefault: false,
   });
 
   // 语言切换走整页重载：外壳静态文案、案例字典、面板语言都从 ?lang= 与 localStorage
@@ -616,14 +405,6 @@ export function start(): void {
     url.searchParams.set('lang', next);
     history.replaceState(null, '', `${url.pathname}?${url.searchParams}${url.hash}`);
     location.reload();
-  });
-
-  creatorBtn.addEventListener('click', () => {
-    creatorOn = !creatorOn;
-    creatorBtn.setAttribute('aria-pressed', String(creatorOn));
-    if (!tuner) return;
-    if (creatorOn) tuner.open();
-    else tuner.close();
   });
 
   // 容器禁开新窗口与站外跳转：捕获阶段拦下所有链接——外壳与 shadow 内的案例都算。
@@ -647,13 +428,13 @@ export function start(): void {
   let overlayEverSeen = false;
   setInterval(() => {
     if (!tuner) return;
-    barEl.dataset.phase = tuner.phase;
+    core.barEl.dataset.phase = tuner.phase;
     // 粘住的反馈提示（离线等）未到期时不覆写。
     if (performance.now() > hintHoldUntil) {
-      hintEl.textContent = `${tr(caseOf(current()).title)} · ${tuner.status}`;
+      core.hintEl.textContent = `${tr(core.caseOf(core.current()).title)} · ${tuner.status}`;
     }
     const items = shadow?.querySelectorAll('.sb-item').length ?? 0;
-    metaEl.textContent = items > 0 ? trf('{0} 个盒子在画', items) : '';
+    core.metaEl.textContent = items > 0 ? trf('{0} 个盒子在画', items) : '';
 
     // 顶栏展开（pre-build 进场态收尾）三路信号，先到先开、幂等：
     // ① 自然完成 / 跳过 / 空蓝图 → onComplete（mountCase 挂的 revealChrome，最快）；
@@ -677,38 +458,12 @@ export function start(): void {
   measureChrome();
   readSafeTop();
 
-  // 验收吊钩：让测试能直接驱动 API，不必点 UI（母本 browser.ts 同款）。
-  window.__browser = {
-    get cases() {
-      return CASES.map((c) => c.key);
-    },
-    current,
-    tuner: () => tuner,
-    go,
-    openBlank,
-    navigate,
-  };
-
   // ?u= 让分享链接直接落到某个地址上——容器不联网，落成一句明示的离线提示。
-  const bootUrl = params.get('u');
-  if (bootUrl) {
-    navigate(openBlank(), bootUrl);
-  } else {
-    paintChrome();
-    load();
-  }
+  core.boot();
 }
 
 declare global {
   interface Window {
-    __browser: {
-      get cases(): string[];
-      current(): string;
-      tuner(): SwarmTuner | null;
-      go(key: string): void;
-      openBlank(): string;
-      navigate(key: string, raw: string): void;
-    };
     __tuner?: SwarmTuner | undefined;
     SwarmBuilder: typeof SwarmBuilder;
   }

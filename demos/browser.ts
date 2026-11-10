@@ -1,125 +1,17 @@
+/**
+ * iframe 母本的适配层：标签条、历史栈、空白页、地址校验、创造者钮与 __browser 吊钩
+ * 都在 shell-core.ts（容器壳 minitool/src/shell.ts 共用）；这里只剩 iframe 的挂载、
+ * 抓取/重建这条联网链路和状态镜像。
+ */
 import type { SwarmTuner } from '../src/tune/index';
 import { getLang, setLang, tr, trf } from './lang';
+import { createShellCore, need, say, normalize, tabTitle, type Case } from './shell-core';
 
-interface Case {
-  key: string;
-  title: string;
-  href: string;
-  /** The address the mockup shows, so a case reads like a site rather than a file. */
-  origin: string;
-  /** 用户自己开的标签：地址是他输入的，不是仓库里的文件。 */
-  custom?: boolean;
-  url?: string;
-  mode?: 'blank' | 'rebuild' | 'frame';
-}
-
-const CASES: Case[] = [
-  { key: 'home', title: '产品说明页', href: './home.html', origin: 'https://swarm-builder.dev' },
-  { key: 'simple', title: '简单页基准', href: './simple.html', origin: 'https://swarm.demo' },
-  { key: 'console', title: '密集控制台', href: './console.html', origin: 'https://orbit.demo/console' },
-  { key: 'landing', title: '深色落地页', href: './landing.html', origin: 'https://nova.demo' },
-  { key: 'dark-ui', title: '复杂工作台', href: './dark-ui.html', origin: 'https://studio.demo' },
-  { key: 'tall', title: '长页面跟随', href: './tall.html', origin: 'https://notes.demo/long' },
-  { key: 'tune', title: '别人的站点', href: './tune.html', origin: 'https://letterpress.demo' },
-];
-
-// 空白页上给三条现成地址：两条同源（一定能重建），一条真的公网（多半只能显示）。
-const CHIPS = [
-  { label: '这一页自己', href: './home.html' },
-  { label: '别人的站点', href: './tune.html' },
-  { label: 'example.com', href: 'https://example.com' },
-];
-function need<T extends HTMLElement>(selector: string): T {
-  const el = document.querySelector<T>(selector);
-  if (!el) throw new Error(`mockup browser shell is missing ${selector}`);
-  return el;
-}
-
-const tabsEl = need<HTMLElement>('[data-tabs]');
 const frame = need<HTMLIFrameElement>('[data-frame]');
-const addrEl = need<HTMLElement>('[data-addr]');
-const urlEl = need<HTMLElement>('[data-url]');
-const hintEl = need<HTMLElement>('[data-hint]');
-const metaEl = need<HTMLElement>('[data-meta]');
-const barEl = need<HTMLElement>('[data-statusbar]');
-const creatorBtn = need<HTMLButtonElement>('[data-creator]');
-const backBtn = need<HTMLButtonElement>('[data-back]');
-const fwdBtn = need<HTMLButtonElement>('[data-fwd]');
-const reloadBtn = need<HTMLButtonElement>('[data-reload]');
-const newTabBtn = need<HTMLButtonElement>('[data-newtab]');
 const langBtn = need<HTMLButtonElement>('[data-lang]');
-const blankEl = need<HTMLElement>('[data-blank]');
-const blankForm = need<HTMLFormElement>('[data-blank-form]');
-const blankInput = need<HTMLInputElement>('[data-blank-input]');
-const blankChips = need<HTMLElement>('[data-blank-chips]');
 
-const params = new URLSearchParams(location.search);
-const fromUrl = params.get('case') ?? '';
-// 第一个案例就是打开时看到的那一页：预设页排在 CASES 最前面，不必再抄一遍 key。
-const stack: string[] = [CASES.some((c) => c.key === fromUrl) ? fromUrl : (CASES[0] as Case).key];
-let cursor = 0;
 let generation = 0;
-let customSeq = 0;
 let tuner: SwarmTuner | null = null;
-let creatorOn = true;
-const tabEls = new Map<string, HTMLButtonElement>();
-
-function caseOf(key: string): Case {
-  const found = CASES.find((c) => c.key === key);
-  if (!found) throw new Error(`unknown case ${key}`);
-  return found;
-}
-
-function current(): string {
-  return stack[cursor] as string;
-}
-
-function paintChrome(): void {
-  const active = current();
-  for (const tab of tabsEl.querySelectorAll<HTMLButtonElement>('.tab')) {
-    tab.setAttribute('aria-selected', String(tab.dataset.key === active));
-  }
-  const c = caseOf(active);
-  urlEl.textContent = c.custom ? (c.url ?? '') : c.origin;
-  params.set('case', active);
-  // 自定义标签把地址写进 URL，刷新和分享都回得到同一页；预设页不需要这个参数。
-  if (c.custom && c.url) params.set('u', c.url);
-  else params.delete('u');
-  history.replaceState(null, '', `?${params}`);
-  backBtn.disabled = cursor === 0;
-  fwdBtn.disabled = cursor >= stack.length - 1;
-}
-
-function makeTab(item: Case): HTMLButtonElement {
-  const tab = document.createElement('button');
-  tab.type = 'button';
-  tab.className = 'tab';
-  tab.dataset.key = item.key;
-  tab.setAttribute('role', 'tab');
-  tab.setAttribute('aria-selected', 'false');
-  const dot = document.createElement('span');
-  dot.className = 'fav';
-  dot.setAttribute('aria-hidden', 'true');
-  const label = document.createElement('b');
-  label.textContent = tr(item.title);
-  tab.append(dot, label);
-  if (item.custom) {
-    const close = document.createElement('i');
-    close.className = 'close';
-    close.setAttribute('aria-label', tr('关闭标签'));
-    close.textContent = '×';
-    close.addEventListener('click', (e) => {
-      e.stopPropagation();
-      closeTab(item.key);
-    });
-    tab.append(close);
-  }
-  tab.addEventListener('click', () => go(item.key));
-  tabEls.set(item.key, tab);
-  return tab;
-}
-
-for (const item of CASES) tabsEl.append(makeTab(item));
 
 function nextLoad(): Promise<void> {
   return new Promise((resolve) => {
@@ -128,12 +20,6 @@ function nextLoad(): Promise<void> {
 }
 
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
-
-/**
- * 转发口那条路的新文案自己管双语（跟 prompt.ts 一样按 getLang 二选一）：
- * 字典 index.ts 管的是外壳原有的静态文案与老提示，这里不往里加键。
- */
-const say = (zh: string, en: string): string => (getLang() === 'en' ? en : zh);
 
 /** 直连只有同源/CORS 站点能成，快进快出；转发口那边可能要开无头浏览器，给它留够时间。 */
 const DIRECT_TIMEOUT_MS = 8000;
@@ -144,7 +30,7 @@ const RELAY_TIMEOUT_MS = 50000;
  * off 完全不走无头渲染，fail 让无头那一步必然失败——用来量「没有无头浏览器时外壳还工不工作」。
  */
 function relayHref(url: string): string {
-  const knob = params.get('relay');
+  const knob = core.params.get('relay');
   const render = knob === 'off' || knob === 'fail' || knob === 'auto' ? `&render=${knob}` : '';
   return `${location.origin}/__page?url=${encodeURIComponent(url)}${render}`;
 }
@@ -211,24 +97,6 @@ function withLang(href: string): string {
   const url = new URL(href, location.href);
   url.searchParams.set('lang', getLang());
   return `${url.pathname}${url.search}${url.hash}`;
-}
-
-/** 只认 http(s)：`javascript:` 与 `data:` 会被写进重建文档，等于让外壳执行任意脚本。 */
-function normalize(raw: string): string {
-  const text = raw.trim();
-  if (!text) return '';
-  const hasScheme = /^[a-z][a-z0-9+.-]*:/i.test(text);
-  const isPath = text.startsWith('/') || text.startsWith('./') || text.startsWith('../');
-  const abs = hasScheme || isPath ? new URL(text, location.href) : new URL(`https://${text}`);
-  if (!/^https?:$/.test(abs.protocol)) return '';
-  return abs.href;
-}
-
-/** 同源就报文件名，公网就报域名 */
-function tabTitle(url: string): string {
-  const u = new URL(url);
-  if (u.origin === location.origin) return u.pathname.split('/').pop() || u.pathname;
-  return u.hostname;
 }
 
 /** 常见懒加载属性：脚本被剥掉后没人把它们换进 src，图片就永远不发请求。 */
@@ -344,16 +212,16 @@ async function loadPreset(c: Case, mine: number): Promise<void> {
 
   const got = await waitForTuner(20000);
   if (mine !== generation) return;
-  addrEl.dataset.loading = 'false';
+  core.addrEl.dataset.loading = 'false';
   if (!got.tuner) {
-    hintEl.textContent = got.bootError
+    core.hintEl.textContent = got.bootError
       ? trf('创造者模式装到这一页时失败了：{0}', got.bootError)
       : tr('这一页没有装上创造者模式');
     return;
   }
 
   tuner = got.tuner;
-  if (creatorOn) tuner.open();
+  if (core.creatorOn) tuner.open();
   else tuner.close();
   tuner.apply();
 }
@@ -376,7 +244,7 @@ async function grabPage(url: string): Promise<GrabbedPage | { why: string }> {
   const notes: string[] = [];
   for (const try_ of tries) {
     if (try_.relayed) {
-      hintEl.textContent = say(
+      core.hintEl.textContent = say(
         '正在用无头浏览器渲染这一页：让站点自己的 JS 把图画出来，可能要十几秒…',
         'Rendering this page in a headless browser so its own JS can draw the images — this can take tens of seconds…',
       );
@@ -414,7 +282,7 @@ async function grabPage(url: string): Promise<GrabbedPage | { why: string }> {
 }
 
 async function loadCustom(c: Case, mine: number): Promise<void> {
-  hintEl.textContent = tr('取这一页的 HTML…');
+  core.hintEl.textContent = tr('取这一页的 HTML…');
   const got = await grabPage(c.url as string);
   if (mine !== generation) return;
 
@@ -422,7 +290,7 @@ async function loadCustom(c: Case, mine: number): Promise<void> {
     // 这一页是直连、静态转发还是无头渲染拿到的，状态栏那一行会一直带着它；
     // 无头没成时，转发口把原因放在 note 里，挂到提示行的 title 上。
     relayPath = got.render;
-    hintEl.title = got.note;
+    core.hintEl.title = got.note;
     c.mode = 'rebuild';
     // 两条路谁先到算谁：正常页靠 load，子资源挂住的页靠自己的 readyState。
     // settled 必须在赋值之前建好，否则会漏掉这次导航的 load 事件。
@@ -435,17 +303,17 @@ async function loadCustom(c: Case, mine: number): Promise<void> {
     frame.src = rebuildDocUrl(got.html, c.url as string);
     await Promise.race([settled, waitRebuildReady(6000)]);
     if (mine !== generation) return;
-    addrEl.dataset.loading = 'false';
+    core.addrEl.dataset.loading = 'false';
     const boot = await waitForTuner(20000);
     if (mine !== generation) return;
     if (!boot.tuner) {
-      hintEl.textContent = boot.bootError
+      core.hintEl.textContent = boot.bootError
         ? trf('创造者模式装到这一页时失败了：{0}', boot.bootError)
         : tr('这一页取到了，但创造者模式没装上');
       return;
     }
     tuner = boot.tuner;
-    if (creatorOn) tuner.open();
+    if (core.creatorOn) tuner.open();
     else tuner.close();
     tuner.apply();
     return;
@@ -458,124 +326,46 @@ async function loadCustom(c: Case, mine: number): Promise<void> {
   frame.src = c.url as string;
   await Promise.race([settled, new Promise<void>((resolve) => setTimeout(resolve, 6000))]);
   if (mine !== generation) return;
-  addrEl.dataset.loading = 'false';
-  hintEl.textContent = trf('读不到这一页的 DOM（{0}）：只能原样显示，重建不了', 'why' in got ? got.why : '');
+  core.addrEl.dataset.loading = 'false';
+  core.hintEl.textContent = trf('读不到这一页的 DOM（{0}）：只能原样显示，重建不了', 'why' in got ? got.why : '');
 }
 
 async function load(): Promise<void> {
   const mine = ++generation;
   tuner = null;
-  addrEl.dataset.loading = 'true';
-  barEl.dataset.phase = 'idle';
-  hintEl.textContent = tr('载入中…');
-  metaEl.textContent = '';
+  core.beginLoad();
 
-  const c = caseOf(current());
+  const c = core.caseOf(core.current());
   if (c.custom && (!c.url || c.mode === 'blank')) {
-    showBlank(c);
+    core.showBlank(c);
     return;
   }
-  blankEl.hidden = true;
   if (c.custom) await loadCustom(c, mine);
   else await loadPreset(c, mine);
 }
 
-function showBlank(c: Case): void {
-  blankEl.hidden = false;
-  blankInput.value = c.url ?? '';
-  addrEl.dataset.loading = 'false';
-  hintEl.textContent = tr('新标签页：输入一个地址，回车就开工');
-  metaEl.textContent = '';
-  if (!blankChips.childElementCount) {
-    for (const chip of CHIPS) {
-      const btn = document.createElement('button');
-      btn.type = 'button';
-      btn.className = 'chip';
-      btn.textContent = tr(chip.label);
-      btn.addEventListener('click', () => navigate(current(), chip.href));
-      blankChips.append(btn);
-    }
-  }
-  blankInput.focus();
-}
-
-function openBlank(): string {
-  const key = `custom-${++customSeq}`;
-  const item: Case = { key, title: '新标签页', href: '', origin: '', custom: true, mode: 'blank' };
-  CASES.push(item);
-  const tab = makeTab(item);
-  tabsEl.append(tab);
-  // 标签条在窄屏是要横滚的：新开的这一页得自己滚进视野，不然加号点了像没反应。
-  tab.scrollIntoView({ block: 'nearest', inline: 'nearest' });
-  stack.splice(cursor + 1, stack.length, key);
-  cursor = stack.length - 1;
-  paintChrome();
-  void load();
-  return key;
-}
-
 function navigate(key: string, raw: string): void {
-  const c = caseOf(key);
+  const c = core.caseOf(key);
   const url = normalize(raw);
   if (!url) {
-    blankInput.dataset.bad = 'true';
-    hintEl.textContent = tr('这个地址读不懂（只认 http/https，或站内相对路径）');
+    core.blankInput.dataset.bad = 'true';
+    core.hintEl.textContent = tr('这个地址读不懂（只认 http/https，或站内相对路径）');
     return;
   }
-  delete blankInput.dataset.bad;
+  delete core.blankInput.dataset.bad;
   c.url = url;
   c.mode = 'rebuild';
   c.title = tabTitle(url);
-  const label = tabEls.get(key)?.querySelector('b');
-  if (label) label.textContent = c.title;
-  paintChrome();
+  core.setTabTitle(key, c.title);
+  core.paintChrome();
   void load();
 }
 
-function closeTab(key: string): void {
-  const at = CASES.findIndex((c) => c.key === key);
-  if (at === -1 || !CASES[at]?.custom) return;
-  const wasCurrent = key === current();
-  CASES.splice(at, 1);
-  tabEls.get(key)?.remove();
-  tabEls.delete(key);
-  const keep: string[] = [];
-  for (const k of stack) if (k !== key) keep.push(k);
-  stack.length = 0;
-  stack.push(...(keep.length ? keep : [(CASES[0] as Case).key]));
-  cursor = Math.min(cursor, stack.length - 1);
-  paintChrome();
-  if (wasCurrent) void load();
-}
-
-function go(key: string): void {
-  if (key === current()) {
-    void load();
-    return;
-  }
-  stack.splice(cursor + 1, stack.length, key);
-  cursor = stack.length - 1;
-  paintChrome();
-  void load();
-}
-
-backBtn.addEventListener('click', () => {
-  if (cursor === 0) return;
-  cursor -= 1;
-  paintChrome();
-  void load();
-});
-fwdBtn.addEventListener('click', () => {
-  if (cursor >= stack.length - 1) return;
-  cursor += 1;
-  paintChrome();
-  void load();
-});
-reloadBtn.addEventListener('click', () => void load());
-newTabBtn.addEventListener('click', () => void openBlank());
-blankForm.addEventListener('submit', (e) => {
-  e.preventDefault();
-  navigate(current(), blankInput.value);
+const core = createShellCore({
+  load: () => void load(),
+  navigate,
+  chip: (href) => navigate(core.current(), href),
+  tuner: () => tuner,
 });
 
 // 语言切换走整页重载：外壳的静态文案、案例页的字典、srcdoc 里注入的 lang 都从
@@ -588,51 +378,13 @@ langBtn.addEventListener('click', () => {
   location.href = `${url.pathname}?${url.searchParams}${url.hash}`;
 });
 
-creatorBtn.addEventListener('click', () => {
-  creatorOn = !creatorOn;
-  creatorBtn.setAttribute('aria-pressed', String(creatorOn));
-  if (!tuner) return;
-  if (creatorOn) tuner.open();
-  else tuner.close();
-});
-
 // Mirror the panel into the window chrome, the way a browser reflects its page.
 setInterval(() => {
   if (!tuner) return;
-  barEl.dataset.phase = tuner.phase;
-  hintEl.textContent = `${tr(caseOf(current()).title)} · ${tuner.status}${relayLabel() ? ` · ${relayLabel()}` : ''}`;
+  core.barEl.dataset.phase = tuner.phase;
+  core.hintEl.textContent = `${tr(core.caseOf(core.current()).title)} · ${tuner.status}${relayLabel() ? ` · ${relayLabel()}` : ''}`;
   const items = frame.contentDocument?.querySelectorAll('.sb-item').length ?? 0;
-  metaEl.textContent = items > 0 ? trf('{0} 个盒子在画', items) : '';
+  core.metaEl.textContent = items > 0 ? trf('{0} 个盒子在画', items) : '';
 }, 200);
 
-declare global {
-  interface Window {
-    __browser: {
-      get cases(): string[];
-      current(): string;
-      tuner(): SwarmTuner | null;
-      go(key: string): void;
-      openBlank(): string;
-      navigate(key: string, raw: string): void;
-    };
-  }
-}
-window.__browser = {
-  get cases() {
-    return CASES.map((c) => c.key);
-  },
-  current,
-  tuner: () => tuner,
-  go,
-  openBlank,
-  navigate,
-};
-
-// ?u= 让验收和分享链接直接落到某个自定义地址上，不必先点加号再打字。
-const bootUrl = params.get('u');
-if (bootUrl) {
-  navigate(openBlank(), bootUrl);
-} else {
-  paintChrome();
-  void load();
-}
+core.boot();
