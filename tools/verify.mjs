@@ -2705,7 +2705,7 @@ ${'<div class="strip"><img loading="lazy" width="320" height="120" src="/img/x.p
   // tour 交给它，默认的 scroll 触发才走得完——参考版里读者自己滚，测试里由镜头代劳。
   const aligned = await once({ tour: true });
   // 反向：姿态、班组、聚群全部收成固定档，各自必须真的消失。
-  // gather 必须一起关：开场聚群会先放 18 只进来，不关就永远看到的是 18 而不是固定人数。
+  // gather 必须一起关：开场聚群会按蓝图条目数放一批光标进来（大页封顶 18 只），不关就看不到固定人数。
   const calm = await once({
     tour: true, flight: 'idle', pointer: 'ignore', agents: 'fixed', gather: false,
   });
@@ -2737,7 +2737,7 @@ ${'<div class="strip"><img loading="lazy" width="320" height="120" src="/img/x.p
     ['只有点击', scoreOff], ['静音', muted], ['减动效交还', skipped], ['减动效照跑', kept]];
   for (const [name, r] of named) if (r.built < 0) problems.push(`${name} 那局 90 秒没跑完`);
 
-  // 默认 = 参考扩展：待时飞行会歪、开场先聚 18 只、镜头跟着施工前沿、声音和配乐都在。
+  // 默认 = 参考扩展：待时飞行会歪、开场按条目数聚群（大页封顶 18 只）、镜头跟着施工前沿、声音和配乐都在。
   if (aligned.tilt <= 0) problems.push('默认那局箭头从未朝行进方向歪过：飞行姿态没生效');
   if (aligned.cursors <= 6) problems.push(`默认那局峰值只有 ${aligned.cursors} 个光标：开场聚群/自动班组没生效`);
   if (aligned.firstAgent < 0 || aligned.firstBuild < 0 || aligned.firstBuild - aligned.firstAgent < 1800) {
@@ -2983,6 +2983,90 @@ ${'<div class="strip"><img loading="lazy" width="320" height="120" src="/img/x.p
   report('hud @390', problems, [
     `HUD=${before.hud} 进度=${before.progress} 跳过条=${before.bar ? `${Math.round(before.bar.w)}x${Math.round(before.bar.h)}` : '无'}`,
     `提示: 出现=${hintSeen} 滚后消失=${hintGone} · 触摸跳过=${skipped} · 清场 hud=${after.hud} overlay=${after.overlay}`,
+  ]);
+  await ctx.close();
+}
+
+// ---------------------------------------------------------------------------
+// 场景 30：开场光标数按蓝图条目数缩放（1.3）——小页保底 3、大页封顶 18、固定班组不变、种子仍可回放。
+// 开场人数只在聚群阶段量：第一件施工出现前 building=false，班组不招临时工，这段峰值就是 introCount。
+// ---------------------------------------------------------------------------
+{
+  const MEASURE = (options) => new Promise((resolve) => {
+    document.querySelectorAll('.sb-overlay').forEach((el) => el.remove());
+    document.querySelectorAll('.sb-hidden').forEach((el) => el.classList.remove('sb-hidden'));
+    window.scrollTo(0, 0);
+    window.__seq = [];
+    if (!window.__introObserved) {
+      window.__introObserved = true;
+      new MutationObserver((records) => {
+        for (const record of records) for (const node of record.addedNodes) {
+          if (node.nodeType === 1 && node.dataset.item) window.__seq.push(node.dataset.item);
+        }
+      }).observe(document.body, { childList: true, subtree: true });
+    }
+    const m = { opening: 0, peak: 0, total: 0 };
+    let raf = 0;
+    let swarm;
+    const finish = (extra) => { cancelAnimationFrame(raf); resolve({ ...m, ...extra }); };
+    const sample = () => {
+      const n = [...document.querySelectorAll('.sb-cursor')].filter((el) => !el.hidden).length;
+      m.peak = Math.max(m.peak, n);
+      // 只在聚群阶段量开场人数：phase 翻到 building 后班组才招临时工，那以后的人数不算开场。
+      const phase = swarm?.status.phase;
+      if (phase === 'gathering' || phase === 'scanning') m.opening = Math.max(m.opening, n);
+      raf = requestAnimationFrame(sample);
+    };
+    raf = requestAnimationFrame(sample);
+    swarm = new window.SwarmBuilder({
+      root: document.querySelector('#app'),
+      sound: false, speed: 4, tour: false, trigger: 'immediate',
+      ...options,
+      onStatus: (s) => { m.total = s.total; },
+      onComplete: (r) => finish({ head: window.__seq.slice(0, 6), built: r.built, seed: r.seed }),
+    });
+    swarm.start();
+    setTimeout(() => finish({ head: [], built: -1, seed: -1 }), 60000);
+  });
+
+  const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+  const page = await ctx.newPage();
+  const errors = [];
+  page.on('pageerror', (e) => errors.push(String(e)));
+  const on = async (demo, options) => {
+    await page.goto(`${BASE}/demos/${demo}.html`, { waitUntil: 'load' });
+    await page.waitForFunction(() => typeof window.SwarmBuilder === 'function', null, { timeout: 20000 });
+    return page.evaluate(MEASURE, options);
+  };
+  const formula = (n) => Math.min(18, Math.max(3, Math.ceil(n / 12)));
+
+  const simple = await on('simple', {});
+  const home = await on('home', { performanceMode: 'high', maxItems: 4000 });
+  const tall = await on('tall', {});
+  const fixed = await on('tall', { agents: 'fixed', gather: false, agentCount: 6 });
+  const seedOpts = { order: 'random', pick: 'queued', adaptiveSpeed: false, agentCount: 6, gather: true, agents: 'auto' };
+  const seedA = await on('tall', { ...seedOpts, seed: 12345 });
+  const seedB = await on('tall', { ...seedOpts, seed: 12345 });
+  const seedC = await on('tall', { ...seedOpts, seed: 67890 });
+
+  const problems = [];
+  for (const [name, r] of [['simple', simple], ['home', home], ['tall', tall], ['fixed', fixed]]) {
+    if (r.built < 0) problems.push(`${name} 那局 60 秒没跑完`);
+  }
+  if (simple.opening > 3) problems.push(`simple（${simple.total} 项）开场 ${simple.opening} 只，小页应 ≤3`);
+  if (simple.opening !== formula(simple.total)) problems.push(`simple 开场 ${simple.opening} ≠ 公式 ${formula(simple.total)}（${simple.total} 项）`);
+  if (home.total < 216) problems.push(`home 只采到 ${home.total} 项，不足以封顶 18（需 ≥216）`);
+  if (home.opening !== 18) problems.push(`home（${home.total} 项）开场 ${home.opening} 只，大页应封顶 18`);
+  if (tall.opening !== formula(tall.total)) problems.push(`tall 开场 ${tall.opening} ≠ 公式 ${formula(tall.total)}（${tall.total} 项）`);
+  if (fixed.peak !== 6) problems.push(`agents:'fixed' 峰值 ${fixed.peak}，缩放不该动固定班组（应 6）`);
+  if (seedA.head.join(',') !== seedB.head.join(',')) problems.push(`聚群+auto 同种子开工顺序变了：${seedA.head.join(' ')} vs ${seedB.head.join(' ')}`);
+  if (seedA.head.join(',') === seedC.head.join(',')) problems.push('聚群+auto 换种子顺序没变，种子没参与缩放后的排程');
+  if (seedA.seed !== 12345) problems.push(`完成状态没回显种子：${seedA.seed}`);
+  if (errors.length) problems.push(`报错 ${errors.length} 条：${errors[0]}`);
+  report('intro-scale @1280', problems, [
+    `simple: ${simple.total} 项 → 开场 ${simple.opening} 只（≤3）· home: ${home.total} 项 → 开场 ${home.opening} 只（封顶 18）· tall: ${tall.total} 项 → 开场 ${tall.opening} 只`,
+    `公式 min(18,max(3,ceil(items/12))): simple=${formula(simple.total)} tall=${formula(tall.total)} · 固定班组峰值=${fixed.peak}（不变）`,
+    `种子回放（聚群+auto）: 12345 两次 ${seedA.head.join(' ')} = ${seedB.head.join(' ')} · 67890 ${seedC.head.join(' ')} · 回显=${seedA.seed}`,
   ]);
   await ctx.close();
 }

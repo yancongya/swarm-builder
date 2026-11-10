@@ -336,13 +336,15 @@ export class SwarmBuilder {
     const infos: AgentInfo[] = [];
     // 聚群要按视口算进场点，而 this.band 要到下面 wantsFrame 那段才填，这里先取一次。
     const opening = this.opts.gather ? viewBand(this.root, this.scroller) : null;
-    // 参考版的开场是 18 只一起飞进来，前 MIN_AGENTS 只是原始班底，其余由班组决定去留。
-    // 读者把班组钉成固定人数时（`agents:'fixed'`）就按那个数来，不额外招人。
-    const crewSize = opening && this.opts.agents === 'auto'
-      ? Math.max(this.opts.agentCount, INTRO_AGENTS)
-      : this.opts.agentCount;
+    // 开场人数按蓝图条目数缩放：~21 项的小页面不该飞进来 18 只挤成一团（真机反馈「页面不需要这么多鼠标」）。
+    // min(18, max(3, ceil(items/12)))：小页保底 3 只，大页封顶参考版的 18 只。
+    const introCount = Math.min(INTRO_AGENTS, Math.max(3, Math.ceil(blueprint.items.length / 12)));
+    // auto 班组的原始班底（home）也跟着缩到不超过开场人数，否则小页面仍被 agentCount 顶住、降不下来；
+    // 其余开场光标算临时工，由班组决定去留。固定班组（agents:'fixed'）不参与缩放，按那个数来、不额外招人。
+    const homeCount = this.opts.agents === 'auto' ? Math.min(this.opts.agentCount, introCount) : this.opts.agentCount;
+    const crewSize = opening && this.opts.agents === 'auto' ? introCount : this.opts.agentCount;
     for (let index = 0; index < crewSize; index++) {
-      const home = index < this.opts.agentCount;
+      const home = index < homeCount;
       if (!opening) {
         // Appear near the region each agent owns instead of one shared corner.
         const head = scheduler.peek(index);
@@ -392,7 +394,7 @@ export class SwarmBuilder {
             spawn: (edge, y) => addAgent(edge === 'left' ? -SPAWN_OFFSCREEN : blueprint.width + SPAWN_OFFSCREEN, y, false),
             leave: (flyer) => byFlyer.get(flyer)?.retire(),
             isHome: (flyer) => byFlyer.get(flyer)?.isHome ?? false,
-            floor: this.opts.agentCount,
+            floor: homeCount,
             stage: flightStage,
             rng,
           }, flyers)
