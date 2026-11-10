@@ -51,10 +51,10 @@ export const CSS = `
 .sb-cursor.is-dragging .sb-ghost{display:block}
 `;
 
-export function injectStyle(): void {
-  if (document.getElementById(LIB_STYLE_ID)) return;
+export function injectStyle(target: Document | ShadowRoot = document): void {
+  if (target.querySelector(`#${LIB_STYLE_ID}`)) return;
   const style = document.createElement('style');
   style.id = LIB_STYLE_ID;
   style.textContent = CSS;
-  document.head.appendChild(style);
+  (target instanceof Document ? target.head : target).appendChild(style);
 }

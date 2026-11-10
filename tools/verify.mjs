@@ -2844,6 +2844,80 @@ ${'<div class="strip"><img loading="lazy" width="320" height="120" src="/img/x.p
   ]);
 }
 
+// ---------------------------------------------------------------------------
+// 场景 28：shadow 宿主——样式进 shadow、滚动层在 shadow 外、前沿量实际矩形
+// ---------------------------------------------------------------------------
+{
+  const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+  const page = await ctx.newPage();
+  const errors = [];
+  page.on('console', (m) => m.type() === 'error' && errors.push(m.text()));
+  page.on('pageerror', (e) => errors.push(String(e)));
+  await page.goto(`${BASE}/demos/shadow.html`, { waitUntil: 'load' });
+
+  const injection = await page.evaluate(() => {
+    const sr = document.querySelector('#mount')?.shadowRoot;
+    return {
+      inShadow: !!sr?.querySelector('#swarm-builder-style'),
+      inHead: !!document.head.querySelector('#swarm-builder-style'),
+    };
+  });
+
+  let overlaySeen = true;
+  try {
+    await page.waitForFunction(
+      () => !!document.querySelector('#mount')?.shadowRoot?.querySelector('.sb-overlay'),
+      null, { timeout: 15000 },
+    );
+  } catch { overlaySeen = false; }
+  const mid = await page.evaluate(() => {
+    const sr = document.querySelector('#mount').shadowRoot;
+    const ov = sr.querySelector('.sb-overlay');
+    return {
+      position: ov ? getComputedStyle(ov).position : '',
+      cursors: sr.querySelectorAll('.sb-cursor').length,
+      inDoc: !!document.querySelector('.sb-overlay'),
+    };
+  });
+
+  let finished = true;
+  try {
+    await page.waitForFunction(() => window.__shadowDone === true, null, { timeout: 60000, polling: 200 });
+  } catch { finished = false; }
+  const done = await page.evaluate(() => {
+    const sr = document.querySelector('#mount').shadowRoot;
+    return {
+      scrollMax: window.__shadowScrollMax ?? 0,
+      winY: window.__shadowWinY ?? 0,
+      cursors: sr.querySelectorAll('.sb-cursor').length,
+      overlay: !!sr.querySelector('.sb-overlay'),
+      hidden: sr.querySelectorAll('.sb-hidden').length,
+      built: window.__shadowResult?.built ?? 0,
+    };
+  });
+  await page.screenshot({ path: `${OUT}shadow-1280.png` });
+
+  const problems = [];
+  if (!injection.inShadow) problems.push('样式没注入 shadow root');
+  if (injection.inHead) problems.push('样式漏进了 document.head');
+  if (!overlaySeen) problems.push('overlay 没出现');
+  if (mid.position !== 'absolute') problems.push(`overlay 定位是 ${mid.position}，应为 absolute`);
+  if (mid.cursors === 0) problems.push('运行中没有光标上场');
+  if (mid.inDoc) problems.push('overlay 挂到了 shadow 外');
+  if (!finished) problems.push('60s 未完成（前沿死锁？）');
+  if (done.scrollMax < 300) problems.push(`外层滚动层只滚了 ${Math.round(done.scrollMax)}px：detectEnv 没跨过 shadow`);
+  if (done.winY > 0) problems.push(`窗口被滚了 ${Math.round(done.winY)}px：应只滚 #host`);
+  if (done.cursors !== 0 || done.overlay) problems.push('完成后光标/overlay 没清掉');
+  if (done.hidden !== 0) problems.push('交还后原页面没恢复');
+  if (done.built < 10) problems.push(`只建成 ${done.built} 项`);
+  if (errors.length) problems.push(`控制台报错 ${errors.length} 条: ${errors[0]}`);
+  report('shadow @1280', problems, [
+    `注入: shadow=${injection.inShadow} head=${injection.inHead} · overlay 定位=${mid.position} 在外=${mid.inDoc}`,
+    `滚动: #host 峰值 ${Math.round(done.scrollMax)}px · 窗口 ${Math.round(done.winY)}px · 建成 ${done.built} 项 · 完成=${finished}`,
+  ]);
+  await ctx.close();
+}
+
 await browser.close();
 owned?.child.kill();
 console.log(`\n${failures === 0 ? '全部通过' : failures + ' 个场景有问题'} · 截图在 .shots/ · 服务 ${BASE}`);

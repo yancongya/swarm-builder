@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="zh">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Swarm Builder · shadow 宿主</title>
+  <style>
+    html, body { height: 100%; margin: 0; overflow: hidden; }
+    body { font: 14px/1.6 system-ui, sans-serif; background: #f4f4f2; color: #222; }
+    .chrome { height: 108px; box-sizing: border-box; padding: 16px 24px; background: #1d2126; color: #eee; }
+    .chrome h2 { margin: 0 0 4px; font-size: 16px; }
+    .chrome p { margin: 0; opacity: .7; }
+    #host { height: calc(100% - 132px); overflow-y: auto; background: #fbfbfa; }
+    .foot { height: 24px; box-sizing: border-box; padding: 0 24px; background: #1d2126; color: #9aa; font-size: 11px; line-height: 24px; }
+  </style>
+</head>
+<body>
+  <div class="chrome">
+    <h2>宿主 chrome（shadow 外）</h2>
+    <p>108px 表头与滚动层 #host 都在光 DOM；案例内容挂在 shadow 里，底边还差 24px 不到窗口底。</p>
+  </div>
+  <div id="host"><div id="mount"></div></div>
+  <div class="foot">24px 页脚 · 滚动层底边 ≠ 窗口底边</div>
+  <script type="module" src="./shadow.ts"></script>
+</body>
+</html>

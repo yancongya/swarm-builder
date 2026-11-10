@@ -197,7 +197,7 @@ export class SwarmBuilder {
   constructor(private readonly options: SwarmBuilderOptions = {}) {
     this.opts = normalizeOptions(options);
     this.root = options.root ?? document.body;
-    injectStyle();
+    injectStyle(options.styleRoot ?? document);
     if (options.autoStart) requestAnimationFrame(() => this.start());
   }
 

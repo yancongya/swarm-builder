@@ -39,10 +39,19 @@ function isScrollBox(el: Element): boolean {
  * 滚动逐段解锁、待时物理的圆心、配乐的声像都要它，所以量一次给所有人。
  */
 export function viewBand(root: HTMLElement, scroller: Element | null): { top: number; bottom: number; height: number } {
-  const top = -root.getBoundingClientRect().top;
+  const rootTop = root.getBoundingClientRect().top;
   const box = scroller && scroller !== document.documentElement && scroller !== document.body ? scroller : null;
-  const height = box ? box.clientHeight : (window.innerHeight || document.documentElement.clientHeight || 600);
-  return { top, bottom: top + height, height };
+  const winH = window.innerHeight || document.documentElement.clientHeight || 600;
+  if (box) {
+    // 滚动层可能被宿主 chrome 垫高、或伸出窗口：前沿是它真正可见的那一段，
+    // 不是窗口顶加 clientHeight——差的那几像素会把页底条目永久锁在前沿外。
+    const rect = box.getBoundingClientRect();
+    const visibleTop = Math.max(rect.top, 0);
+    const height = Math.max(0, Math.min(rect.bottom, winH) - visibleTop);
+    const top = visibleTop - rootTop;
+    return { top, bottom: top + height, height };
+  }
+  return { top: -rootTop, bottom: -rootTop + winH, height: winH };
 }
 
 /**
@@ -69,9 +78,12 @@ export function detectEnv(root: HTMLElement): ScanEnv {
 
   if (isScrollBox(root) && hasRoom(root)) return { scroller: root, height: root.clientHeight };
 
-  for (let el = root.parentElement; el; el = el.parentElement) {
-    if (isScrollBox(el) && hasRoom(el) && el.clientHeight >= viewport * MIN_VIEWPORT_RATIO) {
-      return { scroller: el, height: el.clientHeight };
+  // 祖先链要跨过 shadow 边界：parentElement 走到 ShadowRoot 就断，
+  // 宿主外面的滚动容器（固定开窗那类壳）永远找不到。
+  for (let node: Node | null = root.parentNode; node; node = node instanceof ShadowRoot ? node.host : node.parentNode) {
+    if (!(node instanceof Element)) continue;
+    if (isScrollBox(node) && hasRoom(node) && node.clientHeight >= viewport * MIN_VIEWPORT_RATIO) {
+      return { scroller: node, height: node.clientHeight };
     }
   }
 

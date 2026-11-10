@@ -215,6 +215,12 @@ export interface SwarmConfig {
 export interface SwarmBuilderOptions extends SwarmConfig {
   /** Element whose subtree is rebuilt. Defaults to document.body. */
   root?: HTMLElement;
+  /**
+   * Where the library stylesheet is injected. Defaults to document; pass the
+   * shadow root when `root` lives inside one — document styles do not cross
+   * the shadow boundary.
+   */
+  styleRoot?: Document | ShadowRoot;
   /** Start on the next frame instead of waiting for start(). */
   autoStart?: boolean;
   onStart?: (agents: AgentInfo[]) => void;
