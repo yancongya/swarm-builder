@@ -76,6 +76,28 @@ export const CSS = `
   border:1.5px solid var(--sb-b,#fff);animation:sb-handoff-ring .6s ease-out both}
 @keyframes sb-handoff-line{0%{transform:scaleX(0);opacity:0}35%{transform:scaleX(1);opacity:1}100%{transform:scaleX(1);opacity:0}}
 @keyframes sb-handoff-ring{0%{transform:scale(.3);opacity:.85}100%{transform:scale(2.4);opacity:0}}
+/* 观众指挥：只有施工期间、且「观众指挥」开着，光标才接指针。重建出来的盒子始终不可交互。 */
+.sb-overlay.is-directing .sb-cursor{pointer-events:auto;cursor:grab;touch-action:none}
+.sb-overlay.is-directing .sb-cursor.is-directing{cursor:grabbing}
+/* 光标本身的盒子是 0×0，只有图形；指挥态给锚点铺一块 24px 的透明热区，
+   否则点不中十字/文字光标。热区只在指挥态出现，且永远在光标里面。 */
+.sb-cursor__hit{position:absolute;left:-6px;top:-6px;width:24px;height:24px;border-radius:50%;display:none}
+.sb-overlay.is-directing .sb-cursor__hit{display:block;pointer-events:auto}
+/* 点催：施工时钟快 1.8 倍的那两秒，光标身上往外扩一圈光环。 */
+.sb-urge{position:absolute;left:-14px;top:-14px;width:40px;height:40px;border-radius:50%;display:none;
+  border:2px solid currentColor;pointer-events:none}
+.sb-cursor.is-urged .sb-urge{display:block;animation:sb-urge .8s ease-out infinite}
+.sb-cursor.is-urged .sb-name{box-shadow:0 0 0 2px rgba(255,255,255,.72)}
+@keyframes sb-urge{0%{transform:scale(.35);opacity:.9}100%{transform:scale(1.15);opacity:0}}
+/* 拖派：按住光标拖到别处时画一枚准星，松手留一记落点回声。两样都是装饰。 */
+.sb-target{position:absolute;width:34px;height:34px;margin:-17px 0 0 -17px;border:1.5px dashed currentColor;
+  border-radius:50%;pointer-events:none;opacity:.9}
+.sb-target::before,.sb-target::after{content:"";position:absolute;background:currentColor;opacity:.8}
+.sb-target::before{left:50%;top:-7px;width:1px;height:48px}
+.sb-target::after{top:50%;left:-7px;height:1px;width:48px}
+.sb-assign{position:absolute;width:34px;height:34px;margin:-17px 0 0 -17px;border-radius:50%;
+  border:2px solid currentColor;pointer-events:none;animation:sb-assign .7s ease-out both}
+@keyframes sb-assign{0%{transform:scale(.3);opacity:1}100%{transform:scale(1.8);opacity:0}}
 /* 开场点名：名牌逐个弹一下，延迟由 CursorLayer.rollCall 按进场顺序排。 */
 @keyframes sb-roll{0%{transform:scale(1)}35%{transform:scale(1.28)}100%{transform:scale(1)}}
 .sb-name.sb-rolling{animation:sb-roll .45s ease both}

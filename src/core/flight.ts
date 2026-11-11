@@ -75,6 +75,8 @@ export interface Flyer {
   busy: boolean;
   /** 是否已经干过活：只有干过的临时光标才会自己离场。 */
   worked: boolean;
+  /** 正被观众拖着：位置归指针，轨道场这时也不碰它。 */
+  dragging?: boolean;
   /** 闲了多久（秒）。 */
   idleFor: number;
 }
@@ -137,7 +139,7 @@ export class Flight implements Tickable {
     if (dt <= 0) return;
     this.time += dt;
     // 施工中的光标归任务管：参考版也是只对「待时」的那批人跑轨道场。
-    const list = this.flyers().filter((c) => !c.busy);
+    const list = this.flyers().filter((c) => !c.busy && !c.dragging);
     if (list.length === 0) return;
     const stage = this.stage();
     const scale = this.introCenter ? INTRO_SCALE : 1;

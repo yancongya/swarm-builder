@@ -46,6 +46,7 @@ const TRAIT: Record<PersonalityKind, string> = {
 
 export class CursorLayer {
   private readonly handles = new Map<number, CursorHandle>();
+  private readonly urgeTimers = new Map<number, number>();
   private readonly width: number;
 
   constructor(private readonly parent: HTMLElement) {
@@ -58,7 +59,7 @@ export class CursorLayer {
     if (personality !== 'steady') el.classList.add(`sb-p-${personality}`);
     el.dataset.cursor = String(id);
     el.style.color = color;
-    el.innerHTML = `${ARROW}${IBEAM}<div class="sb-cursor__crosshair"></div><div class="sb-ghost"></div>${TRAIT[personality]}<div class="sb-badge"></div>`;
+    el.innerHTML = `${ARROW}${IBEAM}<div class="sb-cursor__crosshair"></div><div class="sb-cursor__hit"></div><div class="sb-ghost"></div>${TRAIT[personality]}<div class="sb-urge"></div><div class="sb-badge"></div>`;
 
     const label = document.createElement('div');
     label.className = 'sb-name';
@@ -152,12 +153,33 @@ export class CursorLayer {
     handle.overhang = Math.max(handle.label.offsetWidth, handle.badge.offsetWidth);
   }
 
+  /** 观众点了一下催工：亮一圈光环，ms 之后自己收。连点只延长窗口，不叠动画。 */
+  urge(id: number, ms: number): void {
+    const handle = this.handles.get(id);
+    if (!handle) return;
+    handle.el.classList.add('is-urged');
+    const previous = this.urgeTimers.get(id);
+    if (previous !== undefined) window.clearTimeout(previous);
+    this.urgeTimers.set(id, window.setTimeout(() => {
+      handle.el.classList.remove('is-urged');
+      this.urgeTimers.delete(id);
+    }, ms));
+  }
+
+  /** 正在被总监拖走：类挂在光标上，CSS 换抓取手势。 */
+  setDirecting(id: number, on: boolean): void {
+    const handle = this.handles.get(id);
+    if (handle) handle.el.classList.toggle('is-directing', on);
+  }
+
   hide(id: number): void {
     const handle = this.handles.get(id);
     if (handle) handle.el.hidden = true;
   }
 
   destroy(): void {
+    for (const timer of this.urgeTimers.values()) window.clearTimeout(timer);
+    this.urgeTimers.clear();
     for (const handle of this.handles.values()) handle.el.remove();
     this.handles.clear();
   }

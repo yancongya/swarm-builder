@@ -88,6 +88,8 @@ export class Scheduler {
   private band: ViewBand = { top: Number.NEGATIVE_INFINITY, bottom: Number.POSITIVE_INFINITY };
   /** 开场聚群期间一件活都不发：参考版开局只跑轨道场，`started` 之后才有人领活。 */
   private held = false;
+  /** 观众拖出来的改派：这只光标的下一次认领先挑离落点最近的活。 */
+  private readonly delegated = new Map<number, { x: number; y: number }>();
   readonly total: number;
   /** The number this run shuffled with - 0 in means "pick one for me". */
   readonly seed: number;
@@ -208,12 +210,22 @@ export class Scheduler {
   }
 
   /**
+   * 观众把这只光标拖到了别处：下一次认领跨队列挑离落点最近的那件活。
+   * 落点附近此刻没有能干的活就把偏好留着，等它出现；领到以后清掉。
+   */
+  reassign(agentIndex: number, x: number, y: number): void {
+    this.delegated.set(agentIndex, { x, y });
+  }
+
+  /**
    * `queued`（默认）：先在自己那条队列里找第一个能干的，找不到再顺移着抢；
    * 被挡住的任务不会丢，它的阻碍者深度更浅，总有队列里有活。
    * `live`：整页一个池子，按参考实现的代价挑最便宜的那个。
    */
   take(claimer: Claimer): BlueprintItem | null {
     if (this.held) return null;
+    const delegated = this.takeDelegated(claimer.index);
+    if (delegated !== null) return delegated;
     if (this.pool) return this.pickLive(claimer);
     const offset = ((claimer.index % this.queues.length) + this.queues.length) % this.queues.length;
     for (let step = 0; step < this.queues.length; step++) {
@@ -223,6 +235,34 @@ export class Scheduler {
       if (index >= 0) return queue.splice(index, 1)[0] as BlueprintItem;
     }
     return null;
+  }
+
+  /** 改派优先：在整页（所有队列或池子）里挑离落点最近、且现在就能动工的一件。 */
+  private takeDelegated(agentIndex: number): BlueprintItem | null {
+    const at = this.delegated.get(agentIndex);
+    if (!at) return null;
+    let bestDistance = Number.POSITIVE_INFINITY;
+    let pick: { item: BlueprintItem; queue: BlueprintItem[]; index: number } | null = null;
+    const consider = (queue: BlueprintItem[], index: number): void => {
+      const item = queue[index] as BlueprintItem;
+      if (!this.ready(item)) return;
+      const dx = item.x + item.width / 2 - at.x;
+      const dy = item.y + item.height / 2 - at.y;
+      const distance = dx * dx + dy * dy;
+      if (distance >= bestDistance) return;
+      bestDistance = distance;
+      pick = { item, queue, index };
+    };
+    if (this.pool) {
+      for (let index = 0; index < this.pool.length; index++) consider(this.pool, index);
+    } else {
+      for (const queue of this.queues) for (let index = 0; index < queue.length; index++) consider(queue, index);
+    }
+    if (pick === null) return null;
+    const chosen = pick as { item: BlueprintItem; queue: BlueprintItem[]; index: number };
+    chosen.queue.splice(chosen.index, 1);
+    this.delegated.delete(agentIndex);
+    return chosen.item;
   }
 
   private pickLive(claimer: Claimer): BlueprintItem | null {

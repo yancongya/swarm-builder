@@ -3283,6 +3283,330 @@ ${'<div class="strip"><img loading="lazy" width="320" height="120" src="/img/x.p
   await ctx.close();
 }
 
+// ---------------------------------------------------------------------------
+// 场景 33：观众是总监（创意 3）。
+// 施工期间点一下 = 催工（1.8x 施工时钟 + 光环窗口），拖走松手 = 改派（下一件活取离落点最近的）。
+// 只有光标接指针，重建出来的盒子仍然不可交互；聚群、暂停、收工、director:false 都不接管。
+// ---------------------------------------------------------------------------
+{
+  const MAIN = (options) => new Promise((resolve) => {
+    document.querySelectorAll('.sb-overlay').forEach((el) => el.remove());
+    document.querySelectorAll('.sb-hidden').forEach((el) => el.classList.remove('sb-hidden'));
+    window.scrollTo(0, 0);
+    const m = {
+      directing: false, overlayEvents: '', cursorEvents: '', pad: '',
+      urgedNow: false, halo: '', urgedMid: false, urgedAfter: false,
+      dragTarget: 0, dragDirecting: 0, dragCursor: '', assign: null, drop: null,
+      claim: null, claimDistance: -1, baselineNearest: null, baselineCount: -1, inBaseline: false,
+      nextStamp: null,
+      boxUrged: -1,
+      pausePhase: '', pauseDirecting: true, pauseEvents: '', pauseUrged: -1,
+      resumeDirecting: false, resumeEvents: '', built: -1, early: '',
+    };
+    const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+    const when = async (fn, timeout = 20000) => {
+      const t0 = performance.now();
+      while (!fn()) {
+        if (performance.now() - t0 > timeout) return false;
+        await sleep(50);
+      }
+      return true;
+    };
+    const idOf = (el) => Number(el.dataset.cursor);
+    const padCenter = (el) => {
+      const r = el.querySelector('.sb-cursor__hit').getBoundingClientRect();
+      return { x: r.left + r.width / 2, y: r.top + r.height / 2, ok: r.width > 0 };
+    };
+    const pick = () => [...document.querySelectorAll('.sb-cursor')].find((el) => padCenter(el).ok) ?? null;
+    const fire = (target, type, x, y, buttons, pointerId) => target.dispatchEvent(new PointerEvent(type, {
+      bubbles: true, cancelable: true, composed: true, clientX: x, clientY: y,
+      pointerId, pointerType: 'mouse', isPrimary: true, button: 0, buttons,
+    }));
+    let raf = 0;
+    let swarm;
+    const finish = (extra) => {
+      cancelAnimationFrame(raf);
+      resolve({ ...m, ...extra });
+    };
+
+    // 印章要按名字对上「拖过的那只」，记录首字与落点距离。
+    const stamps = [];
+    const watch = new MutationObserver((records) => {
+      for (const record of records) {
+        for (const node of record.addedNodes) {
+          if (!(node instanceof HTMLElement) || !node.classList.contains('sb-stamp')) continue;
+          stamps.push({
+            name: (node.getAttribute('title') ?? '').split(' · ')[0],
+            x: parseFloat(node.style.left),
+            y: parseFloat(node.style.top),
+            at: performance.now(),
+          });
+        }
+      }
+    });
+    watch.observe(document.body, { childList: true, subtree: true });
+
+    const driver = async () => {
+      if (!await when(() => swarm.status.phase === 'building' && stamps.length >= 2)) {
+        m.early = '没进施工或印章不足';
+        return;
+      }
+      const overlay = document.querySelector('.sb-overlay');
+      const first = pick();
+      if (!overlay || !first) { m.early = '没有可见光标'; return; }
+      m.directing = overlay.classList.contains('is-directing');
+      m.overlayEvents = getComputedStyle(overlay).pointerEvents;
+      m.cursorEvents = getComputedStyle(first).pointerEvents;
+      m.pad = getComputedStyle(first.querySelector('.sb-cursor__hit')).display;
+
+      // 1) 点一下 = 催工，光环约 2.2s 后自己收。
+      const at = padCenter(first);
+      fire(document.elementFromPoint(at.x, at.y) ?? first, 'pointerdown', at.x, at.y, 1, 21);
+      fire(window, 'pointerup', at.x, at.y, 0, 21);
+      await sleep(100);
+      m.urgedNow = first.classList.contains('is-urged');
+      m.halo = getComputedStyle(first.querySelector('.sb-urge')).display;
+      await sleep(1200);
+      m.urgedMid = first.classList.contains('is-urged');
+      await sleep(1400);
+      m.urgedAfter = first.classList.contains('is-urged');
+
+      // 2) 拖走 = 改派：挑一只闲着的（它的下一次认领就是被改派的那件），
+      //    落点记下来，下一枚印章应该落在附近。
+      let idleAgent = null;
+      await when(() => {
+        idleAgent = (swarm.agents ?? []).find((a) => !a.busy && !a.isFinished) ?? null;
+        return !!idleAgent;
+      }, 3000);
+      if (swarm.status.phase !== 'building') { m.early = '拖拽前已收工'; return; }
+      const drag = idleAgent ? document.querySelector(`.sb-cursor[data-cursor="${idleAgent.info.id}"]`) : pick();
+      if (!drag) { m.early = '拖拽前没有可拖的光标'; return; }
+      m.dragCursor = drag.querySelector('.sb-name')?.textContent ?? '';
+      const rect = overlay.getBoundingClientRect();
+      const client = { x: 640, y: 520 };
+      const drop = { x: client.x - rect.left, y: client.y - rect.top };
+      m.drop = { x: Math.round(drop.x), y: Math.round(drop.y) };
+
+      // 改派该挑的是「落点那一刻就能动工」里最近的一件。直接问调度器的池/队列，
+      // 和 take() 走同一套 ready() 判据——印章盖在条目角上，拿它当距离代理会偏。
+      const scheduler = swarm.scheduler;
+      const originalTake = scheduler.take;
+      let baseline = null;
+      const snapshot = () => {
+        const source = scheduler.pool ?? (scheduler.queues ?? []).flatMap((queue) => queue);
+        const out = [];
+        for (const item of source) {
+          if (!scheduler.ready(item)) continue;
+          const x = item.x + item.width / 2;
+          const y = item.y + item.height / 2;
+          out.push({ id: item.id, d: Math.round(Math.hypot(x - drop.x, y - drop.y)) });
+        }
+        return out;
+      };
+      scheduler.take = (claimer) => {
+        if (claimer.index === idleAgent.index) baseline = snapshot();
+        return originalTake.call(scheduler, claimer);
+      };
+
+      const from = padCenter(drag);
+      const beforeClaim = idleAgent.currentItem ?? null;
+      fire(document.elementFromPoint(from.x, from.y) ?? drag, 'pointerdown', from.x, from.y, 1, 22);
+      for (let i = 1; i <= 6; i++) {
+        fire(window, 'pointermove', from.x + (client.x - from.x) * i / 6, from.y + (client.y - from.y) * i / 6, 1, 22);
+      }
+      m.dragTarget = document.querySelectorAll('.sb-target').length;
+      m.dragDirecting = document.querySelectorAll('.sb-cursor.is-directing').length;
+      fire(window, 'pointerup', client.x, client.y, 0, 22);
+      m.assign = [...document.querySelectorAll('.sb-assign')].map((el) => ({
+        x: Math.round(parseFloat(el.style.left)), y: Math.round(parseFloat(el.style.top)),
+      }))[0] ?? null;
+      const releaseAt = performance.now();
+
+      await when(() => idleAgent.currentItem != null && idleAgent.currentItem !== beforeClaim, 4000);
+      const claimed = idleAgent.currentItem;
+      if (claimed) {
+        const x = claimed.x + claimed.width / 2;
+        const y = claimed.y + claimed.height / 2;
+        m.claim = { id: claimed.id, x: Math.round(x), y: Math.round(y) };
+        m.claimDistance = Math.round(Math.hypot(x - drop.x, y - drop.y));
+      }
+      if (baseline) {
+        m.baselineCount = baseline.length;
+        m.baselineNearest = baseline.reduce(
+          (a, b) => (a.d <= b.d ? a : b),
+          { id: '', d: Number.POSITIVE_INFINITY },
+        );
+        if (!Number.isFinite(m.baselineNearest.d)) m.baselineNearest = null;
+        m.inBaseline = m.claim ? baseline.some((c) => c.id === m.claim.id) : false;
+      }
+      await when(() => stamps.some((s) => s.name === m.dragCursor && s.at >= releaseAt), 8000);
+      const after = stamps.filter((s) => s.name === m.dragCursor && s.at >= releaseAt)[0];
+      if (after) m.nextStamp = { x: Math.round(after.x), y: Math.round(after.y) };
+
+      // 3) 重建出来的盒子不吃指针：离光标够远的盒子点一下，谁都不该被催。
+      const beforeUrged = document.querySelectorAll('.sb-cursor.is-urged').length;
+      const box = await (async () => {
+        const anchors = [...document.querySelectorAll('.sb-cursor')].map(padCenter);
+        const candidate = [...document.querySelectorAll('.sb-item--live, .sb-text')].find((el) => {
+          const r = el.getBoundingClientRect();
+          if (r.width < 40 || r.height < 20 || r.bottom < 0 || r.top > innerHeight) return false;
+          const x = r.left + r.width / 2;
+          const y = r.top + r.height / 2;
+          return anchors.every((a) => Math.hypot(a.x - x, a.y - y) > 90);
+        });
+        if (!candidate) return null;
+        const r = candidate.getBoundingClientRect();
+        const x = r.left + r.width / 2;
+        const y = r.top + r.height / 2;
+        fire(document.elementFromPoint(x, y) ?? document.body, 'pointerdown', x, y, 1, 23);
+        fire(window, 'pointerup', x, y, 0, 23);
+        return { cls: candidate.className, x: Math.round(x), y: Math.round(y) };
+      })();
+      await sleep(100);
+      m.boxUrged = document.querySelectorAll('.sb-cursor.is-urged').length - beforeUrged;
+      m.box = box;
+
+      // 4) 暂停交还指针，继续后恢复接管。
+      swarm.pause();
+      await sleep(150);
+      const some = document.querySelector('.sb-cursor');
+      m.pausePhase = swarm.status.phase;
+      m.pauseDirecting = document.querySelectorAll('.sb-overlay.is-directing').length;
+      m.pauseEvents = some ? getComputedStyle(some).pointerEvents : 'none';
+      const pausedUrged = document.querySelectorAll('.sb-cursor.is-urged').length;
+      if (some) {
+        fire(some, 'pointerdown', 10, 10, 1, 24);
+        fire(window, 'pointerup', 10, 10, 0, 24);
+      }
+      await sleep(80);
+      m.pauseUrged = document.querySelectorAll('.sb-cursor.is-urged').length - pausedUrged;
+      swarm.resume();
+      await sleep(150);
+      const live = document.querySelector('.sb-cursor');
+      m.resumeDirecting = !!document.querySelector('.sb-overlay.is-directing');
+      m.resumeEvents = live ? getComputedStyle(live).pointerEvents : 'none';
+    };
+
+    swarm = new window.SwarmBuilder({
+      root: document.querySelector('#app'),
+      sound: false, speed: 0.8, tour: false, trigger: 'immediate',
+      gather: false, agents: 'fixed', agentCount: 8, adaptiveSpeed: false,
+      performanceMode: 'high', seed: 12345,
+      ...options,
+      onComplete: (r) => window.setTimeout(() => { watch.disconnect(); finish({ built: r.built }); }, 0),
+    });
+    swarm.start();
+    driver().catch((error) => { m.early = String(error); });
+    window.setTimeout(() => { watch.disconnect(); finish({}); }, 60000);
+  });
+
+  const INERT = ([options, phaseName]) => new Promise((resolve) => {
+    document.querySelectorAll('.sb-overlay').forEach((el) => el.remove());
+    document.querySelectorAll('.sb-hidden').forEach((el) => el.classList.remove('sb-hidden'));
+    window.scrollTo(0, 0);
+    const m = { phase: '', directing: 0, events: '', pad: '', urged: -1, target: 0, assign: 0, early: true };
+    let swarm;
+    const poll = window.setInterval(() => {
+      if (!swarm || swarm.status.phase !== phaseName) return;
+      window.clearInterval(poll);
+      m.early = false;
+      const overlay = document.querySelector('.sb-overlay');
+      const el = document.querySelector('.sb-cursor');
+      m.phase = swarm.status.phase;
+      m.directing = document.querySelectorAll('.sb-overlay.is-directing').length;
+      m.events = el ? getComputedStyle(el).pointerEvents : '';
+      m.pad = el ? getComputedStyle(el.querySelector('.sb-cursor__hit')).display : '';
+      const base = { bubbles: true, cancelable: true, composed: true, clientX: 10, clientY: 10, pointerId: 31, pointerType: 'mouse', isPrimary: true, button: 0 };
+      if (el) el.dispatchEvent(new PointerEvent('pointerdown', { ...base, buttons: 1 }));
+      if (el) el.dispatchEvent(new PointerEvent('pointermove', { ...base, clientX: 300, clientY: 300, buttons: 1 }));
+      window.dispatchEvent(new PointerEvent('pointerup', { ...base, clientX: 300, clientY: 300, buttons: 0 }));
+      window.setTimeout(() => {
+        m.urged = document.querySelectorAll('.sb-cursor.is-urged').length;
+        m.target = document.querySelectorAll('.sb-target').length;
+        m.assign = document.querySelectorAll('.sb-assign').length;
+        swarm.skip();
+        resolve(m);
+      }, 120);
+    }, 50);
+    swarm = new window.SwarmBuilder({
+      root: document.querySelector('#app'),
+      sound: false, speed: 4, tour: false, trigger: 'immediate',
+      agents: 'fixed', agentCount: 6, adaptiveSpeed: false, performanceMode: 'high', seed: 12345,
+      ...options,
+    });
+    swarm.start();
+    window.setTimeout(() => { window.clearInterval(poll); resolve(m); }, 60000);
+  });
+
+  const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+  const page = await ctx.newPage();
+  const errors = [];
+  page.on('pageerror', (e) => errors.push(String(e)));
+  // page.evaluate 只收一个参数：成组喂进去，场景自己解构。
+  const on = async (measure, args) => {
+    await page.goto(`${BASE}/demos/tall.html`, { waitUntil: 'load' });
+    await page.waitForFunction(() => typeof window.SwarmBuilder === 'function', null, { timeout: 20000 });
+    return page.evaluate(measure, args);
+  };
+
+  const main = await on(MAIN, {});
+  const off = await on(INERT, [{ director: false }, 'building']);
+  const gather = await on(INERT, [{ gather: true }, 'gathering']);
+  await page.screenshot({ path: `${OUT}director.png` });
+
+  const problems = [];
+  if (main.built < 0) problems.push('默认那局 60 秒没跑完');
+  if (main.early) problems.push(`默认那局中断：${main.early}`);
+  if (!main.directing) problems.push('施工中光标没有接管指针（缺少 is-directing）');
+  if (main.overlayEvents !== 'none') problems.push(`重建层不该吃指针：pointer-events=${main.overlayEvents}`);
+  if (main.cursorEvents !== 'auto') problems.push(`施工中光标 pointer-events=${main.cursorEvents}（应 auto）`);
+  if (main.pad !== 'block') problems.push(`光标热区 ${main.pad}（应 block）`);
+  if (!main.urgedNow || !main.urgedMid) problems.push(`点一下没催工：now=${main.urgedNow} mid=${main.urgedMid}`);
+  if (main.halo !== 'block') problems.push(`催工光环没出现：display=${main.halo}`);
+  if (main.urgedAfter) problems.push('催工光环过了 2.5 秒还挂着');
+  if (main.dragTarget !== 1) problems.push(`拖动时准星 ${main.dragTarget} 个（应 1）`);
+  if (main.dragDirecting !== 1) problems.push(`拖动时抓取态 ${main.dragDirecting} 个（应 1）`);
+  if (!main.assign) problems.push('松手后没有改派落点（.sb-assign）');
+  else if (main.drop && (Math.abs(main.assign.x - main.drop.x) > 2 || Math.abs(main.assign.y - main.drop.y) > 2)) {
+    problems.push(`改派落点 ${main.assign.x},${main.assign.y} ≠ 松手点 ${main.drop.x},${main.drop.y}`);
+  }
+  if (main.claimDistance < 0) problems.push(`改派后 ${main.dragCursor} 没领到活`);
+  if (main.baselineCount < 0) problems.push('没读到改派那一刻的可领清单');
+  else if (!main.baselineNearest) problems.push('改派那一刻没有任何可领的活');
+  if (main.claim && main.baselineNearest) {
+    if (!main.inBaseline) problems.push(`改派领的 ${main.claim.id} 不在可领清单里`);
+    else if (main.claimDistance > main.baselineNearest.d + 2) {
+      problems.push(`改派没取最近的一件：领了 ${main.claimDistance}px 的 ${main.claim.id}，最近的是 ${main.baselineNearest.d}px 的 ${main.baselineNearest.id}`);
+    }
+  }
+  if (!main.nextStamp) problems.push(`改派后 ${main.dragCursor} 一直没再竣工`);
+  if (main.boxUrged !== 0) problems.push(`点重建盒子催到了 ${main.boxUrged} 只光标`);
+  if (main.pausePhase !== 'paused') problems.push(`暂停后阶段=${main.pausePhase}`);
+  if (main.pauseDirecting !== 0) problems.push('暂停时还在接管指针');
+  if (main.pauseEvents !== 'none') problems.push(`暂停时光标 pointer-events=${main.pauseEvents}（应 none）`);
+  if (main.pauseUrged !== 0) problems.push('暂停时直接发给光标的事件仍被当成催工');
+  if (!main.resumeDirecting) problems.push('继续后没有恢复接管');
+  if (main.resumeEvents !== 'auto') problems.push(`继续后光标 pointer-events=${main.resumeEvents}（应 auto）`);
+  for (const [name, r] of [['off', off], ['gather', gather]]) {
+    if (r.early) problems.push(`${name} 那局没等到目标阶段`);
+    if (r.directing !== 0) problems.push(`${name} 还在接管指针`);
+    if (r.urged !== 0) problems.push(`${name} 直接事件仍催了 ${r.urged} 只`);
+    if (r.target || r.assign) problems.push(`${name} 直接事件留下了准星/落点`);
+  }
+  if (off.events !== 'none' || gather.events !== 'none') {
+    problems.push(`非施工状态 pointer-events: off=${off.events} gather=${gather.events}（应全为 none）`);
+  }
+  if (errors.length) problems.push(`报错 ${errors.length} 条：${errors[0]}`);
+  report('director @1280', problems, [
+    `接管: is-directing=${main.directing} · 重建层=${main.overlayEvents} · 光标=${main.cursorEvents} · 热区=${main.pad}`,
+    `催工: 按下 ${main.urgedNow}/${main.halo} · 1.3s=${main.urgedMid} · 2.7s=${main.urgedAfter}`,
+    `改派: 准星=${main.dragTarget} 抓取态=${main.dragDirecting} · 落点=${main.assign ? main.assign.x + ',' + main.assign.y : '无'} → 领 ${main.claim ? main.claim.id : '无'} 距 ${main.claimDistance}px（最近 ${main.baselineNearest ? main.baselineNearest.d : '—'}px / 候选 ${main.baselineCount}）· 印章=${main.nextStamp ? '有' : '无'} · 盒子误触=${main.boxUrged}`,
+    `交还: 暂停 ${main.pausePhase} 接管=${main.pauseDirecting} 事件=${main.pauseEvents} 催工=${main.pauseUrged} → 继续接管=${main.resumeDirecting}`,
+    `关闭: director:false ${off.directing} 接管/${off.urged} 催工 · 聚群 ${gather.phase} ${gather.directing} 接管/${gather.urged} 催工`,
+  ]);
+  await ctx.close();
+}
+
 await browser.close();
 owned?.child.kill();
 console.log(`\n${failures === 0 ? '全部通过' : failures + ' 个场景有问题'} · 截图在 .shots/ · 服务 ${BASE}`);

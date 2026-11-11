@@ -6,7 +6,7 @@ import type { FlightStage, Flyer } from './core/flight';
 import { normalizeOptions, applyPerformanceMode, clamp, SPEED_MIN, SPEED_MAX, SPEED_STEPS } from './core/config';
 import { estimateRun, itemWeight } from './core/estimate';
 import { Engine } from './core/engine';
-import { Agent } from './core/agent';
+import { Agent, URGE_MS } from './core/agent';
 import { Scheduler } from './core/scheduler';
 import { snapshot } from './core/snapshot';
 import { SoundBus } from './core/sound';
@@ -56,6 +56,10 @@ const HANDOFF_MS = 620;
 const HANDOFF_COOLDOWN = 2600;
 /** 「一前一后」的窗口：两件活在这个时间里先后竣工才算一次交接。 */
 const HANDOFF_WINDOW = 2400;
+/** 总监模式：按住挪过这么多像素才算「拖派」，否则算一次点催。 */
+const DRAG_SLOP = 6;
+/** 准星外这么多像素内按下也算抓住这只光标：它在飞，像素级瞄准不现实。 */
+const GRAB_RADIUS = 26;
 
 class ProgressTicker implements Tickable {
   private last = -1;
@@ -179,6 +183,8 @@ export class SwarmBuilder {
   private stopPointer: (() => void) | null = null;
   /** 开场聚群的滚轮监听：交还页面、跳过、销毁时都要摘掉。 */
   private stopIntro: (() => void) | null = null;
+  /** 观众指挥的指针监听：收工、暂停、销毁时摘掉。 */
+  private stopDirector: (() => void) | null = null;
   private intro: IntroTicker | null = null;
   /** Esc / M / 手势解锁；`keys:false` 时不绑。 */
   private stopKeys: (() => void) | null = null;
@@ -314,6 +320,8 @@ export class SwarmBuilder {
 
     const agents: Agent[] = this.agents = [];
     const byFlyer = new Map<Flyer, Agent>();
+    /** 指针只认编号：光标元素上写的是 id，改派要落到对应的那一只。 */
+    const byId = new Map<number, Agent>();
     const flyers = (): Agent[] => agents.filter((agent) => !agent.isFinished);
 
     // 交接仪式：两只光标一前一后在同一片区域收活（竣工点相距 90px 内、间隔不到 2.4 秒），
@@ -392,6 +400,7 @@ export class SwarmBuilder {
       engine.add(agent);
       agents.push(agent);
       byFlyer.set(agent, agent);
+      byId.set(agent.info.id, agent);
       if (this.opts.flocking) flock.add(agent);
       return agent;
     };
@@ -422,6 +431,28 @@ export class SwarmBuilder {
       const startX = index % 2 === 0 ? -off : blueprint.width + off;
       const startY = opening.top + opening.height * (INTRO_EDGE_MIN + rng() * INTRO_EDGE_RANGE);
       infos.push(addAgent(startX, startY, home).info);
+    }
+
+    if (this.opts.director) {
+      this.watchDirector({
+        overlay, cursors, scheduler,
+        agentOf: (id) => byId.get(id) ?? null,
+        nearest: (x, y, radius) => {
+          let best: Agent | null = null;
+          let bestDistance = radius * radius;
+          for (const agent of agents) {
+            if (agent.isFinished) continue;
+            const dx = agent.x - x;
+            const dy = agent.y - y;
+            const distance = dx * dx + dy * dy;
+            if (distance <= bestDistance) {
+              bestDistance = distance;
+              best = agent;
+            }
+          }
+          return best;
+        },
+      });
     }
 
     // 四套参考实现里只有这一处按帧读布局，其余都从 this.band 取缓存。
@@ -516,6 +547,7 @@ export class SwarmBuilder {
       this.phase = 'building';
       this.touring = this.opts.tour;
       scheduler.release();
+      this.syncDirector();
       if (flight) flight.introCenter = null;
       if (this.touring) engine.add(camera);
       score?.start();
@@ -553,12 +585,8 @@ export class SwarmBuilder {
    * 参考版把 mouse 记在视口坐标里，我们的光标记在蓝图坐标里，所以按 root 换算一次。
    */
   private watchPointer(): void {
-    const toStage = (event: PointerEvent): { x: number; y: number } => {
-      const rect = this.root.getBoundingClientRect();
-      return { x: event.clientX - rect.left, y: event.clientY - rect.top };
-    };
     const onMove = (event: PointerEvent): void => {
-      this.pointer = toStage(event);
+      this.pointer = this.stagePoint(event);
     };
     // 指针离开文档就不当它是圆心：否则光标会一直贴着读者最后一次停下的地方。
     const onLeave = (): void => {
@@ -573,10 +601,160 @@ export class SwarmBuilder {
     };
   }
 
+  /** 指针事件换算成蓝图坐标（相对 root 的边框盒）。 */
+  private stagePoint(event: PointerEvent): { x: number; y: number } {
+    const rect = this.root.getBoundingClientRect();
+    return { x: event.clientX - rect.left, y: event.clientY - rect.top };
+  }
+
+  /**
+   * 观众就是总监：施工期间指针只落在光标上——点一下催工，拖到别处松手改派。
+   * 重建出来的盒子一个像素都不碰；聚群、暂停、收工之后监听还在，但阶段检查直接放行。
+   * 拖一只闲着的会真的跟着指针走（物理让开），施工中的那只不拽人，只记落点。
+   */
+  private watchDirector(deps: {
+    overlay: Overlay;
+    cursors: CursorLayer;
+    scheduler: Scheduler;
+    agentOf: (id: number) => Agent | null;
+    nearest: (x: number, y: number, radius: number) => Agent | null;
+  }): void {
+    let press: {
+      pointerId: number;
+      agent: Agent;
+      startX: number;
+      startY: number;
+      dragging: boolean;
+    } | null = null;
+    let target: HTMLElement | null = null;
+
+    const clearTarget = (): void => {
+      target?.remove();
+      target = null;
+    };
+    const showTarget = (x: number, y: number, color: string): void => {
+      if (!target) {
+        target = document.createElement('div');
+        target.className = 'sb-target';
+        deps.overlay.el.appendChild(target);
+      }
+      target.style.left = `${x}px`;
+      target.style.top = `${y}px`;
+      target.style.color = color;
+    };
+    const endPress = (commit: boolean, event: PointerEvent): void => {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+      window.removeEventListener('pointercancel', onCancel);
+      clearTarget();
+      const current = press;
+      press = null;
+      if (!current) return;
+      deps.cursors.setDirecting(current.agent.info.id, false);
+      if (!current.dragging) {
+        // 按下去就松开：催这一只，光环与施工时钟同一个窗口。
+        current.agent.urge();
+        deps.cursors.urge(current.agent.info.id, URGE_MS);
+        return;
+      }
+      current.agent.endDrag();
+      if (!commit) return;
+      const point = this.stagePoint(event);
+      deps.scheduler.reassign(current.agent.index, point.x, point.y);
+      const ping = document.createElement('div');
+      ping.className = 'sb-assign';
+      ping.style.left = `${point.x}px`;
+      ping.style.top = `${point.y}px`;
+      ping.style.color = current.agent.info.color;
+      deps.overlay.el.appendChild(ping);
+      window.setTimeout(() => ping.remove(), 700);
+    };
+    const onMove = (event: PointerEvent): void => {
+      if (!press || event.pointerId !== press.pointerId) return;
+      if (!press.dragging
+        && Math.hypot(event.clientX - press.startX, event.clientY - press.startY) < DRAG_SLOP) return;
+      event.preventDefault();
+      const point = this.stagePoint(event);
+      if (!press.dragging) {
+        press.dragging = true;
+        deps.cursors.setDirecting(press.agent.info.id, true);
+        press.agent.beginDrag();
+      }
+      if (press.agent.dragging) press.agent.dragTo(point.x, point.y);
+      showTarget(point.x, point.y, press.agent.info.color);
+    };
+    const onUp = (event: PointerEvent): void => {
+      if (!press || event.pointerId !== press.pointerId) return;
+      endPress(true, event);
+    };
+    const onCancel = (event: PointerEvent): void => {
+      if (!press || event.pointerId !== press.pointerId) return;
+      endPress(false, event);
+    };
+    const onDown = (event: PointerEvent): void => {
+      if (this.phase !== 'building' || this.finished || this.destroyed) return;
+      if (press || (event.pointerType === 'mouse' && event.button !== 0)) return;
+      const hit = event.target instanceof Element ? event.target.closest('.sb-cursor') : null;
+      let agent: Agent | null = null;
+      if (hit instanceof HTMLElement) {
+        const id = Number(hit.dataset.cursor);
+        agent = Number.isFinite(id) ? deps.agentOf(id) : null;
+      }
+      // 光标一直在飞，按下那一瞬可能已经挪出箭头几个像素：锚点附近也算点中，
+      // 否则观众永远追不上。盒子仍然不接指针，这里只认光标自己。
+      if (!agent) {
+        const point = this.stagePoint(event);
+        agent = deps.nearest(point.x, point.y, GRAB_RADIUS);
+      }
+      if (!agent || agent.isFinished) return;
+      event.preventDefault();
+      event.stopPropagation();
+      press = {
+        pointerId: event.pointerId,
+        agent,
+        startX: event.clientX,
+        startY: event.clientY,
+        dragging: false,
+      };
+      window.addEventListener('pointermove', onMove, { passive: false });
+      window.addEventListener('pointerup', onUp);
+      window.addEventListener('pointercancel', onCancel);
+    };
+    // 光标是虚拟 UI：点它不该被宿主页面的全局点击监听当成一次页面点击。
+    const onClick = (event: MouseEvent): void => {
+      if (this.phase !== 'building' || this.finished) return;
+      if (event.target instanceof Element && event.target.closest('.sb-cursor')) event.stopPropagation();
+    };
+    deps.overlay.el.addEventListener('pointerdown', onDown);
+    deps.overlay.el.addEventListener('click', onClick);
+    this.stopDirector = () => {
+      deps.overlay.el.removeEventListener('pointerdown', onDown);
+      deps.overlay.el.removeEventListener('click', onClick);
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+      window.removeEventListener('pointercancel', onCancel);
+      clearTarget();
+      if (press) {
+        deps.cursors.setDirecting(press.agent.info.id, false);
+        press.agent.endDrag();
+        press = null;
+      }
+    };
+  }
+
+  /** 只有施工中、开着观众指挥、这一局还没收工时，光标才接指针。 */
+  private syncDirector(): void {
+    this.overlay?.el.classList.toggle(
+      'is-directing',
+      this.opts.director && this.phase === 'building' && !this.finished,
+    );
+  }
+
   private complete(): void {
     this.finished = true;
     this.phase = 'done';
     this.touring = false;
+    this.syncDirector();
     this.endedAt = performance.now();
     const result: SwarmResult = {
       built: this.scheduler?.built ?? 0,
@@ -596,6 +774,8 @@ export class SwarmBuilder {
     this.agents = [];
     this.stopPointer?.();
     this.stopPointer = null;
+    this.stopDirector?.();
+    this.stopDirector = null;
     this.stopIntro?.();
     this.stopIntro = null;
     this.intro = null;
@@ -614,6 +794,7 @@ export class SwarmBuilder {
     this.engine.pause();
     this.frozen = this.phase;
     this.phase = 'paused';
+    this.syncDirector();
     this.report(true);
   }
 
@@ -621,6 +802,7 @@ export class SwarmBuilder {
     if (this.phase !== 'paused') return;
     this.phase = this.frozen;
     this.engine?.resume();
+    this.syncDirector();
     this.report(true);
   }
 
@@ -797,6 +979,8 @@ export class SwarmBuilder {
     this.engine?.stop();
     this.stopPointer?.();
     this.stopPointer = null;
+    this.stopDirector?.();
+    this.stopDirector = null;
     this.stopIntro?.();
     this.stopIntro = null;
     this.intro = null;

@@ -32,6 +32,7 @@ const UI: Record<string, string> = {
   '光标避让': 'Cursor flocking',
   '光标性格': 'Cursor personality',
   '竣工印章': 'Completion seals',
+  '观众指挥': 'Director mode',
   '镜头跟随': 'Camera follow',
   '音效': 'Sound',
   '施工线色': 'Guide ink',
@@ -149,6 +150,8 @@ const UI: Record<string, string> = {
     'Each cursor draws a personality from this run’s seed: Rush travels and types fast with speed lines behind it; Tidy works by the book and wears a calibration ring; Drift is half a beat slow and idles into a “…” bubble; Steady is the old uniform pace. Only the build tempo and the look change - idle flight and flocking are untouched, and the same seed replays the same crew. Off makes everyone Steady.',
   '每件活竣工时，施工它的光标在右下角盖一枚名章：首字母 + 专属色，悬停能看见名字与性格。复制盖章带出来的件也盖，辅助线不盖；印章自己一格，不占 ⌥ 尺寸徽章。性能模式自动裁剪的密集页不盖。':
     'When an item is finished, the cursor that built it seals the bottom-right corner: its initial in its own colour, with the name and personality on hover. Stamped copies are sealed too and guides are not; the seal has its own slot and never shows up in the ⌥ size badge. Crowded pages trimmed by Performance mode skip them.',
+  '施工期间观众能直接指挥光标：点一下催工——这只光标施工提速 1.8 倍、亮一圈光环，持续约两秒；按住拖到别处松手 = 改派，它领的下一件活优先落在落点附近。指针只落在光标上，重建出来的盒子仍然不可交互；开场聚群、暂停和收工之后都不接管。':
+    'While work is under way the audience can direct the cursors: click one to urge it - a 1.8x build clock with a halo for about two seconds; drag it somewhere else and release to reassign it, so its next claim comes from near where you dropped it. The pointer only ever lands on a cursor, rebuilt boxes stay inert, and the controls do nothing while the opening cluster runs, while paused, or after the run.',
   '滚动跟着施工前沿走（扩展 HUD 上的 Tour），运行中也能开关，结束交还页首。页面比视口高时打开。它跟的是光标在哪儿：多光标各守一条带时，镜头会被最靠后那只一把拽到页底，看着像开局就滚完了；配「随滚动解锁」才会一段一段往下走。':
     'Scroll follows the construction frontier (the Tour button on the extension’s HUD), can be toggled mid-run, and returns to the top when the run ends. Turn it on when the page is taller than the viewport. It follows where the cursors are: with several cursors each holding a band, the rearmost one yanks the camera to the bottom and it looks like the page scrolled away in the opening second. Pair it with "Unlock as you scroll" and it advances screen by screen instead.',
   '键盘快捷键': 'Keyboard shortcuts',

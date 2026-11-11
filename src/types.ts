@@ -140,6 +140,15 @@ export interface SwarmConfig {
    */
   stamps?: boolean;
   /**
+   * Let the audience direct the build. Default true: while work is under way a
+   * click on a cursor urges it (1.8x build clock for ~2.2s, with a halo), and
+   * dragging it somewhere else makes its next claim the nearest free job to
+   * where the pointer was released. The pointer only ever lands on `.sb-cursor`
+   * — rebuilt boxes stay inert — and the controls stay off while gathering,
+   * paused or done.
+   */
+  director?: boolean;
+  /**
    * How the real pointer is treated. The pointermove listener is attached when
    * this is not 'ignore', or when `gather` needs it to spot a touch.
    * 'follow' (default) - the orbit centre is the pointer itself, as in the

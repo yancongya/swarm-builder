@@ -13,6 +13,10 @@ import { makeFlyer } from './flight';
 import type { Persona } from './personality';
 import { clamp } from './config';
 
+/** 观众点一下催工：这段时间里施工时钟乘 1.8，光环由 CursorLayer 按同一个窗口收。 */
+export const URGE_MS = 2200;
+const URGE_RATE = 1.8;
+
 export interface AgentDeps {
   scheduler: Scheduler;
   overlay: Overlay;
@@ -50,6 +54,10 @@ export class Agent implements AgentView, Tickable, Flyer {
   busy = false;
   worked = false;
   idleFor = 0;
+  /** 正被观众拖着：物理不碰它，施工也暂停，等松手后的改派。 */
+  dragging = false;
+  /** 催工窗口结束的真实时间戳；0 表示没被催过。 */
+  private urgeUntil = 0;
 
   private readonly actions: Action[] = [];
   private current: Action | null = null;
@@ -106,7 +114,7 @@ export class Agent implements AgentView, Tickable, Flyer {
   }
 
   tick(dt: number): void {
-    if (this.finished) return;
+    if (this.finished || this.dragging) return;
 
     if (this.current === null) {
       if (this.actions.length === 0) {
@@ -140,7 +148,9 @@ export class Agent implements AgentView, Tickable, Flyer {
     const mul = action.name === 'move' ? this.persona.moveMul
       : action.name === 'type' ? this.persona.typeMul
       : 1;
-    this.elapsed += dt * mul;
+    // 观众催的那一下也拧同一个施工时钟，窗口过了自然回落。
+    const rush = performance.now() < this.urgeUntil ? URGE_RATE : 1;
+    this.elapsed += dt * mul * rush;
     const progress = action.duration > 0 ? clamp(this.elapsed / action.duration, 0, 1) : 1;
     action.tick(progress, this.ctx);
 
@@ -160,6 +170,26 @@ export class Agent implements AgentView, Tickable, Flyer {
   private stamp(item: BlueprintItem): void {
     if (!this.deps.opts.stamps) return;
     this.deps.overlay.stamp(item, this.info);
+  }
+
+  /** 观众点了一下：催这一只，施工时钟快一截；光环的时长由调用方传同一个窗口。 */
+  urge(ms = URGE_MS): void {
+    this.urgeUntil = performance.now() + ms;
+  }
+
+  /** 拖一只闲着的：物理先让开。正在施工的那只不拽，只让下一次认领去落点附近。 */
+  beginDrag(): boolean {
+    if (this.busy || this.finished) return false;
+    this.dragging = true;
+    return true;
+  }
+
+  dragTo(x: number, y: number): void {
+    if (this.dragging) this.moveTo(x, y);
+  }
+
+  endDrag(): void {
+    this.dragging = false;
   }
 
   /**
