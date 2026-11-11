@@ -31,6 +31,7 @@ const UI: Record<string, string> = {
   '标题步进': 'Heading growth',
   '光标避让': 'Cursor flocking',
   '光标性格': 'Cursor personality',
+  '光标拖尾': 'Cursor trail',
   '竣工印章': 'Completion seals',
   '观众指挥': 'Director mode',
   '镜头跟随': 'Camera follow',
@@ -148,6 +149,8 @@ const UI: Record<string, string> = {
   '光标在途中互相绕行。': 'Cursors steer around each other in flight.',
   '每只光标从这一局的种子里抽一个性格：急性子赶路打字都快、身后带速度线；强迫症按部就班、戴一圈校准环；摸鱼中慢半拍、闲久了冒「…」；稳当当就是以前的统一节奏。只改施工快慢和外观，不碰待时飞行与避让；同一种子回放同一支队伍。关掉则全员稳当当。':
     'Each cursor draws a personality from this run’s seed: Rush travels and types fast with speed lines behind it; Tidy works by the book and wears a calibration ring; Drift is half a beat slow and idles into a “…” bubble; Steady is the old uniform pace. Only the build tempo and the look change - idle flight and flocking are untouched, and the same seed replays the same crew. Off makes everyone Steady.',
+  '每个光标身后拖一道同色的渐隐曲线，单位秒：数值越大残留越久，0 = 关闭。按真实时间淡出，8× 倍速下也不会一闪就没；尾巴在屏幕上的长度有上限（约 300px），倍速再高也不会拉成横穿整页的长线。采样的是光标已经画出的位置，不额外读布局。性能模式自动裁剪的密集页会关掉。':
+    'Each cursor drags a fading curved line of its own colour behind it, in seconds: higher values linger longer and 0 turns it off. It fades on the real clock, so 8× speed cannot blink it away; the streak’s on-screen length is capped (about 300px), so no speed setting stretches it across the page. It samples the position the cursor already drew with no extra layout reads. Crowded pages trimmed by Performance mode turn it off.',
   '每件活竣工时，施工它的光标在右下角盖一枚名章：首字母 + 专属色，悬停能看见名字与性格。复制盖章带出来的件也盖，辅助线不盖；印章自己一格，不占 ⌥ 尺寸徽章。性能模式自动裁剪的密集页不盖。':
     'When an item is finished, the cursor that built it seals the bottom-right corner: its initial in its own colour, with the name and personality on hover. Stamped copies are sealed too and guides are not; the seal has its own slot and never shows up in the ⌥ size badge. Crowded pages trimmed by Performance mode skip them.',
   '施工期间观众能直接指挥光标：点一下催工——这只光标施工提速 1.8 倍、亮一圈光环，持续约两秒；按住拖到别处松手 = 改派，它领的下一件活优先落在落点附近。指针只落在光标上，重建出来的盒子仍然不可交互；开场聚群、暂停和收工之后都不接管。':

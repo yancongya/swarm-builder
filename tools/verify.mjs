@@ -3084,7 +3084,8 @@ ${'<div class="strip"><img loading="lazy" width="320" height="120" src="/img/x.p
     document.querySelectorAll('.sb-overlay').forEach((el) => el.remove());
     document.querySelectorAll('.sb-hidden').forEach((el) => el.classList.remove('sb-hidden'));
     window.scrollTo(0, 0);
-    const m = { chip: false, chipText: '', rolling: 0, crew: 0, map: '', traitsOk: true, chipAfter: true, built: -1, seed: -1 };
+    const m = { chip: false, chipText: '', rolling: 0, crew: 0, map: '', traitsOk: true, chipAfter: true, built: -1, seed: -1,
+      trailSeen: 0, trailMax: 0, trailLit: 0, trailZero: false, dirs: [], trailSize: '' };
     let captured = false;
     let raf = 0;
     let swarm;
@@ -3112,6 +3113,29 @@ ${'<div class="strip"><img loading="lazy" width="320" height="120" src="/img/x.p
         m.crew = Math.max(m.crew, document.querySelectorAll('.sb-cursor:not([hidden])').length);
       }
       if (phase === 'building' && !captured) { captured = true; m.map = readMap(); }
+      if (phase === 'building') {
+        // 速度线不是摆设：移动时要够亮、方向要跟着位移转，停下来要归零。
+        for (const trail of document.querySelectorAll('.sb-p-rush .sb-trail')) {
+          m.trailSeen++;
+          const op = parseFloat(getComputedStyle(trail).opacity) || 0;
+          if (op > m.trailMax) m.trailMax = op;
+          if (op >= 0.1) {
+            m.trailLit++;
+            // 两个变量写在光标根节点上、由 .sb-trail 继承，读 trail 自己的 inline 只会读到空。
+            const dir = trail.parentElement?.style.getPropertyValue('--sb-dir') ?? '';
+            if (dir && !m.dirs.includes(dir)) m.dirs.push(dir);
+          } else if (op === 0) {
+            m.trailZero = true;
+          }
+          if (!m.trailSize) {
+            const line = trail.querySelector('i');
+            if (line) {
+              const box = getComputedStyle(line);
+              m.trailSize = `${box.height}/${box.width}`;
+            }
+          }
+        }
+      }
       raf = requestAnimationFrame(sample);
     };
     raf = requestAnimationFrame(sample);
@@ -3151,6 +3175,14 @@ ${'<div class="strip"><img loading="lazy" width="320" height="120" src="/img/x.p
   if (!/领班/.test(a.chipText) || !/Ava/.test(a.chipText)) problems.push(`领班牌文案不对：${a.chipText}`);
   if (a.rolling !== a.crew || a.crew !== 8) problems.push(`点名没让全部名牌弹：rolling=${a.rolling} crew=${a.crew}（应同为 8）`);
   if (!a.traitsOk) problems.push('有光标的性格和它戴的配件对不上');
+  if (a.trailSeen < 1) problems.push('这局没有急性子，速度线没测到');
+  if (a.trailMax < 0.5) problems.push(`速度线太淡：亮度峰值 ${a.trailMax}`);
+  if (!a.trailLit) problems.push('移动时速度线从没亮过');
+  if (!a.dirs.length || !a.dirs.some((dir) => dir !== '0deg')) {
+    problems.push(`速度线没跟着位移方向转：${a.dirs.join(' ') || '没有方向'}`);
+  }
+  if (a.trailSize !== '2px/28px') problems.push(`速度线尺寸 ${a.trailSize}（应 2px/28px）`);
+  if (!a.trailZero) problems.push('停下来后速度线没有归零');
   if (a.map !== b.map) problems.push(`同种子性格变了：${a.map} vs ${b.map}`);
   if (a.map === c.map) problems.push('换种子性格没变，种子没参与抽性格');
   if (!a.chipAfter) problems.push('开工后领班牌没拆掉');
@@ -3161,6 +3193,7 @@ ${'<div class="strip"><img loading="lazy" width="320" height="120" src="/img/x.p
   report('personality @1280', problems, [
     `点名: 领班牌=${a.chip}「${a.chipText}」· 弹名牌=${a.rolling}/${a.crew} · 开工后已拆=${a.chipAfter}`,
     `性格: 12345 两次 ${a.map} = ${b.map} · 67890 ${c.map} · 配件齐全=${a.traitsOk}`,
+    `速度线: 亮 ${a.trailLit}/${a.trailSeen} 帧 · 峰值 ${a.trailMax} · 方向 ${a.dirs.length} 种「${a.dirs.slice(0, 3).join(' ')}」· 尺寸 ${a.trailSize} · 静止归零=${a.trailZero}`,
     `关闭: 全员稳当当=${off.map.split(',').every((row) => row.endsWith(':steady'))} · 点名仍在=${off.chip} · 回显种子=${a.seed}`,
   ]);
   await ctx.close();
@@ -3761,6 +3794,141 @@ ${'<div class="strip"><img loading="lazy" width="320" height="120" src="/img/x.p
     `出图: ${shown.png ? 'PNG' : '非 PNG'} ${shown.natural.w}×${shown.natural.h} · 行 ${shown.rows} = 参建 ${done.crew} · 采样色 ${paint} 种`,
     `收放: 关闭=${closed.sheet === false} · 新一局收图=${restarted.sheet === false} 重灰=${restarted.disabled}`,
     `EN: 「${beforeEn.label}」/「${beforeEn.closeTip}」/ alt「${shownEn.alt}」· ${shownEn.status}`,
+  ]);
+  await ctx.close();
+}
+
+// ---------------------------------------------------------------------------
+// 场景 35：光标拖尾（接口 + 面板）。
+// 每个光标身后一道同色渐隐曲线，按真实时间淡出；但画出来的路程有上限，8× 也只留一小截，
+// 不会横穿整页。trailLife 0 一个节点都不建；面板里要有这一行（0–2.5 秒），英文页跟着字典走。
+// ---------------------------------------------------------------------------
+{
+  const MEASURE = (options) => new Promise((resolve) => {
+    document.querySelectorAll('.sb-overlay').forEach((el) => el.remove());
+    document.querySelectorAll('.sb-hidden').forEach((el) => el.classList.remove('sb-hidden'));
+    window.scrollTo(0, 0);
+    const m = { built: -1, maxTails: 0, maxPts: 0, maxLen: 0, moved: 0, curved: false, boxes: 0, stroke: '', grads: 0, stops: 0, after: -1 };
+    let raf = 0;
+    let swarm;
+    const sample = () => {
+      if (swarm?.status.phase === 'building') {
+        m.maxTails = Math.max(m.maxTails, document.querySelectorAll('.sb-tail').length);
+        for (const svg of document.querySelectorAll('.sb-tail')) {
+          const line = svg.querySelector('path');
+          const d = line?.getAttribute('d') ?? '';
+          // 曲线只由 M / Q / L 组成，一个绘制命令对应一个采样点。
+          const pts = (d.match(/[MLQ]/g) ?? []).length;
+          if (pts > m.maxPts) m.maxPts = pts;
+          if (pts > 1) m.moved++;
+          if (d.includes('Q')) m.curved = true;
+          try { m.maxLen = Math.max(m.maxLen, Math.round(line.getTotalLength())); } catch { /* 空路径 */ }
+          if (!m.stroke) m.stroke = `${getComputedStyle(line).strokeWidth}/${line.getAttribute('stroke')}`;
+          if ((line?.getAttribute('stroke') ?? '').startsWith('url(#sb-tail-')) m.grads++;
+          if (!m.stops) m.stops = svg.querySelectorAll('linearGradient stop').length;
+          const box = svg.getBoundingClientRect();
+          if (box.width > 1 && box.height > 1) m.boxes++;
+        }
+      }
+      raf = requestAnimationFrame(sample);
+    };
+    raf = requestAnimationFrame(sample);
+    const finish = (extra) => { cancelAnimationFrame(raf); resolve({ ...m, ...extra }); };
+    swarm = new window.SwarmBuilder({
+      root: document.querySelector('#app'),
+      sound: false, speed: 8, tour: false, trigger: 'immediate',
+      gather: false, agents: 'fixed', agentCount: 8, adaptiveSpeed: false,
+      performanceMode: 'high', seed: 12345, personality: false,
+      ...options,
+      onComplete: (r) => finish({ built: r.built, after: document.querySelectorAll('.sb-tail').length }),
+    });
+    swarm.start();
+    setTimeout(() => finish({}), 60000);
+  });
+
+  const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+  const page = await ctx.newPage();
+  const errors = [];
+  page.on('pageerror', (e) => errors.push(String(e)));
+
+  const load = async (url) => {
+    await page.goto(url, { waitUntil: 'load' });
+    await page.waitForFunction(() => document.querySelector('[data-sb-chrome]') !== null, null, { timeout: 20000 });
+  };
+  const on = async (options) => {
+    await page.goto(`${BASE}/demos/tall.html`, { waitUntil: 'load' });
+    await page.waitForFunction(() => typeof window.SwarmBuilder === 'function', null, { timeout: 20000 });
+    return page.evaluate(MEASURE, options);
+  };
+  const panel = () => page.evaluate(() => {
+    const sr = document.querySelector('[data-sb-chrome]')?.shadowRoot;
+    const row = sr?.querySelector('[data-row-key="trailLife"]');
+    const el = row?.querySelector('[data-key="trailLife"]');
+    return {
+      label: row?.querySelector('.k')?.textContent ?? '',
+      tip: row?.dataset.tip ?? '',
+      type: el?.type ?? '',
+      min: el?.min ?? '', max: el?.max ?? '', step: el?.step ?? '', value: el?.value ?? '',
+      row: el?.closest('.row')?.dataset.dirty ?? '',
+    };
+  });
+  const isCJK = (text) => [...String(text)].some((ch) => {
+    const c = ch.codePointAt(0);
+    return (c >= 0x3001 && c <= 0x303f) || (c >= 0x3400 && c <= 0x4dbf)
+      || (c >= 0x4e00 && c <= 0x9fff) || (c >= 0xff01 && c <= 0xffef);
+  });
+
+  await load(`${BASE}/demos/tall.html`);
+  const zh = await panel();
+  // 「待生效」是相对上一局说的：先真的跑一局，再看改这一行有没有被标出来。
+  await page.click('[data-apply]');
+  const dirty = await setField(page, 'trailLife', 1.8);
+  const zhDirty = await panel();
+
+  const off = await on({ trailLife: 0 });
+  const short = await on({ trailLife: 0.4 });
+  const longRun = page.evaluate(MEASURE, { trailLife: 2.5 });
+  await page.waitForTimeout(1400);
+  await page.screenshot({ path: `${OUT}trail.png` });
+  const long = await longRun;
+
+  await load(`${BASE}/demos/tall.html?lang=en`);
+  const en = await panel();
+
+  const problems = [];
+  if (zh.label !== '光标拖尾') problems.push(`面板行名「${zh.label}」`);
+  if (zh.type !== 'range' || zh.min !== '0' || zh.max !== '2.5' || zh.step !== '0.1') {
+    problems.push(`面板控件 ${zh.type} ${zh.min}–${zh.max}/${zh.step}（应 range 0–2.5/0.1）`);
+  }
+  if (zh.value !== '0.3') problems.push(`面板默认值 ${zh.value}（应 0.3 秒）`);
+  if (!zh.tip.includes('真实时间')) problems.push(`面板说明没讲按真实时间淡出：${zh.tip}`);
+  if (!dirty) problems.push('改光标拖尾没有标成待生效');
+  if (zhDirty.row !== 'true' || zhDirty.value !== '1.8') problems.push(`面板没接住改动：dirty=${zhDirty.row} value=${zhDirty.value}`);
+
+  if (off.built < 0) problems.push('trailLife:0 那局 60 秒没跑完');
+  if (off.maxTails !== 0 || off.after !== 0) problems.push(`trailLife:0 还建了拖尾节点：施工中 ${off.maxTails} / 收工 ${off.after}`);
+  if (short.built < 0) problems.push('短拖尾那局 60 秒没跑完');
+  if (short.maxTails !== 8) problems.push(`短拖尾那局只给 ${short.maxTails} 只光标建了拖尾（应 8）`);
+  if (!short.moved) problems.push('短拖尾那局曲线一直是空的');
+  if (!short.curved) problems.push('拖尾拐弯处还是硬折角（路径里没有二次曲线）');
+  if (!short.stroke.startsWith('2.5px/url(#sb-tail-')) problems.push(`拖尾描边 ${short.stroke}（应 2.5px + 同色渐变）`);
+  if (short.stops !== 3) problems.push(`渐变有 ${short.stops} 个色标（应 3：透明 → 半透明 → 本色）`);
+  if (!short.grads) problems.push('曲线没有引用内联渐变');
+  if (!short.boxes) problems.push('拖尾 SVG 的盒子一直是 0×0');
+  if (long.built < 0) problems.push('长拖尾那局 60 秒没跑完');
+  if (long.maxLen < 100) problems.push(`高速下拖尾太短，几乎看不见（${long.maxLen}px）`);
+  // 画出来的路程上限是 300px；平滑曲线会略超一点，留 20% 余量。
+  if (long.maxLen > 360) problems.push(`高速下拖尾仍被拉长：${long.maxLen}px（上限 300px）`);
+  if (short.maxLen > 360) problems.push(`高速下短拖尾也超上限：${short.maxLen}px`);
+  if (en.label !== 'Cursor trail') problems.push(`EN 面板行名「${en.label}」`);
+  if (isCJK(en.tip)) problems.push(`EN 拖尾说明还露中文：${en.tip}`);
+
+  if (errors.length) problems.push(`报错 ${errors.length} 条：${errors[0]}`);
+  report('trail @1280', problems, [
+    `面板: 「${zh.label}」${zh.type} ${zh.min}–${zh.max}/${zh.step} 默认 ${zh.value} · 改动待生效=${dirty} · 接住=${zhDirty.value}`,
+    `节点: 关=${off.maxTails} · 开=${short.maxTails} · 描边 ${short.stroke || '—'} · 色标 ${short.stops} · 有盒 ${short.boxes} · 曲线=${short.curved}`,
+    `长度: 8× 下 0.4s 峰值 ${short.maxLen}px / 2.5s ${long.maxLen}px（画出来最多 300px）· 点数 ${short.maxPts}/${long.maxPts}`,
+    `EN: 「${en.label}」· 说明无中文=${!isCJK(en.tip)}`,
   ]);
   await ctx.close();
 }

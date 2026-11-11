@@ -103,6 +103,25 @@ class FrameTicker implements Tickable {
 }
 
 /**
+ * 拖尾服务：一帧把光标刚写下的位置落进各自的尾巴。刻意读真实时间而不是引擎的
+ * 缩放时钟——倍速只该拧施工快慢，不该让 8× 下的尾巴缩成几帧。
+ */
+class TrailTicker implements Tickable {
+  constructor(
+    private readonly engine: Engine,
+    private readonly cursors: CursorLayer,
+    private readonly done: () => boolean,
+  ) {}
+
+  tick(): void {
+    this.cursors.tickTrails(performance.now());
+    // 这是个常驻的采样服务，但不能把引擎一直钉在忙态：这一局干完就下车，
+    // 否则 whenIdle 永远等不到，光标收了、HUD 停在最后一拍，页面还盖着隔离层。
+    if (this.done()) this.engine.remove(this);
+  }
+}
+
+/**
  * 开场聚群那一段的闸门。参考版开局只跑轨道场，等读者滚一下滚轮、或者把鼠标伸进群里
  * （任一光标进到指针 48px 内）才 `start()`。库不能把无人值守的宿主永远挂在这儿，所以
  * 多一条兜底：没人动手就自己转够 GATHER_MS 再开工。计时用真实时间——倍速与积压提速
@@ -280,7 +299,7 @@ export class SwarmBuilder {
 
     const theme = this.opts.theme === 'auto' ? pageTheme(this.root, blueprint.backdrop) : this.opts.theme;
     const overlay = Overlay.create(this.root, blueprint.width, blueprint.height, blueprint.rootOffset, blueprint.backdrop, theme);
-    const cursors = new CursorLayer(overlay.el);
+    const cursors = new CursorLayer(overlay.el, this.opts.trailLife);
     if (this.opts.hud) this.hud = new Hud(this.root, () => this.skip());
     const scheduler = new Scheduler(blueprint, {
       agentCount: this.opts.agentCount,
@@ -463,6 +482,8 @@ export class SwarmBuilder {
       || this.opts.trigger === 'scroll'
       || this.opts.adaptiveSpeed
       || generative;
+    /** 一局跑完的判据：没有没领的活，场上也没有还没收工的人。三只闸门共用。 */
+    const done = (): boolean => scheduler.pending === 0 && agents.every((agent) => agent.isFinished);
     let flight: Flight | null = null;
     let crew: Crew | null = null;
     // 聚群期间参考版只跑轨道场：不招人、不动镜头、不发活，所以这几样都等开工再进时钟。
@@ -503,10 +524,13 @@ export class SwarmBuilder {
         if (building) crew?.tick(realMs);
         // 位置归物理，姿态归物理，施工中的那一帧除外（它自己 moveTo 过）。
         if (flight) for (const agent of flyers()) agent.renderPose();
-        return scheduler.pending === 0 && agents.every((agent) => agent.isFinished);
+        return done();
       });
       engine.add(ticker);
     }
+    // 拖尾排在帧服务后面：这一帧的物理与施工位置都写完，再采样。它不读布局，
+    // 所以不在 wantsFrame 那张清单里——关掉待时飞行、固定班组时也照样有尾巴。
+    if (this.opts.trailLife > 0) engine.add(new TrailTicker(engine, cursors, done));
 
     // 镜头只在这一局里存在，但先把它建好：Tour 是运行时开关，参考版的 HUD 上
     // 那颗钮切的就是同一局里跟不跟，不是下一局的配置。
@@ -534,7 +558,6 @@ export class SwarmBuilder {
 
     if (this.options.onProgress) engine.add(new ProgressTicker(engine, scheduler, this.options.onProgress));
     if (this.options.onStatus || this.hud) {
-      const done = (): boolean => scheduler.pending === 0 && agents.every((agent) => agent.isFinished);
       engine.add(new StatusTicker(engine, () => this.report(), done));
     }
 

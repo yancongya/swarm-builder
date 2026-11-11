@@ -49,12 +49,16 @@ export const CSS = `
 .sb-ghost{position:absolute;left:0;top:0;width:14px;height:14px;margin:-7px 0 0 -7px;
   border:1px solid currentColor;border-radius:2px;display:none}
 .sb-cursor.is-dragging .sb-ghost{display:block}
-/* 性格配件。速度线的浓淡由 setPosition 按帧间位移写 --sb-speed：站着不动就隐掉，
-   赶路与待时飞行都走同一个 setter，两种移动带出同一条线。 */
-.sb-trail{position:absolute;left:-3px;top:7px;opacity:var(--sb-speed,0);pointer-events:none}
-.sb-trail i{position:absolute;height:1.5px;background:currentColor;border-radius:1px}
-.sb-trail i:first-child{left:-13px;top:0;width:11px}
-.sb-trail i:last-child{left:-17px;top:5px;width:7px}
+/* 光标拖尾：每个光标一段同色的曲线，越旧越淡（渐变写在内联 SVG 里）。盒子由
+   tickTrails 按这一段路的包围盒逐次定大小，所以尾巴不用溢出光标本身。 */
+.sb-tail{position:absolute;left:0;top:0;width:1px;height:1px;pointer-events:none}
+/* 性格配件。速度线的浓淡由 setPosition 按帧间位移写 --sb-trail：站着不动就隐掉，
+   动起来最淡也有 0.18；方向按同一帧的位移写成 --sb-dir，尾巴始终拖在身后。 */
+.sb-trail{position:absolute;left:-3px;top:7px;opacity:var(--sb-trail,0);pointer-events:none;
+  transform:rotate(var(--sb-dir,0deg))}
+.sb-trail i{position:absolute;height:2px;background:currentColor;border-radius:1px}
+.sb-trail i:first-child{left:-31px;top:0;width:28px}
+.sb-trail i:last-child{left:-25px;top:6px;width:18px}
 .sb-ring{position:absolute;left:-8px;top:-8px;width:28px;height:28px;pointer-events:none;
   border:1px dashed currentColor;border-radius:50%;opacity:.5}
 .sb-idle{position:absolute;left:16px;top:-14px;padding:0 5px;border-radius:6px;display:none;

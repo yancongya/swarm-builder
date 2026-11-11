@@ -48,6 +48,7 @@ export const DEFAULT_OPTIONS: Required<SwarmConfig> = {
   seed: 0,
   flight: 'live',
   personality: true,
+  trailLife: 0.3,
   stamps: true,
   director: true,
   pointer: 'follow',
@@ -90,6 +91,7 @@ export function normalizeOptions(input: SwarmBuilderOptions | undefined): Normal
     fadeDuration: 140,
     flight: options.flight ?? d.flight,
     personality: options.personality ?? d.personality,
+    trailLife: clamp(options.trailLife ?? d.trailLife, 0, 2.5),
     stamps: options.stamps ?? d.stamps,
     director: options.director ?? d.director,
     pointer: options.pointer ?? d.pointer,
@@ -129,6 +131,8 @@ export function applyPerformanceMode(opts: NormalizedOptions, elementCount: numb
   opts.guides = false;
   opts.grow = false;
   opts.stamps = false;
+  // 拖尾是每帧都在重画的装饰：密集页先关它，和印章、辅助线一起让路。
+  opts.trailLife = 0;
   opts.maxCopies = Math.min(opts.maxCopies, 6);
 }
 

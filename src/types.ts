@@ -139,6 +139,16 @@ export interface SwarmConfig {
    */
   personality?: boolean;
   /**
+   * How long a cursor's motion trail stays on screen, in seconds. Default 0.3;
+   * 0 turns it off. Every cursor lays down a curved line in its own colour while
+   * it moves; the tail fades by age on the real clock, and it keeps shrinking
+   * after the cursor stops. The drawn streak is capped at roughly 300px no
+   * matter how high the speed multiplier goes, so it never stretches across the
+   * page. Positions are sampled from what was already rendered - no extra layout
+   * reads - and the crowded-page trim in `performanceMode` turns it off.
+   */
+  trailLife?: number;
+  /**
    * Seal every finished item with the initial and colour of the cursor that
    * built it, like a mason's mark on the last brick. Duplicate-stamped copies
    * get their seal too; guides do not. Seals live in their own class and never
