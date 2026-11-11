@@ -3607,6 +3607,164 @@ ${'<div class="strip"><img loading="lazy" width="320" height="120" src="/img/x.p
   await ctx.close();
 }
 
+// ---------------------------------------------------------------------------
+// 场景 34：班组名片（创意 5）。
+// 「名片」只在收工后亮：点开是面板里一张内联 PNG，每位竣过工的光标一行，
+// 顶部记总件数/用时/种子。换一局就收图并重新灰掉。库内不出现下载与剪贴板（minitool 门禁）。
+// ---------------------------------------------------------------------------
+{
+  const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+  const page = await ctx.newPage();
+  const errors = [];
+  page.on('pageerror', (e) => errors.push(String(e)));
+
+  const state = (target) => target.evaluate(() => {
+    const host = document.querySelector('[data-sb-chrome]');
+    const sr = host?.shadowRoot;
+    const btn = sr?.querySelector('[data-card]');
+    const sheet = sr?.querySelector('[data-sheet]');
+    const img = sr?.querySelector('[data-sheet-img]');
+    const tuner = window.__tuner;
+    const scale = img?.naturalWidth ? img.naturalWidth / 960 : 0;
+    return {
+      phase: host?.dataset.phase ?? '',
+      status: sr?.querySelector('[data-status]')?.textContent ?? '',
+      disabled: btn?.disabled ?? null,
+      label: (btn?.textContent ?? '').trim(),
+      tip: btn?.getAttribute('data-tip') ?? '',
+      sheet: sheet ? !sheet.hidden : null,
+      png: !!img && img.src.startsWith('data:image/png'),
+      alt: img?.alt ?? '',
+      natural: img ? { w: img.naturalWidth, h: img.naturalHeight } : null,
+      closeTip: sr?.querySelector('[data-sheet-close]')?.getAttribute('data-tip') ?? '',
+      crew: tuner?.result?.crew?.length ?? -1,
+      // 画出来的行数：卡片高度 = 头 158 + 行×44 + 脚 64，再乘 dpr 缩放。
+      rows: scale > 0 ? Math.round((img.naturalHeight / scale - 222) / 44) : -1,
+    };
+  });
+
+  const waitCard = (target, timeout = 5000) => target.waitForFunction(() => {
+    const img = document.querySelector('[data-sb-chrome]')?.shadowRoot?.querySelector('[data-sheet-img]');
+    return !!img && img.naturalWidth > 0;
+  }, null, { timeout }).then(() => true).catch(() => false);
+
+  const start = async (url) => {
+    await page.goto(url, { waitUntil: 'load' });
+    await page.waitForFunction(() => document.querySelector('[data-sb-chrome]') !== null, null, { timeout: 20000 });
+    await setField(page, 'speed', 8);
+    await page.click('[data-apply]');
+  };
+
+  const isCJK = (text) => [...String(text)].some((ch) => {
+    const c = ch.codePointAt(0);
+    return (c >= 0x3001 && c <= 0x303f) || (c >= 0x3400 && c <= 0x4dbf)
+      || (c >= 0x4e00 && c <= 0x9fff) || (c >= 0xff01 && c <= 0xffef);
+  });
+
+  await page.goto(`${BASE}/demos/tall.html`, { waitUntil: 'load' });
+  await page.waitForFunction(() => document.querySelector('[data-sb-chrome]') !== null, null, { timeout: 20000 });
+  const before = await state(page);
+
+  await setField(page, 'speed', 8);
+  await page.click('[data-apply]');
+  await waitDone(page, 90000);
+  const enabled = await page.waitForFunction(() => {
+    const btn = document.querySelector('[data-sb-chrome]')?.shadowRoot?.querySelector('[data-card]');
+    return !!btn && !btn.disabled;
+  }, null, { timeout: 5000 }).then(() => true).catch(() => false);
+  const done = await state(page);
+
+  await page.click('[data-card]');
+  const drew = await waitCard(page);
+  const shown = await state(page);
+  const paint = await page.evaluate(() => {
+    const img = document.querySelector('[data-sb-chrome]')?.shadowRoot?.querySelector('[data-sheet-img]');
+    if (!img?.naturalWidth) return 0;
+    const canvas = document.createElement('canvas');
+    canvas.width = img.naturalWidth;
+    canvas.height = img.naturalHeight;
+    const g = canvas.getContext('2d');
+    g.drawImage(img, 0, 0);
+    const seen = new Set();
+    for (let i = 0; i < 64; i++) {
+      const x = Math.min(img.naturalWidth - 1, Math.floor(((i % 8) + 0.5) * img.naturalWidth / 8));
+      const y = Math.min(img.naturalHeight - 1, Math.floor((Math.floor(i / 8) + 0.5) * img.naturalHeight / 8));
+      const d = g.getImageData(x, y, 1, 1).data;
+      seen.add(`${d[0]},${d[1]},${d[2]}`);
+    }
+    return seen.size;
+  });
+  await page.screenshot({ path: `${OUT}crew-card.png` });
+
+  await page.click('[data-sheet-close]');
+  const closed = await state(page);
+
+  // 图还开着就重开一局：上一局的图要跟着收掉，按钮重新灰。
+  // 图盖住整个面板，应用钮点不到，所以这一下直接走 tuner 的公开入口。
+  await page.click('[data-card]');
+  await page.waitForFunction(() => {
+    const sheet = document.querySelector('[data-sb-chrome]')?.shadowRoot?.querySelector('[data-sheet]');
+    return !!sheet && !sheet.hidden;
+  }, null, { timeout: 3000 }).catch(() => {});
+  await page.evaluate(() => window.__tuner.apply());
+  await page.waitForTimeout(400);
+  const restarted = await state(page);
+
+  // 英文页：按钮、提示、图注都得跟着字典走。
+  await page.goto(`${BASE}/demos/tall.html?lang=en`, { waitUntil: 'load' });
+  await page.waitForFunction(() => document.querySelector('[data-sb-chrome]') !== null, null, { timeout: 20000 });
+  const beforeEn = await state(page);
+  await setField(page, 'speed', 8);
+  await page.click('[data-apply]');
+  await page.waitForFunction(() => {
+    const st = document.querySelector('[data-sb-chrome]')?.shadowRoot?.querySelector('[data-status]')?.textContent ?? '';
+    return st.startsWith('Done');
+  }, null, { timeout: 90000, polling: 200 });
+  await page.waitForFunction(() => {
+    const btn = document.querySelector('[data-sb-chrome]')?.shadowRoot?.querySelector('[data-card]');
+    return !!btn && !btn.disabled;
+  }, null, { timeout: 5000 }).catch(() => {});
+  await page.click('[data-card]');
+  const drewEn = await waitCard(page);
+  const shownEn = await state(page);
+
+  const problems = [];
+  if (before.disabled !== true) problems.push('还没开局，名片钮就不是灰的');
+  if (before.label !== '名片') problems.push(`名片钮文字「${before.label}」`);
+  if (!enabled) problems.push('收工后名片钮没亮');
+  if (done.crew < 1) problems.push(`收工结果里没有班组（crew=${done.crew}）`);
+  if (!drew) problems.push('点名片后图没画出来（naturalWidth=0）');
+  if (shown.sheet !== true) problems.push('名片图没盖在面板上');
+  if (!shown.png) problems.push('名片图不是内联 PNG（data:image/png）');
+  if (shown.alt !== '班组名片') problems.push(`名片图 alt「${shown.alt}」`);
+  if (!(shown.natural.w > 0)) problems.push('名片图尺寸为 0');
+  if (shown.rows !== done.crew) problems.push(`名片画了 ${shown.rows} 行，参建光标 ${done.crew} 位`);
+  if (paint < 3) problems.push(`名片图几乎是一块纯色（采样到 ${paint} 种颜色）`);
+  if (!shown.status.startsWith('班组名片已生成')) problems.push(`生成后状态行：「${shown.status}」`);
+  if (closed.sheet !== false) problems.push('关闭钮没收掉名片图');
+  if (restarted.sheet !== false) problems.push('新一局开始后上一张名片还盖着');
+  if (restarted.disabled !== true) problems.push('新一局开始后名片钮还是亮的');
+
+  if (beforeEn.disabled !== true) problems.push('EN 页开局前名片钮没灰');
+  if (beforeEn.label !== 'Crew card') problems.push(`EN 名片钮文字「${beforeEn.label}」`);
+  if (beforeEn.closeTip !== 'Close card') problems.push(`EN 关闭提示「${beforeEn.closeTip}」`);
+  if (isCJK(beforeEn.tip)) problems.push(`EN 名片提示还露中文：${beforeEn.tip}`);
+  if (!drewEn) problems.push('EN 页名片图没画出来');
+  if (shownEn.alt !== 'Crew card') problems.push(`EN 名片图 alt「${shownEn.alt}」`);
+  if (shownEn.rows !== shownEn.crew) problems.push(`EN 名片画了 ${shownEn.rows} 行，参建光标 ${shownEn.crew} 位`);
+  if (!shownEn.status.startsWith('Crew card ready')) problems.push(`EN 生成后状态行：「${shownEn.status}」`);
+
+  await page.screenshot({ path: `${OUT}crew-card-en.png` });
+  if (errors.length) problems.push(`报错 ${errors.length} 条：${errors[0]}`);
+  report('crew-card @1280', problems, [
+    `按钮: 开局前灰=${before.disabled}「${before.label}」→ 收工后亮=${!done.disabled}`,
+    `出图: ${shown.png ? 'PNG' : '非 PNG'} ${shown.natural.w}×${shown.natural.h} · 行 ${shown.rows} = 参建 ${done.crew} · 采样色 ${paint} 种`,
+    `收放: 关闭=${closed.sheet === false} · 新一局收图=${restarted.sheet === false} 重灰=${restarted.disabled}`,
+    `EN: 「${beforeEn.label}」/「${beforeEn.closeTip}」/ alt「${shownEn.alt}」· ${shownEn.status}`,
+  ]);
+  await ctx.close();
+}
+
 await browser.close();
 owned?.child.kill();
 console.log(`\n${failures === 0 ? '全部通过' : failures + ' 个场景有问题'} · 截图在 .shots/ · 服务 ${BASE}`);

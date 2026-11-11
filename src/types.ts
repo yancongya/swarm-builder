@@ -14,6 +14,12 @@ export interface AgentInfo {
   personality: PersonalityKind;
 }
 
+/** A cursor that finished work, with its tally — one row on the crew card. */
+export interface CrewMember extends AgentInfo {
+  /** Items this cursor sealed in the run; duplicated copies and guides don't count. */
+  built: number;
+}
+
 export type BuildOrder = 'group' | 'rows' | 'cols' | 'snake' | 'depth' | 'radial' | 'random';
 
 export type FlightMode = 'idle' | 'live';
@@ -319,4 +325,10 @@ export interface SwarmResult {
    * only place that number can be read back — put it in `seed` to replay.
    */
   seed: number;
+  /**
+   * Everyone who finished at least one item, with their tally — the crew card's
+   * rows. Omitted when the run ended without building anything (reduced motion,
+   * an empty host), so a card is never offered for a run with no crew.
+   */
+  crew?: readonly CrewMember[];
 }

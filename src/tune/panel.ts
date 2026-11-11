@@ -354,6 +354,15 @@ footer .primary:hover{filter:brightness(1.08)}
 .util button{flex:1;padding:4px 6px;border:1px solid var(--line);border-radius:7px;background:transparent;
   color:var(--dim);font-size:11px}
 .util button:hover{color:var(--ink);border-color:var(--accent)}
+.util button:disabled{opacity:.4;cursor:not-allowed}
+.util button:disabled:hover{color:var(--dim);border-color:var(--line)}
+/* 名片是一张图，不下载也不读剪贴板：盖在面板上以便用系统的长按/右键保存。 */
+.sheet{position:fixed;top:0;right:0;bottom:0;left:0;display:grid;place-items:center;padding:24px;
+  background:rgba(12,11,9,.78);z-index:3}
+.sheet[hidden]{display:none}
+.sheet img{display:block;max-width:92vw;max-height:78vh;border:1px solid var(--line);
+  border-radius:10px;box-shadow:0 18px 50px rgba(0,0,0,.55);background:var(--card)}
+.sheet .icon{position:absolute;top:16px;right:16px;width:28px;height:28px;background:var(--card)}
 .code{display:block;width:calc(100% - 20px);margin:0 10px 10px;height:132px;resize:vertical;
   padding:7px;border:1px solid var(--line);border-radius:7px;background:var(--well);color:#d8d2c4;
   font:11px/1.5 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;white-space:pre}
@@ -450,6 +459,8 @@ export interface PanelHandlers {
   onSound(): void;
   /** Same capture, same values, from frame one. */
   onReplay(): void;
+  /** Draw the finished run's crew card and show it inside the panel. */
+  onCard(): void;
 }
 
 function same(a: unknown, b: unknown): boolean {
@@ -477,6 +488,9 @@ export class Panel {
   private readonly speedBtn: HTMLButtonElement;
   private readonly soundBtn: HTMLButtonElement;
   private readonly replayBtn: HTMLButtonElement;
+  private readonly cardBtn: HTMLButtonElement;
+  private readonly sheet: HTMLElement;
+  private readonly sheetImg: HTMLImageElement;
   private readonly note: HTMLElement;
   private readonly meter: HTMLElement;
   private readonly code: HTMLTextAreaElement;
@@ -539,9 +553,11 @@ export class Panel {
       '<p class="note" data-note></p>',
       '<footer><button class="primary" type="button" data-apply data-tip="用当前这套值重开一局：先拆掉上一局的图层，再重新采蓝图。">应用并重跑</button></footer>',
       '<div class="util"><button type="button" data-copy data-tip="复制成可粘贴的代码片段">复制配置</button>',
+      '<button type="button" data-card disabled data-tip="把这一局的班组画成一张可分享的图片：每位光标的姓名、性格与竣工数，标出 MVP，附总项数、用时与种子。跑完一局才能出图；图片只在面板里看，用系统长按或右键保存。">名片</button>',
       '<button type="button" data-reset data-tip="全部退回库默认值">重置</button>',
       '<button type="button" data-restore data-tip="停掉施工，把页面原样交还">恢复原状</button></div>',
       '<textarea class="code" data-code readonly hidden spellcheck="false"></textarea>',
+      '<div class="sheet" data-sheet hidden><img data-sheet-img alt=""><button class="icon" type="button" data-sheet-close data-tip="关闭名片" aria-label="关闭名片">×</button></div>',
       '<i class="grip" data-grip data-tip="拖动改变面板大小：拉高能让展开的参数一次看全。"></i>',
     ].join('');
     const tip = document.createElement('div');
@@ -590,6 +606,9 @@ export class Panel {
     this.speedBtn = card.querySelector<HTMLButtonElement>('[data-speed]') as HTMLButtonElement;
     this.soundBtn = card.querySelector<HTMLButtonElement>('[data-sound]') as HTMLButtonElement;
     this.replayBtn = card.querySelector<HTMLButtonElement>('[data-replay]') as HTMLButtonElement;
+    this.cardBtn = card.querySelector<HTMLButtonElement>('[data-card]') as HTMLButtonElement;
+    this.sheet = card.querySelector<HTMLElement>('[data-sheet]') as HTMLElement;
+    this.sheetImg = card.querySelector<HTMLImageElement>('[data-sheet-img]') as HTMLImageElement;
     this.note = card.querySelector<HTMLElement>('[data-note]') as HTMLElement;
     this.meter = card.querySelector<HTMLElement>('[data-meter]') as HTMLElement;
     this.code = card.querySelector<HTMLTextAreaElement>('[data-code]') as HTMLTextAreaElement;
@@ -611,6 +630,13 @@ export class Panel {
     this.speedBtn.addEventListener('click', handlers.onSpeed);
     this.soundBtn.addEventListener('click', handlers.onSound);
     this.replayBtn.addEventListener('click', handlers.onReplay);
+    this.cardBtn.addEventListener('click', handlers.onCard);
+    card.querySelector<HTMLButtonElement>('[data-sheet-close]')
+      ?.addEventListener('click', () => this.closeSheet());
+    // 点图以外的地方收起；图上单击不关，方便右键另存。
+    this.sheet.addEventListener('click', (event) => {
+      if (event.target === this.sheet) this.closeSheet();
+    });
     card.querySelector<HTMLButtonElement>('[data-copy]')?.addEventListener('click', handlers.onCopy);
     card.querySelector<HTMLButtonElement>('[data-reset]')?.addEventListener('click', handlers.onReset);
     card.querySelector<HTMLButtonElement>('[data-restore]')?.addEventListener('click', handlers.onRestore);
@@ -830,6 +856,11 @@ export class Panel {
     this.pauseBtn.disabled = !live;
     this.skipBtn.disabled = !live;
     this.replayBtn.disabled = phase === 'idle';
+    // 名片只属于刚跑完的那一局：新一局一开始就把上一张收掉。
+    if (phase !== 'done') {
+      this.cardBtn.disabled = true;
+      this.closeSheet();
+    }
     this.pauseBtn.textContent = phrase(this.lang, phase === 'paused' ? '继续' : '暂停');
     if (phase === 'done') this.meter.style.width = '100%';
     if (phase === 'idle') this.meter.style.width = '0';
@@ -866,6 +897,7 @@ export class Panel {
   /** The finished numbers after `onComplete`: agents who worked and the wall time. */
   setResult(result: SwarmResult): void {
     this.result = result;
+    this.cardBtn.disabled = !(result.crew && result.crew.length > 0);
     this.statusUntil = 0;
     if (this.statusTimer) {
       clearTimeout(this.statusTimer);
@@ -1069,6 +1101,17 @@ export class Panel {
   showSnippet(code: string): void {
     this.code.hidden = false;
     this.code.value = code;
+  }
+
+  /** The card the tuner just drew: an inline PNG in the panel's own shadow. */
+  showCard(url: string): void {
+    this.sheetImg.src = url;
+    this.sheetImg.alt = phrase(this.lang, '班组名片');
+    this.sheet.hidden = false;
+  }
+
+  private closeSheet(): void {
+    this.sheet.hidden = true;
   }
 
   selectSnippet(): void {

@@ -756,12 +756,18 @@ export class SwarmBuilder {
     this.touring = false;
     this.syncDirector();
     this.endedAt = performance.now();
+    // 名片只列真竣工过的人：skip 交回来的「完成数」里可能有没盖过章的活，
+    // 与其给每个人摊派一笔假账，不如让 tally 只算自己收尾的那几件。
+    const crew = this.agents
+      .filter((agent) => agent.built > 0)
+      .map((agent) => ({ ...agent.info, built: agent.built }));
     const result: SwarmResult = {
       built: this.scheduler?.built ?? 0,
       dropped: this.blueprint?.dropped ?? 0,
       agents: this.agents.filter((agent) => agent.worked).length,
       durationMs: Math.round(this.endedAt - this.startedAt),
       seed: this.scheduler?.seed ?? this.opts.seed,
+      ...(crew.length > 0 ? { crew } : {}),
     };
     // 参考版是收尾和弦先响，真页面亮出来那一下再落一个下落扫频，余响里把声部关掉。
     this.score?.finale();

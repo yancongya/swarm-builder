@@ -1,6 +1,7 @@
 import { SwarmBuilder } from '../index';
 import type { SwarmBuilderOptions, SwarmConfig, SwarmResult } from '../types';
 import { Panel, type Corner, type Phase } from './panel';
+import { renderCrewCard } from './card';
 import { resolveLang, type Lang } from './locale';
 import { CHROME_SELECTOR, DEFAULT_CONFIG, buildSnippet, describeRoot, pickPlain } from './snippet';
 
@@ -44,6 +45,8 @@ export class SwarmTuner {
   private readonly lang: Lang;
   private readonly styleRoot: Document | ShadowRoot | undefined;
   private swarm: SwarmBuilder | null = null;
+  /** The finished run's numbers, kept for 「名片」 until the next apply/restore. */
+  private result: SwarmResult | null = null;
 
   constructor(options: TuneOptions = {}) {
     const root = typeof options.root === 'string'
@@ -84,6 +87,7 @@ export class SwarmTuner {
       onSpeed: () => this.swarm?.cycleSpeed(),
       onSound: () => this.swarm?.toggleSound(),
       onReplay: () => (this.swarm ? this.swarm.replay() : this.apply()),
+      onCard: () => void this.showCard(),
     }, options.position ?? 'bottom-right', options.open ?? false, this.lang);
     document.body.appendChild(this.panel.host);
   }
@@ -91,6 +95,7 @@ export class SwarmTuner {
   /** Rebuild with the panel's current values. The previous run is torn down first. */
   apply(): void {
     this.swarm?.destroy();
+    this.result = null;
     this.panel.markApplied(this.config);
     this.panel.setPhase('idle');
     this.panel.setStatus('采蓝图中…');
@@ -104,6 +109,7 @@ export class SwarmTuner {
       // `SwarmStatus`，不再自己拼「重建中 x/y」那种会盖掉实时状态的临时句。
       onStatus: (status) => this.panel.setHud(status),
       onComplete: (result: SwarmResult) => {
+        this.result = result;
         this.panel.setResult(result);
         this.initial.onComplete?.(result);
       },
@@ -122,8 +128,43 @@ export class SwarmTuner {
   restore(): void {
     this.swarm?.destroy();
     this.swarm = null;
+    this.result = null;
     this.panel.setPhase('idle');
     this.panel.setStatus('已恢复原状');
+  }
+
+  /**
+   * The finished run's crew as a PNG data URL — the same image 「名片」 shows,
+   * for hosts that want to save or post it themselves. Null until a run has
+   * actually produced a crew.
+   */
+  crewCard(): string | null {
+    const result = this.result;
+    if (!result?.crew?.length) return null;
+    const card = renderCrewCard({
+      crew: result.crew,
+      built: result.built,
+      durationMs: result.durationMs,
+      seed: result.seed,
+    }, this.lang);
+    return card || null;
+  }
+
+  /** Draw the card and show it in the panel; false when there is nothing to show. */
+  showCard(): boolean {
+    const result = this.result;
+    if (!result?.crew?.length) {
+      this.panel.setStatus('这一局还没跑完，完成后才能出名片');
+      return false;
+    }
+    const card = this.crewCard();
+    if (!card) {
+      this.panel.setStatus('这个环境画不出名片');
+      return false;
+    }
+    this.panel.showCard(card);
+    this.panel.setStatus('班组名片已生成，长按或右键保存');
+    return true;
   }
 
   /** The paste-ready snippet: plain data only, `root` as a selector, defaults omitted. */

@@ -244,6 +244,18 @@ const UI_TEMPLATES: Record<string, string> = {
   '{0} 项待生效 · 点「应用并重跑」': '{0} pending · hit “Apply & rerun”',
   '已与正在跑的这一局一致': 'In sync with the run in progress',
   '改完点「应用并重跑」': 'Hit “Apply & rerun” when done',
+
+  // 班组名片：按钮、画在图上的字、以及生成前后那两句状态。
+  '名片': 'Crew card',
+  '班组名片': 'Crew card',
+  '关闭名片': 'Close card',
+  '把这一局的班组画成一张可分享的图片：每位光标的姓名、性格与竣工数，标出 MVP，附总项数、用时与种子。跑完一局才能出图；图片只在面板里看，用系统长按或右键保存。':
+    'Draw this run’s crew as a shareable image: each cursor’s name, personality and finished count, an MVP badge, plus the total, duration and seed. Available once a run finishes; the image is shown inside the panel — long-press or right-click to save it.',
+  '重建班组': 'Rebuild crew',
+  '同一种子，回放同一支队伍': 'Same seed, same crew',
+  '这一局还没跑完，完成后才能出名片': 'Finish a run to draw its crew card',
+  '这个环境画不出名片': 'This browser cannot draw the card',
+  '班组名片已生成，长按或右键保存': 'Crew card ready — long-press or right-click to save',
 };
 
 function fill(text: string, args: (string | number)[]): string {

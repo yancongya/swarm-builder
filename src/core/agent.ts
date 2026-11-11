@@ -53,6 +53,8 @@ export class Agent implements AgentView, Tickable, Flyer {
   force = 1200;
   busy = false;
   worked = false;
+  /** 竣工件数：班组名片的一行。复制盖章带出来的消耗件不算，那是同一次竣工。 */
+  built = 0;
   idleFor = 0;
   /** 正被观众拖着：物理不碰它，施工也暂停，等松手后的改派。 */
   dragging = false;
@@ -161,6 +163,7 @@ export class Agent implements AgentView, Tickable, Flyer {
       const item = this.currentItem;
       this.deps.scheduler.markDone(item.id);
       this.stamp(item);
+      this.built += 1;
       this.currentItem = null;
       this.busy = false;
       this.deps.onItemDone(this, item);
