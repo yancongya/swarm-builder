@@ -23,6 +23,8 @@ export interface AgentDeps {
   flock: Flock;
   planner: ActionPlanner;
   onFinished: (agent: Agent) => void;
+  /** 一件活刚竣工：外层据此看看附近有没有同伴，冒一记交接火花。 */
+  onItemDone: (agent: Agent, item: BlueprintItem) => void;
   /** 待时物理的随机参数要用同一个种子抽，不然回放两次跑不出同一支队伍。 */
   rng: () => number;
   /** 性格由外层抽好传进来：名牌上的性格和干活的速度必须是同一份。 */
@@ -77,7 +79,12 @@ export class Agent implements AgentView, Tickable, Flyer {
       flock: deps.flock,
       get: (id) => deps.blueprint.byId.get(id),
       markBuilt: (ids) => {
-        for (const id of ids) this.deps.scheduler.markDone(id);
+        for (const id of ids) {
+          this.deps.scheduler.markDone(id);
+          // 复制盖章带出来的消耗件也属于这次竣工，一并盖印。
+          const item = deps.blueprint.byId.get(id);
+          if (item) this.stamp(item);
+        }
       },
     };
     deps.cursors.setPosition(info.id, startX, startY);
@@ -141,10 +148,18 @@ export class Agent implements AgentView, Tickable, Flyer {
     action.end(this.ctx);
     this.current = null;
     if (this.actions.length === 0 && this.currentItem !== null) {
-      this.deps.scheduler.markDone(this.currentItem.id);
+      const item = this.currentItem;
+      this.deps.scheduler.markDone(item.id);
+      this.stamp(item);
       this.currentItem = null;
       this.busy = false;
+      this.deps.onItemDone(this, item);
     }
+  }
+
+  private stamp(item: BlueprintItem): void {
+    if (!this.deps.opts.stamps) return;
+    this.deps.overlay.stamp(item, this.info);
   }
 
   /**

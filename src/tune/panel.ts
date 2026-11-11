@@ -89,7 +89,7 @@ const FIELDS: Field[] = [
   },
   {
     key: 'performanceMode', label: '性能模式', kind: 'select', section: 'scale',
-    hint: 'auto 在容器内元素超过 250 时关掉辅助线与标题步进并压低复制数；音效不受影响，它只按秒限量发声，不产生 DOM 节点。',
+    hint: 'auto 在容器内元素超过 250 时关掉辅助线、标题步进与竣工印章并压低复制数；音效不受影响，它只按秒限量发声，不产生 DOM 节点。',
     choices: [['auto', '自动'], ['high', '完整'], ['low', '精简']],
   },
 
@@ -152,6 +152,10 @@ const FIELDS: Field[] = [
   {
     key: 'personality', label: '光标性格', kind: 'check', section: 'cursors',
     hint: '每只光标从这一局的种子里抽一个性格：急性子赶路打字都快、身后带速度线；强迫症按部就班、戴一圈校准环；摸鱼中慢半拍、闲久了冒「…」；稳当当就是以前的统一节奏。只改施工快慢和外观，不碰待时飞行与避让；同一种子回放同一支队伍。关掉则全员稳当当。',
+  },
+  {
+    key: 'stamps', label: '竣工印章', kind: 'check', section: 'cursors',
+    hint: '每件活竣工时，施工它的光标在右下角盖一枚名章：首字母 + 专属色，悬停能看见名字与性格。复制盖章带出来的件也盖，辅助线不盖；印章自己一格，不占 ⌥ 尺寸徽章。性能模式自动裁剪的密集页不盖。',
   },
   {
     key: 'tour', label: '镜头跟随', kind: 'check', section: 'cursors',

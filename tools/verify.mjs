@@ -3166,6 +3166,123 @@ ${'<div class="strip"><img loading="lazy" width="320" height="120" src="/img/x.p
   await ctx.close();
 }
 
+// ---------------------------------------------------------------------------
+// 场景 32：交接仪式 + 竣工印章（创意 2+4）。
+// 交接是完成事件上的纯装饰：两只光标在 90px 内一起收活，中点冒火花、纯 CSS 自删、成对冷却；
+// 印章是每件活的竣工标记，辅助线不盖、不碰 ⌥ 徽章；性能模式裁剪的密集页不盖。
+// ---------------------------------------------------------------------------
+{
+  const MEASURE = (options) => new Promise((resolve) => {
+    document.querySelectorAll('.sb-overlay').forEach((el) => el.remove());
+    document.querySelectorAll('.sb-hidden').forEach((el) => el.classList.remove('sb-hidden'));
+    window.scrollTo(0, 0);
+    const m = {
+      sparks: 0, sparksAtPause: -1, sparksAfterPause: -1, paused: false,
+      stamps: 0, guides: 0, polluted: 0, badges: 0, stampAsBadge: 0,
+      title: '', built: -1,
+    };
+    let raf = 0;
+    let swarm;
+    const watch = new MutationObserver((records) => {
+      for (const record of records) {
+        for (const node of record.addedNodes) {
+          if (!(node instanceof HTMLElement)) continue;
+          if (node.classList.contains('sb-handoff')) {
+            m.sparks++;
+            if (node.hasAttribute('data-item')) m.polluted++;
+          }
+          if (node.classList.contains('sb-guide')) m.guides++;
+          if (node.classList.contains('sb-stamp')) {
+            m.stamps++;
+            if (!m.title) m.title = node.getAttribute('title') ?? '';
+            if (node.hasAttribute('data-item')) m.polluted++;
+            if (node.classList.contains('sb-badge')) m.stampAsBadge++;
+          }
+        }
+      }
+    });
+    watch.observe(document.body, { childList: true, subtree: true });
+
+    // 攒到三记火花再暂停：时钟停住就没人竣工，暂停期间不该再冒新的。
+    const sample = () => {
+      if (swarm?.status.phase === 'building') {
+        m.badges = Math.max(m.badges, document.querySelectorAll('.sb-badge').length);
+        if (!m.paused && m.sparks >= 3) {
+          m.paused = true;
+          swarm.pause();
+          m.sparksAtPause = m.sparks;
+          window.setTimeout(() => {
+            m.sparksAfterPause = m.sparks;
+            swarm.resume();
+          }, 700);
+        }
+      }
+      raf = requestAnimationFrame(sample);
+    };
+    raf = requestAnimationFrame(sample);
+    const finish = (extra) => {
+      cancelAnimationFrame(raf);
+      watch.disconnect();
+      resolve({ ...m, ...extra });
+    };
+    swarm = new window.SwarmBuilder({
+      root: document.querySelector('#app'),
+      sound: false, speed: 4, tour: false, trigger: 'immediate',
+      gather: false, agents: 'fixed', agentCount: 8, adaptiveSpeed: false,
+      performanceMode: 'high', seed: 12345,
+      ...options,
+      // onComplete 之前 overlay 已经交还，印章只能靠监听增量数；延一拍让最后一批记录落地。
+      onComplete: (r) => window.setTimeout(() => finish({ built: r.built }), 0),
+    });
+    swarm.start();
+    window.setTimeout(() => finish({}), 60000);
+  });
+
+  const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+  const page = await ctx.newPage();
+  const errors = [];
+  page.on('pageerror', (e) => errors.push(String(e)));
+  const on = async (options) => {
+    await page.goto(`${BASE}/demos/tall.html`, { waitUntil: 'load' });
+    await page.waitForFunction(() => typeof window.SwarmBuilder === 'function', null, { timeout: 20000 });
+    return page.evaluate(MEASURE, options);
+  };
+
+  const sealed = await on({});
+  const bare = await on({ stamps: false });
+  const trimmed = await on({ performanceMode: 'low' });
+  await page.screenshot({ path: `${OUT}stamps.png` });
+
+  const problems = [];
+  for (const [name, r] of [['seals', sealed], ['bare', bare], ['trimmed', trimmed]]) {
+    if (r.built < 0) problems.push(`${name} 那局 60 秒没跑完`);
+  }
+  if (sealed.sparks <= 0) problems.push('一局下来没有一记交接火花');
+  if (!sealed.paused) problems.push('火花没攒到三记，暂停那一段没测到');
+  if (sealed.sparksAfterPause !== sealed.sparksAtPause) {
+    problems.push(`暂停期间还在冒火花：${sealed.sparksAtPause} → ${sealed.sparksAfterPause}`);
+  }
+  if (sealed.polluted > 0) problems.push(`火花或印章带上了 data-item：${sealed.polluted} 个`);
+  if (sealed.stamps !== sealed.built - sealed.guides) {
+    problems.push(`印章 ${sealed.stamps} ≠ 建成 ${sealed.built} - 辅助线 ${sealed.guides}`);
+  }
+  if (sealed.badges !== 8) problems.push(`⌥ 徽章容器峰值 ${sealed.badges}（应每个光标一个 = 8）`);
+  if (sealed.stampAsBadge > 0) problems.push('印章混进了尺寸徽章');
+  if (!/·/.test(sealed.title) || !/急性子|强迫症|摸鱼中|稳当当/.test(sealed.title)) {
+    problems.push(`印章名牌不对：${sealed.title}`);
+  }
+  if (bare.stamps !== 0) problems.push(`stamps:false 还盖了 ${bare.stamps} 枚`);
+  if (bare.sparks <= 0) problems.push('关掉印章连带交接火花也没了（两者应独立）');
+  if (trimmed.stamps !== 0) problems.push(`performanceMode:low 还盖了 ${trimmed.stamps} 枚`);
+  if (errors.length) problems.push(`报错 ${errors.length} 条：${errors[0]}`);
+  report('handoff+stamps @1280', problems, [
+    `交接: 火花 ${sealed.sparks} 记 · 暂停 ${sealed.sparksAtPause} → ${sealed.sparksAfterPause}（应不变）· data-item 污染 ${sealed.polluted}`,
+    `印章: ${sealed.stamps} = 建成 ${sealed.built} - 辅助线 ${sealed.guides} · 徽章 ${sealed.badges} 个 · 名牌「${sealed.title}」`,
+    `关闭: stamps:false ${bare.stamps} 枚（火花 ${bare.sparks} 记）· 精简模式 ${trimmed.stamps} 枚`,
+  ]);
+  await ctx.close();
+}
+
 await browser.close();
 owned?.child.kill();
 console.log(`\n${failures === 0 ? '全部通过' : failures + ' 个场景有问题'} · 截图在 .shots/ · 服务 ${BASE}`);

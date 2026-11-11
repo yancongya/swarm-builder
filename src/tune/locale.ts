@@ -31,6 +31,7 @@ const UI: Record<string, string> = {
   '标题步进': 'Heading growth',
   '光标避让': 'Cursor flocking',
   '光标性格': 'Cursor personality',
+  '竣工印章': 'Completion seals',
   '镜头跟随': 'Camera follow',
   '音效': 'Sound',
   '施工线色': 'Guide ink',
@@ -146,6 +147,8 @@ const UI: Record<string, string> = {
   '光标在途中互相绕行。': 'Cursors steer around each other in flight.',
   '每只光标从这一局的种子里抽一个性格：急性子赶路打字都快、身后带速度线；强迫症按部就班、戴一圈校准环；摸鱼中慢半拍、闲久了冒「…」；稳当当就是以前的统一节奏。只改施工快慢和外观，不碰待时飞行与避让；同一种子回放同一支队伍。关掉则全员稳当当。':
     'Each cursor draws a personality from this run’s seed: Rush travels and types fast with speed lines behind it; Tidy works by the book and wears a calibration ring; Drift is half a beat slow and idles into a “…” bubble; Steady is the old uniform pace. Only the build tempo and the look change - idle flight and flocking are untouched, and the same seed replays the same crew. Off makes everyone Steady.',
+  '每件活竣工时，施工它的光标在右下角盖一枚名章：首字母 + 专属色，悬停能看见名字与性格。复制盖章带出来的件也盖，辅助线不盖；印章自己一格，不占 ⌥ 尺寸徽章。性能模式自动裁剪的密集页不盖。':
+    'When an item is finished, the cursor that built it seals the bottom-right corner: its initial in its own colour, with the name and personality on hover. Stamped copies are sealed too and guides are not; the seal has its own slot and never shows up in the ⌥ size badge. Crowded pages trimmed by Performance mode skip them.',
   '滚动跟着施工前沿走（扩展 HUD 上的 Tour），运行中也能开关，结束交还页首。页面比视口高时打开。它跟的是光标在哪儿：多光标各守一条带时，镜头会被最靠后那只一把拽到页底，看着像开局就滚完了；配「随滚动解锁」才会一段一段往下走。':
     'Scroll follows the construction frontier (the Tour button on the extension’s HUD), can be toggled mid-run, and returns to the top when the run ends. Turn it on when the page is taller than the viewport. It follows where the cursors are: with several cursors each holding a band, the rearmost one yanks the camera to the bottom and it looks like the page scrolled away in the opening second. Pair it with "Unlock as you scroll" and it advances screen by screen instead.',
   '键盘快捷键': 'Keyboard shortcuts',
@@ -157,8 +160,8 @@ const UI: Record<string, string> = {
   '合成音效，无音频文件。浏览器要求页面已有用户手势；被扣住时工具条会显示「解锁」，按一下任意键或点一下页面就放行。':
     'Synthesised sound, no audio files. The browser wants a user gesture on the page first; while it is holding the context the toolbar shows “Tap to unmute”, and any key or click releases it.',
   'auto 按页面底色判断明暗。': 'auto reads the page background to decide light or dark.',
-  'auto 在容器内元素超过 250 时关掉辅助线与标题步进并压低复制数；音效不受影响，它只按秒限量发声，不产生 DOM 节点。':
-    'auto switches off guides and heading growth, and trims the copy count, once the container holds more than 250 elements. Sound is not affected - it is rate-limited per second and creates no DOM nodes.',
+  'auto 在容器内元素超过 250 时关掉辅助线、标题步进与竣工印章并压低复制数；音效不受影响，它只按秒限量发声，不产生 DOM 节点。':
+    'auto switches off guides, heading growth and completion seals, and trims the copy count, once the container holds more than 250 elements. Sound is not affected - it is rate-limited per second and creates no DOM nodes.',
   '逗号分隔的 CSS 选择器，命中的元素连同子树整块跳过。':
     'Comma-separated CSS selectors. A match skips that element and its whole subtree.',
 

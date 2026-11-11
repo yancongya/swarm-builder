@@ -1,4 +1,7 @@
 import type { BlueprintItem, Box, RectStyle } from '../core/blueprint';
+import type { AgentInfo } from '../types';
+import { personaLabel } from '../core/personality';
+import { resolveLang } from '../tune/locale';
 import type { PageTheme } from './theme';
 
 const HIDDEN_CLASS = 'sb-hidden';
@@ -14,6 +17,8 @@ export class Overlay {
   static readonly GUIDE_OPACITY = 0.55;
 
   private fixedLayer: HTMLElement | null = null;
+  /** 一件活只盖一次章：复制组的根既走 markBuilt 又走完成分支，不能盖两枚。 */
+  private readonly sealed = new Set<string>();
 
   private constructor(
     readonly el: HTMLElement,
@@ -103,6 +108,21 @@ export class Overlay {
 
   remove(el: HTMLElement): void {
     el.remove();
+  }
+
+  /** 竣工印章：施工者首字母 + 专属色，盖在条目右下角；辅助线不盖，一件只盖一次。 */
+  stamp(item: BlueprintItem, agent: AgentInfo): void {
+    if (item.kind === 'guide' || this.sealed.has(item.id)) return;
+    this.sealed.add(item.id);
+    const el = document.createElement('div');
+    el.className = 'sb-stamp';
+    el.textContent = agent.name.slice(0, 1);
+    // 名牌和光标标签同一套双语：悬停看得到是谁、什么性格。
+    el.title = `${agent.name} · ${personaLabel(agent.personality, resolveLang())}`;
+    el.style.background = agent.color;
+    el.style.left = `${Math.max(item.x, item.x + item.width - 16)}px`;
+    el.style.top = `${Math.max(item.y, item.y + item.height - 16)}px`;
+    this.layerFor(item).appendChild(el);
   }
 
   /** Planners create elements as they go; later actions find them by item id. */

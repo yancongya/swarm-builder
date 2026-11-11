@@ -48,6 +48,7 @@ export const DEFAULT_OPTIONS: Required<SwarmConfig> = {
   seed: 0,
   flight: 'live',
   personality: true,
+  stamps: true,
   pointer: 'follow',
   agents: 'auto',
   gather: true,
@@ -88,6 +89,7 @@ export function normalizeOptions(input: SwarmBuilderOptions | undefined): Normal
     fadeDuration: 140,
     flight: options.flight ?? d.flight,
     personality: options.personality ?? d.personality,
+    stamps: options.stamps ?? d.stamps,
     pointer: options.pointer ?? d.pointer,
     agents: options.agents ?? d.agents,
     gather: options.gather ?? d.gather,
@@ -124,6 +126,7 @@ export function applyPerformanceMode(opts: NormalizedOptions, elementCount: numb
   if (opts.performanceMode === 'auto' && elementCount < CROWDED_NODES) return;
   opts.guides = false;
   opts.grow = false;
+  opts.stamps = false;
   opts.maxCopies = Math.min(opts.maxCopies, 6);
 }
 

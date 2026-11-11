@@ -61,6 +61,21 @@ export const CSS = `
   background:rgba(11,13,16,.72);color:#fff;font-size:10px;line-height:14px;pointer-events:none}
 .sb-cursor.is-idling .sb-idle{display:block}
 .sb-cursor[data-flip="left"] .sb-idle{left:auto;right:16px}
+/* 竣工印章：每件活盖上施工者的首字母与专属色。自己的类，不占 ⌥ 尺寸徽章的 DOM。 */
+.sb-stamp{position:absolute;display:grid;place-items:center;width:16px;height:16px;border-radius:50%;
+  font-size:9px;font-weight:700;line-height:1;color:#0b0d10;pointer-events:none;opacity:.92;
+  box-shadow:0 0 0 1px rgba(255,255,255,.55);animation:sb-seal .3s cubic-bezier(.2,.8,.3,1.3) both}
+@keyframes sb-seal{from{transform:scale(1.7);opacity:0}to{transform:scale(1);opacity:.92}}
+/* 交接仪式：两只光标在 90px 内一起收活时，中点亮一记击掌火花。纯装饰，动作层与物理都不读它。 */
+.sb-handoff{position:absolute;left:0;top:0;width:0;height:0;pointer-events:none;
+  transform:rotate(var(--sb-angle,0rad))}
+.sb-handoff::before{content:"";position:absolute;left:-11px;top:-1px;width:22px;height:2px;border-radius:2px;
+  background:linear-gradient(90deg,var(--sb-a,#fff),var(--sb-b,#fff));
+  animation:sb-handoff-line .6s ease-out both}
+.sb-handoff::after{content:"";position:absolute;left:-5px;top:-5px;width:10px;height:10px;border-radius:50%;
+  border:1.5px solid var(--sb-b,#fff);animation:sb-handoff-ring .6s ease-out both}
+@keyframes sb-handoff-line{0%{transform:scaleX(0);opacity:0}35%{transform:scaleX(1);opacity:1}100%{transform:scaleX(1);opacity:0}}
+@keyframes sb-handoff-ring{0%{transform:scale(.3);opacity:.85}100%{transform:scale(2.4);opacity:0}}
 /* 开场点名：名牌逐个弹一下，延迟由 CursorLayer.rollCall 按进场顺序排。 */
 @keyframes sb-roll{0%{transform:scale(1)}35%{transform:scale(1.28)}100%{transform:scale(1)}}
 .sb-name.sb-rolling{animation:sb-roll .45s ease both}

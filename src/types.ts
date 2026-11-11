@@ -73,9 +73,9 @@ export interface SwarmConfig {
    */
   targetDuration?: number;
   /**
-   * 'auto' (default) drops guides, heading grow and most copies once the root
-   * holds 250+ elements; 'low' always trims; 'high' never does. Sound is not
-   * trimmed: it costs a handful of oscillators a second, not DOM work.
+   * 'auto' (default) drops guides, heading grow, item seals and most copies once
+   * the root holds 250+ elements; 'low' always trims; 'high' never does. Sound is
+   * not trimmed: it costs a handful of oscillators a second, not DOM work.
    */
   performanceMode?: 'auto' | 'high' | 'low';
   /**
@@ -132,6 +132,13 @@ export interface SwarmConfig {
    * replays the same team; off assigns 'steady' to everyone and draws nothing.
    */
   personality?: boolean;
+  /**
+   * Seal every finished item with the initial and colour of the cursor that
+   * built it, like a mason's mark on the last brick. Duplicate-stamped copies
+   * get their seal too; guides do not. Seals live in their own class and never
+   * touch the ⌥ size badge. Default true; the crowded-page trim turns them off.
+   */
+  stamps?: boolean;
   /**
    * How the real pointer is treated. The pointermove listener is attached when
    * this is not 'ignore', or when `gather` needs it to spot a touch.

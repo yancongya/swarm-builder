@@ -1,5 +1,5 @@
 import type { SwarmBuilderOptions, SwarmResult, SwarmStatus, SwarmPhase, AgentInfo } from './types';
-import type { Blueprint } from './core/blueprint';
+import type { Blueprint, BlueprintItem } from './core/blueprint';
 import type { Tickable } from './core/engine';
 import type { SoundSink } from './core/action';
 import type { FlightStage, Flyer } from './core/flight';
@@ -50,6 +50,12 @@ const GATHER_MS = 2400;
 const INTRO_AGENTS = 18;
 /** 参考版 HUD 每 200ms 刷一次，状态回调跟同一个节拍，不去抖每一帧。 */
 const STATUS_MS = 200;
+/** 交接仪式：90px 内一前一后收活算「相遇」，火花留 620ms；同一对人 2.6 秒内不重复放。 */
+const HANDOFF_RADIUS = 90;
+const HANDOFF_MS = 620;
+const HANDOFF_COOLDOWN = 2600;
+/** 「一前一后」的窗口：两件活在这个时间里先后竣工才算一次交接。 */
+const HANDOFF_WINDOW = 2400;
 
 class ProgressTicker implements Tickable {
   private last = -1;
@@ -309,6 +315,56 @@ export class SwarmBuilder {
     const agents: Agent[] = this.agents = [];
     const byFlyer = new Map<Flyer, Agent>();
     const flyers = (): Agent[] => agents.filter((agent) => !agent.isFinished);
+
+    // 交接仪式：两只光标一前一后在同一片区域收活（竣工点相距 90px 内、间隔不到 2.4 秒），
+    // 两点中间亮一记击掌火花。纯装饰——不读也不写任何物理量，成对冷却防刷屏；
+    // 辅助线不算一件「活」，既不触发也不落点。
+    const lastHandoff = new Map<string, number>();
+    const recentBuilds: { x: number; y: number; at: number; agent: Agent }[] = [];
+    const spawnHandoff = (
+      x: number, y: number, angle: number, a: AgentInfo, b: AgentInfo,
+    ): void => {
+      const el = document.createElement('div');
+      el.className = 'sb-handoff';
+      el.style.left = `${x}px`;
+      el.style.top = `${y}px`;
+      el.style.setProperty('--sb-angle', `${angle}rad`);
+      el.style.setProperty('--sb-a', a.color);
+      el.style.setProperty('--sb-b', b.color);
+      overlay.el.appendChild(el);
+      window.setTimeout(() => el.remove(), HANDOFF_MS);
+    };
+    const handoff = (agent: Agent, item: BlueprintItem): void => {
+      if (item.kind === 'guide') return;
+      const x = agent.x;
+      const y = agent.y;
+      const now = performance.now();
+      while (recentBuilds.length > 0 && now - (recentBuilds[0]?.at ?? 0) > HANDOFF_WINDOW) recentBuilds.shift();
+      for (let index = recentBuilds.length - 1; index >= 0; index--) {
+        const mark = recentBuilds[index] as (typeof recentBuilds)[number];
+        if (mark.agent === agent) continue;
+        const distance = Math.hypot(mark.x - x, mark.y - y);
+        if (distance > HANDOFF_RADIUS) continue;
+        const pair = agent.index < mark.agent.index
+          ? `${agent.index}-${mark.agent.index}`
+          : `${mark.agent.index}-${agent.index}`;
+        // 第一次相遇没有冷却记录，别拿 0 当时间戳——否则开局 2.6 秒内的交接全被吞掉。
+        const last = lastHandoff.get(pair);
+        if (last !== undefined && now - last < HANDOFF_COOLDOWN) continue;
+        lastHandoff.set(pair, now);
+        spawnHandoff(
+          (mark.x + x) / 2,
+          (mark.y + y) / 2,
+          Math.atan2(y - mark.y, x - mark.x),
+          mark.agent.info,
+          agent.info,
+        );
+        break;
+      }
+      recentBuilds.push({ x, y, at: now, agent });
+      if (recentBuilds.length > 48) recentBuilds.shift();
+    };
+
     const addAgent = (x: number, y: number, home: boolean): Agent => {
       const id = this.nextCursorId++;
       // 性格和进场点、轨道参数共用这一局的 rng：同一种子回放同一支队伍。
@@ -328,6 +384,7 @@ export class SwarmBuilder {
           scheduler, overlay, cursors, opts: this.opts, blueprint, sound, flock,
           planner: planItem, rng, persona, home,
           onFinished: (done) => { flock.remove(done); engine.remove(done); },
+          onItemDone: (done, item) => handoff(done, item),
         },
         x,
         y,
