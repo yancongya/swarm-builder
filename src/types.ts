@@ -1,9 +1,17 @@
 export type CursorShape = 'arrow' | 'crosshair' | 'ibeam';
 
+/**
+ * What a cursor is like when it works. Drawn per cursor from the run's seed, so
+ * a replay brings back the same crew. 'steady' is the clone everyone was before
+ * personalities existed, and what `personality: false` assigns to the whole crew.
+ */
+export type PersonalityKind = 'rush' | 'tidy' | 'drift' | 'steady';
+
 export interface AgentInfo {
   id: number;
   name: string;
   color: string;
+  personality: PersonalityKind;
 }
 
 export type BuildOrder = 'group' | 'rows' | 'cols' | 'snake' | 'depth' | 'radial' | 'random';
@@ -115,6 +123,15 @@ export interface SwarmConfig {
    * 'idle' parks it exactly where its last action landed.
    */
   flight?: FlightMode;
+  /**
+   * Give every cursor a seeded personality instead of one clone crew. Default
+   * true. 'rush' travels and types faster with speed lines behind the arrow,
+   * 'tidy' wears a calibration ring and works by the book, 'drift' idles with a
+   * "…" bubble and takes its time, 'steady' is the old uniform behaviour. The
+   * draw comes from the same per-run rng as the flight parameters, so a seed
+   * replays the same team; off assigns 'steady' to everyone and draws nothing.
+   */
+  personality?: boolean;
   /**
    * How the real pointer is treated. The pointermove listener is attached when
    * this is not 'ignore', or when `gather` needs it to spot a touch.

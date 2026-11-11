@@ -49,6 +49,24 @@ export const CSS = `
 .sb-ghost{position:absolute;left:0;top:0;width:14px;height:14px;margin:-7px 0 0 -7px;
   border:1px solid currentColor;border-radius:2px;display:none}
 .sb-cursor.is-dragging .sb-ghost{display:block}
+/* 性格配件。速度线的浓淡由 setPosition 按帧间位移写 --sb-speed：站着不动就隐掉，
+   赶路与待时飞行都走同一个 setter，两种移动带出同一条线。 */
+.sb-trail{position:absolute;left:-3px;top:7px;opacity:var(--sb-speed,0);pointer-events:none}
+.sb-trail i{position:absolute;height:1.5px;background:currentColor;border-radius:1px}
+.sb-trail i:first-child{left:-13px;top:0;width:11px}
+.sb-trail i:last-child{left:-17px;top:5px;width:7px}
+.sb-ring{position:absolute;left:-8px;top:-8px;width:28px;height:28px;pointer-events:none;
+  border:1px dashed currentColor;border-radius:50%;opacity:.5}
+.sb-idle{position:absolute;left:16px;top:-14px;padding:0 5px;border-radius:6px;display:none;
+  background:rgba(11,13,16,.72);color:#fff;font-size:10px;line-height:14px;pointer-events:none}
+.sb-cursor.is-idling .sb-idle{display:block}
+.sb-cursor[data-flip="left"] .sb-idle{left:auto;right:16px}
+/* 开场点名：名牌逐个弹一下，延迟由 CursorLayer.rollCall 按进场顺序排。 */
+@keyframes sb-roll{0%{transform:scale(1)}35%{transform:scale(1.28)}100%{transform:scale(1)}}
+.sb-name.sb-rolling{animation:sb-roll .45s ease both}
+.sb-rollcall{position:absolute;transform:translateX(-50%);padding:3px 12px;border-radius:999px;
+  background:rgba(11,13,16,.82);color:#fff;font-size:11px;line-height:16px;white-space:nowrap;
+  pointer-events:none}
 .sb-hud{position:fixed;left:0;right:0;bottom:12px;bottom:calc(12px + env(safe-area-inset-bottom,0px));
   z-index:2147483001;display:flex;flex-direction:column;align-items:center;gap:6px;pointer-events:none;
   font:12px/1.4 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}

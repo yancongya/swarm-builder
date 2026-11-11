@@ -10,6 +10,7 @@ import type { SoundSink } from './action';
 import type { Flock } from './flocking';
 import type { Flyer } from './flight';
 import { makeFlyer } from './flight';
+import type { Persona } from './personality';
 import { clamp } from './config';
 
 export interface AgentDeps {
@@ -24,6 +25,8 @@ export interface AgentDeps {
   onFinished: (agent: Agent) => void;
   /** 待时物理的随机参数要用同一个种子抽，不然回放两次跑不出同一支队伍。 */
   rng: () => number;
+  /** 性格由外层抽好传进来：名牌上的性格和干活的速度必须是同一份。 */
+  persona: Persona;
   /** 原始班底：自己那一份活干完就收起；临时工交给班组决定什么时候走。 */
   home: boolean;
 }
@@ -52,6 +55,7 @@ export class Agent implements AgentView, Tickable, Flyer {
   private elapsed = 0;
   private finished = false;
   private readonly ctx: RunContext;
+  readonly persona: Persona;
 
   constructor(
     readonly index: number,
@@ -62,6 +66,7 @@ export class Agent implements AgentView, Tickable, Flyer {
   ) {
     this.x = startX;
     this.y = startY;
+    this.persona = deps.persona;
     // 聚群走的也是轨道场，所以只开 gather 没开 flight 时这套物理参数照样要抽。
     if (deps.opts.flight === 'live' || deps.opts.gather) Object.assign(this, makeFlyer(startX, startY, deps.rng));
     this.ctx = {
@@ -101,6 +106,8 @@ export class Agent implements AgentView, Tickable, Flyer {
         const item = this.deps.scheduler.take(this);
         if (item === null) {
           this.idleFor += dt / 1000;
+          // 摸鱼的光标闲过 1.2 秒才冒「…」；急性子与强迫症闲不住，没有这一出。
+          this.deps.cursors.setIdling(this.info.id, this.persona.kind === 'drift' && this.idleFor > 1.2);
           this.retireWhenDone();
           return;
         }
@@ -108,6 +115,7 @@ export class Agent implements AgentView, Tickable, Flyer {
         this.busy = true;
         this.worked = true;
         this.idleFor = 0;
+        this.deps.cursors.setIdling(this.info.id, false);
         this.actions.push(...this.deps.planner(item, this.ctx));
       }
       const action = this.actions.shift() as Action;
@@ -120,7 +128,12 @@ export class Agent implements AgentView, Tickable, Flyer {
     }
 
     const action = this.current;
-    this.elapsed += dt;
+    // 性格只拧施工时钟：赶路与打字各按自己的倍率走，其余动作一视同仁。
+    // 待时物理不吃这一套——那是参考版的轨道场，不归性格管。
+    const mul = action.name === 'move' ? this.persona.moveMul
+      : action.name === 'type' ? this.persona.typeMul
+      : 1;
+    this.elapsed += dt * mul;
     const progress = action.duration > 0 ? clamp(this.elapsed / action.duration, 0, 1) : 1;
     action.tick(progress, this.ctx);
 

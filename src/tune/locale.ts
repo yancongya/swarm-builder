@@ -30,6 +30,7 @@ const UI: Record<string, string> = {
   '辅助线数': 'Guide count',
   '标题步进': 'Heading growth',
   '光标避让': 'Cursor flocking',
+  '光标性格': 'Cursor personality',
   '镜头跟随': 'Camera follow',
   '音效': 'Sound',
   '施工线色': 'Guide ink',
@@ -143,6 +144,8 @@ const UI: Record<string, string> = {
   '「辅助线」已关，这个数不参与施工。': '"Guides" is off, so this number is not part of the build.',
   '大标题一边打字一边长到真实字号。': 'Large headings type out while growing into their real font size.',
   '光标在途中互相绕行。': 'Cursors steer around each other in flight.',
+  '每只光标从这一局的种子里抽一个性格：急性子赶路打字都快、身后带速度线；强迫症按部就班、戴一圈校准环；摸鱼中慢半拍、闲久了冒「…」；稳当当就是以前的统一节奏。只改施工快慢和外观，不碰待时飞行与避让；同一种子回放同一支队伍。关掉则全员稳当当。':
+    'Each cursor draws a personality from this run’s seed: Rush travels and types fast with speed lines behind it; Tidy works by the book and wears a calibration ring; Drift is half a beat slow and idles into a “…” bubble; Steady is the old uniform pace. Only the build tempo and the look change - idle flight and flocking are untouched, and the same seed replays the same crew. Off makes everyone Steady.',
   '滚动跟着施工前沿走（扩展 HUD 上的 Tour），运行中也能开关，结束交还页首。页面比视口高时打开。它跟的是光标在哪儿：多光标各守一条带时，镜头会被最靠后那只一把拽到页底，看着像开局就滚完了；配「随滚动解锁」才会一段一段往下走。':
     'Scroll follows the construction frontier (the Tour button on the extension’s HUD), can be toggled mid-run, and returns to the top when the run ends. Turn it on when the page is taller than the viewport. It follows where the cursors are: with several cursors each holding a band, the rearmost one yanks the camera to the bottom and it looks like the page scrolled away in the opening second. Pair it with "Unlock as you scroll" and it advances screen by screen instead.',
   '键盘快捷键': 'Keyboard shortcuts',

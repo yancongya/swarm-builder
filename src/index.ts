@@ -11,6 +11,7 @@ export type {
   SwarmPhase,
   AgentInfo,
   CursorShape,
+  PersonalityKind,
 } from './types';
 
 /** Creates an instance and starts the rebuild immediately. */

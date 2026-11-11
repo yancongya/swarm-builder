@@ -1,4 +1,6 @@
-import type { CursorShape } from '../types';
+import type { CursorShape, PersonalityKind } from '../types';
+import { personaLabel } from '../core/personality';
+import { resolveLang } from '../tune/locale';
 
 const ARROW = `
 <svg class="sb-cursor__arrow" width="17" height="19" viewBox="0 0 17 19" fill="none">
@@ -29,7 +31,18 @@ export interface CursorHandle {
   /** 名字标签/尺寸徽章伸出光标锚点右侧的宽度，贴边时用它决定挂哪一侧。 */
   overhang: number;
   flipped: boolean;
+  /** 上一帧位置：速度线按帧间位移估速，不读物理。 */
+  lastX: number;
+  lastY: number;
 }
+
+/** 性格的可见配件：急性子身后两道速度线，强迫症一圈校准环，摸鱼闲久了冒「…」。 */
+const TRAIT: Record<PersonalityKind, string> = {
+  rush: '<div class="sb-trail"><i></i><i></i></div>',
+  tidy: '<div class="sb-ring"></div>',
+  drift: '<div class="sb-idle">…</div>',
+  steady: '',
+};
 
 export class CursorLayer {
   private readonly handles = new Map<number, CursorHandle>();
@@ -39,16 +52,19 @@ export class CursorLayer {
     this.width = parent.offsetWidth;
   }
 
-  add(id: number, name: string, color: string): CursorHandle {
+  add(id: number, name: string, color: string, personality: PersonalityKind = 'steady'): CursorHandle {
     const el = document.createElement('div');
     el.className = 'sb-cursor is-arrow';
+    if (personality !== 'steady') el.classList.add(`sb-p-${personality}`);
+    el.dataset.cursor = String(id);
     el.style.color = color;
-    el.innerHTML = `${ARROW}${IBEAM}<div class="sb-cursor__crosshair"></div><div class="sb-ghost"></div><div class="sb-badge"></div>`;
+    el.innerHTML = `${ARROW}${IBEAM}<div class="sb-cursor__crosshair"></div><div class="sb-ghost"></div>${TRAIT[personality]}<div class="sb-badge"></div>`;
 
     const label = document.createElement('div');
     label.className = 'sb-name';
     label.textContent = name;
     label.style.background = color;
+    label.title = `${name} · ${personaLabel(personality, resolveLang())}`;
     el.appendChild(label);
 
     this.parent.appendChild(el);
@@ -57,6 +73,8 @@ export class CursorLayer {
       badge: el.querySelector<HTMLElement>('.sb-badge') as HTMLElement,
       overhang: label.offsetWidth,
       flipped: false,
+      lastX: 0,
+      lastY: 0,
     };
     this.handles.set(id, handle);
     return handle;
@@ -66,6 +84,12 @@ export class CursorLayer {
     const handle = this.handles.get(id);
     if (!handle) return;
     handle.el.style.transform = `translate3d(${x.toFixed(1)}px, ${y.toFixed(1)}px, 0)`;
+    // 速度线只认「这一帧挪了多远」：24px/帧算满速。施工与待时物理都走这里，
+    // 所以两种移动都会带出线的浓淡，而不用动作层各自上报速度。
+    const speed = Math.min(1, Math.hypot(x - handle.lastX, y - handle.lastY) / 24);
+    handle.el.style.setProperty('--sb-speed', speed.toFixed(2));
+    handle.lastX = x;
+    handle.lastY = y;
     // 光标贴着页面右边缘时，右侧的名字标签和徽章会画到蓝图画框之外，把文档撑出
     // 一段横向滚动——手机上那半屏尤其明显。标签宽度量一次就够（add 与 setBadge），
     // 所以这里只比一下剩余空间，按需要把标签翻到光标左侧。
@@ -74,6 +98,23 @@ export class CursorLayer {
       handle.flipped = flip;
       handle.el.dataset.flip = flip ? 'left' : 'right';
     }
+  }
+
+  /** 摸鱼的光标闲过一阵才冒「…」；领到活立刻收回去。 */
+  setIdling(id: number, on: boolean): void {
+    const handle = this.handles.get(id);
+    if (!handle) return;
+    handle.el.classList.toggle('is-idling', on);
+  }
+
+  /** 开场点名：名牌按进场顺序逐个弹一下， delays 由调用方排。 */
+  rollCall(ids: readonly number[]): void {
+    ids.forEach((id, index) => {
+      const handle = this.handles.get(id);
+      if (!handle) return;
+      handle.label.style.animationDelay = `${index * 90}ms`;
+      handle.label.classList.add('sb-rolling');
+    });
   }
 
   setShape(id: number, shape: CursorShape): void {

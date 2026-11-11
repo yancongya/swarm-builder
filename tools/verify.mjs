@@ -744,9 +744,12 @@ for (const width of WIDTHS) {
           trigger: 'immediate',
           // 比的是避让本身：开场那 18 只聚群光标和自动增减的班组都会改「同场有几个人」，
           // 把重叠帧数搅成噪声。人数钉死、不聚群、不积压提速，两局才是同一张考卷。
+          // 性格也钉死：每局种子不同，抽出来的急性子/摸鱼会改赶路打字快慢，
+          // 把 ±2 帧的擦过容差搅成噪声——性格有自己的考卷（personality 场景）。
           gather: false,
           agents: 'fixed',
           adaptiveSpeed: false,
+          personality: false,
           onComplete: (result) => {
             running = false;
             resolve({
@@ -3067,6 +3070,98 @@ ${'<div class="strip"><img loading="lazy" width="320" height="120" src="/img/x.p
     `simple: ${simple.total} 项 → 开场 ${simple.opening} 只（≤3）· home: ${home.total} 项 → 开场 ${home.opening} 只（封顶 18）· tall: ${tall.total} 项 → 开场 ${tall.opening} 只`,
     `公式 min(18,max(3,ceil(items/12))): simple=${formula(simple.total)} tall=${formula(tall.total)} · 固定班组峰值=${fixed.peak}（不变）`,
     `种子回放（聚群+auto）: 12345 两次 ${seedA.head.join(' ')} = ${seedB.head.join(' ')} · 67890 ${seedC.head.join(' ')} · 回显=${seedA.seed}`,
+  ]);
+  await ctx.close();
+}
+
+// ---------------------------------------------------------------------------
+// 场景 31：光标性格 + 开场点名（创意 1+6）。
+// 性格从这一局的种子抽：同种子回放同一支队伍，关掉则全员稳当当、一个随机数都不抽。
+// 点名是纯装饰：聚群那几秒挂领班牌、名牌逐个弹，开工那一帧就拆——不加减人、不改聚群时长。
+// ---------------------------------------------------------------------------
+{
+  const MEASURE = (options) => new Promise((resolve) => {
+    document.querySelectorAll('.sb-overlay').forEach((el) => el.remove());
+    document.querySelectorAll('.sb-hidden').forEach((el) => el.classList.remove('sb-hidden'));
+    window.scrollTo(0, 0);
+    const m = { chip: false, chipText: '', rolling: 0, crew: 0, map: '', traitsOk: true, chipAfter: true, built: -1, seed: -1 };
+    let captured = false;
+    let raf = 0;
+    let swarm;
+    const readMap = () => {
+      const rows = [...document.querySelectorAll('.sb-cursor')].map((el) => {
+        const kind = el.classList.contains('sb-p-rush') ? 'rush'
+          : el.classList.contains('sb-p-tidy') ? 'tidy'
+          : el.classList.contains('sb-p-drift') ? 'drift' : 'steady';
+        // 性格必须和它戴的配件对上：急性子有速度线、强迫症有校准环、摸鱼有气泡，稳当当什么都没有。
+        const trait = kind === 'rush' ? !!el.querySelector('.sb-trail')
+          : kind === 'tidy' ? !!el.querySelector('.sb-ring')
+          : kind === 'drift' ? !!el.querySelector('.sb-idle')
+          : !el.querySelector('.sb-trail, .sb-ring, .sb-idle');
+        if (!trait) m.traitsOk = false;
+        return `${el.dataset.cursor}:${kind}`;
+      });
+      return rows.sort().join(',');
+    };
+    const sample = () => {
+      const phase = swarm?.status.phase;
+      const chip = document.querySelector('.sb-rollcall');
+      if (phase === 'gathering') {
+        if (chip) { m.chip = true; m.chipText = chip.textContent ?? ''; }
+        m.rolling = Math.max(m.rolling, document.querySelectorAll('.sb-name.sb-rolling').length);
+        m.crew = Math.max(m.crew, document.querySelectorAll('.sb-cursor:not([hidden])').length);
+      }
+      if (phase === 'building' && !captured) { captured = true; m.map = readMap(); }
+      raf = requestAnimationFrame(sample);
+    };
+    raf = requestAnimationFrame(sample);
+    const finish = (extra) => { cancelAnimationFrame(raf); resolve({ ...m, ...extra }); };
+    swarm = new window.SwarmBuilder({
+      root: document.querySelector('#app'),
+      sound: false, speed: 4, tour: false, trigger: 'immediate',
+      gather: true, agents: 'fixed', agentCount: 8, adaptiveSpeed: false,
+      ...options,
+      onComplete: (r) => finish({ chipAfter: !document.querySelector('.sb-rollcall'), built: r.built, seed: r.seed }),
+    });
+    swarm.start();
+    setTimeout(() => finish({}), 60000);
+  });
+
+  const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+  const page = await ctx.newPage();
+  const errors = [];
+  page.on('pageerror', (e) => errors.push(String(e)));
+  const on = async (options) => {
+    await page.goto(`${BASE}/demos/tall.html`, { waitUntil: 'load' });
+    await page.waitForFunction(() => typeof window.SwarmBuilder === 'function', null, { timeout: 20000 });
+    return page.evaluate(MEASURE, options);
+  };
+
+  const a = await on({ seed: 12345 });
+  const b = await on({ seed: 12345 });
+  const c = await on({ seed: 67890 });
+  const off = await on({ seed: 12345, personality: false });
+  await page.screenshot({ path: `${OUT}personality.png` });
+
+  const problems = [];
+  for (const [name, r] of [['a', a], ['b', b], ['c', c], ['off', off]]) {
+    if (r.built < 0) problems.push(`${name} 那局 60 秒没跑完`);
+  }
+  if (!a.chip) problems.push('聚群阶段没挂出点名领班牌');
+  if (!/领班/.test(a.chipText) || !/Ava/.test(a.chipText)) problems.push(`领班牌文案不对：${a.chipText}`);
+  if (a.rolling !== a.crew || a.crew !== 8) problems.push(`点名没让全部名牌弹：rolling=${a.rolling} crew=${a.crew}（应同为 8）`);
+  if (!a.traitsOk) problems.push('有光标的性格和它戴的配件对不上');
+  if (a.map !== b.map) problems.push(`同种子性格变了：${a.map} vs ${b.map}`);
+  if (a.map === c.map) problems.push('换种子性格没变，种子没参与抽性格');
+  if (!a.chipAfter) problems.push('开工后领班牌没拆掉');
+  if (off.map.split(',').some((row) => !row.endsWith(':steady'))) problems.push(`personality:false 还有不是稳当当的：${off.map}`);
+  if (!off.chip) problems.push('关掉性格后开场点名也没了（点名不该依赖性格）');
+  if (a.seed !== 12345) problems.push(`完成状态没回显种子：${a.seed}`);
+  if (errors.length) problems.push(`报错 ${errors.length} 条：${errors[0]}`);
+  report('personality @1280', problems, [
+    `点名: 领班牌=${a.chip}「${a.chipText}」· 弹名牌=${a.rolling}/${a.crew} · 开工后已拆=${a.chipAfter}`,
+    `性格: 12345 两次 ${a.map} = ${b.map} · 67890 ${c.map} · 配件齐全=${a.traitsOk}`,
+    `关闭: 全员稳当当=${off.map.split(',').every((row) => row.endsWith(':steady'))} · 点名仍在=${off.chip} · 回显种子=${a.seed}`,
   ]);
   await ctx.close();
 }

@@ -16,9 +16,11 @@ import { Crew, Flight, POINTER_RADIUS } from './core/flight';
 import { TourCam, type TourView } from './core/tour';
 import { detectEnv, preScan, viewBand, type ScanEnv } from './core/scan';
 import { makeRng } from './core/rng';
+import { drawPersona, STEADY } from './core/personality';
 import { planItem } from './tasks/index';
 import { Overlay } from './render/overlay';
 import { CursorLayer } from './render/cursor_layer';
+import { RollCall } from './render/rollcall';
 import { injectStyle } from './render/styles';
 import { Hud } from './render/hud';
 import { pageTheme } from './render/theme';
@@ -309,18 +311,22 @@ export class SwarmBuilder {
     const flyers = (): Agent[] => agents.filter((agent) => !agent.isFinished);
     const addAgent = (x: number, y: number, home: boolean): Agent => {
       const id = this.nextCursorId++;
+      // 性格和进场点、轨道参数共用这一局的 rng：同一种子回放同一支队伍。
+      // 关掉时一个数都不抽，全员稳当当，rng 流与没有性格时完全一致。
+      const persona = this.opts.personality ? drawPersona(rng) : STEADY;
       const info: AgentInfo = {
         id,
         name: NAMES[id % NAMES.length] as string,
         color: PALETTE[id % PALETTE.length] as string,
+        personality: persona.kind,
       };
-      cursors.add(info.id, info.name, info.color);
+      cursors.add(info.id, info.name, info.color, persona.kind);
       const agent = new Agent(
         info.id,
         info,
         {
           scheduler, overlay, cursors, opts: this.opts, blueprint, sound, flock,
-          planner: planItem, rng, home,
+          planner: planItem, rng, persona, home,
           onFinished: (done) => { flock.remove(done); engine.remove(done); },
         },
         x,
@@ -444,7 +450,11 @@ export class SwarmBuilder {
       engine.add(new StatusTicker(engine, () => this.report(), done));
     }
 
+    let roll: RollCall | null = null;
     const launch = (): void => {
+      // 开工那一帧点名结束：小剧场拆掉，名牌恢复安静。
+      roll?.destroy();
+      roll = null;
       building = true;
       this.phase = 'building';
       this.touring = this.opts.tour;
@@ -469,6 +479,9 @@ export class SwarmBuilder {
       this.intro = intro;
       this.stopIntro = () => intro.dispose();
       engine.add(intro);
+      // 开场点名：聚群这几秒里挂一条领班牌，名牌按进场顺序逐个弹。纯装饰，
+      // 不加减人也不改聚群时长；开工（或跳过/交还时随隔离层一起拆）即消失。
+      roll = new RollCall(overlay.el, blueprint.width, this.band.top, infos, cursors);
       // 参考版在开场那一下先放一段气声，群蜂散开时才接琶音。
       score?.intro();
       this.report(true);
