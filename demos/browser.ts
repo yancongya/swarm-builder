@@ -117,7 +117,7 @@ function waitForTuner(limitMs: number, targetFrame = frame): Promise<{ tuner: Sw
 
 /** 案例页自带 lang.ts，语言靠 ?lang= 传进去；不带参数的 href 直接加一个。 */
 function withLang(href: string): string {
-  const url = new URL(href, location.href);
+  const url = new URL(href, document.baseURI);
   url.searchParams.set('lang', getLang());
   return `${url.pathname}${url.search}${url.hash}`;
 }

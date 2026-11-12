@@ -378,9 +378,9 @@ useEffect(() => {
 
 ### GitHub Pages 与小红书小工具
 
-两端共享 `demos/home.html`、`console.html`、`blender.html` 和相应样式与本地素材，但**产物不同**：GitHub Pages 使用 `npm run build:site` 生成 `site-dist/`（根 `index.html` 跳转到案例浏览器，资源路径适配仓库子路径）；小红书使用 `npm run build:minitool` 生成 `minitool/dist/`，再按小工具规范将该目录内容打成 ZIP，根目录必须直接包含 `index.html`。主包的 `npm run build` 只构建 npm 库，不会生成网站或小工具。
+两端共享 `demos/home.html`、`console.html`、`blender.html` 和相应样式与本地素材，但**产物不同**：GitHub Pages 使用 `npm run build:site` 生成 `site-dist/`（根 `index.html` 跳转到 `/home/`，并为 `/home/`、`/console/`、`/blender/` 生成可刷新直达的静态入口）；小红书使用 `npm run build:minitool` 生成 `minitool/dist/`，再按小工具规范将该目录内容打成 ZIP，根目录必须直接包含 `index.html`。主包的 `npm run build` 只构建 npm 库，不会生成网站或小工具。
 
-GitHub Pages 在仓库 Settings → Pages 选择 **GitHub Actions** 作为来源后，可手动运行 `Deploy demo site to GitHub Pages` 工作流。工作流只有 `workflow_dispatch`，不会因普通推送自动部署。静态站无需开发服务器，但第三方网页的 `/__page` 无头转发只存在于本地 `npm run dev`；GitHub Pages 上跨域页面无法通过它重建。小红书版完全离线，使用 Shadow Root 挂载内置三页，不提供第三方网页抓取。
+GitHub Pages 在仓库 Settings → Pages 选择 **GitHub Actions** 作为来源后，推送到 `master` 会自动部署，也可手动运行 `Deploy demo site to GitHub Pages` 工作流。静态站无需开发服务器，但第三方网页的 `/__page` 无头转发只存在于本地 `npm run dev`；GitHub Pages 上跨域页面无法通过它重建。小红书版完全离线，使用 Shadow Root 挂载内置三页，不提供第三方网页抓取。
 
 ```bash
 npm run dev              # http://localhost:5199/demos/index.html

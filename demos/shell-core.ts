@@ -19,9 +19,9 @@ export interface Case {
 }
 
 export const CASES: Case[] = [
-  { key: 'home', title: '产品说明页', href: './home.html', origin: 'https://yancongya.github.io/swarm-builder/demos/home.html' },
-  { key: 'console', title: '密集控制台', href: './console.html', origin: 'https://yancongya.github.io/swarm-builder/demos/console.html' },
-  { key: 'blender', title: 'Blender 工作区', href: './blender.html', origin: 'https://yancongya.github.io/swarm-builder/demos/blender.html' },
+  { key: 'home', title: '产品说明页', href: './home.html', origin: 'https://yancongya.github.io/swarm-builder/home/' },
+  { key: 'console', title: '密集控制台', href: './console.html', origin: 'https://yancongya.github.io/swarm-builder/console/' },
+  { key: 'blender', title: 'Blender 工作区', href: './blender.html', origin: 'https://yancongya.github.io/swarm-builder/blender/' },
 ];
 
 // 空白页上给三条现成地址：两条站内（切到内置案例），一条真的公网（适配层决定怎么回应）。
@@ -46,7 +46,7 @@ export function normalize(raw: string): string {
   if (!text) return '';
   const hasScheme = /^[a-z][a-z0-9+.-]*:/i.test(text);
   const isPath = text.startsWith('/') || text.startsWith('./') || text.startsWith('../');
-  const abs = hasScheme || isPath ? new URL(text, location.href) : new URL(`https://${text}`);
+  const abs = hasScheme || isPath ? new URL(text, document.baseURI) : new URL(`https://${text}`);
   if (!/^https?:$/.test(abs.protocol)) return '';
   return abs.href;
 }
@@ -116,7 +116,8 @@ export function createShellCore(hooks: ShellHooks): ShellCore {
   const blankChips = need<HTMLElement>('[data-blank-chips]');
 
   const params = new URLSearchParams(location.search);
-  const fromUrl = params.get('case') ?? '';
+  const route = location.pathname.match(/^(.*\/)(home|console|blender)\/?$/);
+  const fromUrl = params.get('case') ?? route?.[2] ?? '';
   // 第一个案例就是打开时看到的那一页：预设页排在 CASES 最前面，不必再抄一遍 key。
   const stack: string[] = [CASES.some((c) => c.key === fromUrl) ? fromUrl : (CASES[0] as Case).key];
   let cursor = 0;
@@ -141,11 +142,14 @@ export function createShellCore(hooks: ShellHooks): ShellCore {
     }
     const c = caseOf(active);
     urlEl.textContent = c.custom ? (c.url ?? '') : c.origin;
-    params.set('case', active);
+    if (route && !c.custom) params.delete('case');
+    else params.set('case', active);
     // 自定义标签把地址写进 URL，刷新和分享都回得到同一页；预设页不需要这个参数。
     if (c.custom && c.url) params.set('u', c.url);
     else params.delete('u');
-    history.replaceState(null, '', `?${params}`);
+    const query = params.toString();
+    const path = route && !c.custom ? `${route[1]}${active}/` : location.pathname;
+    history.replaceState(null, '', `${path}${query ? `?${query}` : ''}`);
     backBtn.disabled = cursor === 0;
     fwdBtn.disabled = cursor >= stack.length - 1;
     // 按钮的按压态跟着真实开关走：默认值改成关以后，HTML 里的初始 aria-pressed 不再可信。
