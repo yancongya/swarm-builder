@@ -77,12 +77,14 @@ function detectFlexGap(): boolean {
 
 export function start(): void {
   const intro = createBootIntro(
-    () => need<HTMLElement>('[data-viewport]').getBoundingClientRect(),
+    // 开场是独立的全屏场景，不跟随为原生按钮避让后的页面视口偏移。
+    () => new DOMRect(0, 0, window.innerWidth, window.innerHeight),
     () => {
-      const orb = document.querySelector<HTMLElement>('[data-sb-chrome]')?.shadowRoot?.querySelector<HTMLElement>('.orb');
+      const orb = activePanelHost?.shadowRoot?.querySelector<HTMLElement>('.orb');
       if (!orb) return null;
       if (!orb.querySelector('.logo-motion')) decorateOrb(orb);
-      return { orb, rect: orb.getBoundingClientRect() };
+      const rect = orb.getBoundingClientRect();
+      return rect.width > 0 && rect.height > 0 ? { orb, rect } : null;
     },
   );
   const tabsEl = need<HTMLElement>('[data-tabs]');
@@ -262,6 +264,8 @@ export function start(): void {
     window.__tuner = tuner;
     const panelHosts = document.querySelectorAll<HTMLElement>('[data-sb-chrome]');
     activePanelHost = panelHosts[panelHosts.length - 1] ?? null;
+    const orb = activePanelHost?.shadowRoot?.querySelector<HTMLElement>('.orb');
+    if (orb) decorateOrb(orb);
     liftPanel();
     // 母本 loadPreset 每次挂载都显式开跑：面板只负责调参，不负责启动这一局。
     // 开场标识播满一圈才放行：资源是打包进来的、秒回，不等这一圈就只闪一下 logo。
