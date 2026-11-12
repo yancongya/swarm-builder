@@ -10,7 +10,7 @@ export interface Case {
   key: string;
   title: string;
   href: string;
-  /** The address the mockup shows, so a case reads like a site rather than a file. */
+  /** GitHub Pages address of this built-in page; the local and offline shells only display it. */
   origin: string;
   /** 用户自己开的标签：地址是他输入的，不是仓库里的文件。 */
   custom?: boolean;
@@ -19,19 +19,15 @@ export interface Case {
 }
 
 export const CASES: Case[] = [
-  { key: 'home', title: '产品说明页', href: './home.html', origin: 'https://swarm-builder.dev' },
-  { key: 'simple', title: '简单页基准', href: './simple.html', origin: 'https://swarm.demo' },
-  { key: 'console', title: '密集控制台', href: './console.html', origin: 'https://orbit.demo/console' },
-  { key: 'landing', title: '深色落地页', href: './landing.html', origin: 'https://nova.demo' },
-  { key: 'dark-ui', title: '复杂工作台', href: './dark-ui.html', origin: 'https://studio.demo' },
-  { key: 'tall', title: '长页面跟随', href: './tall.html', origin: 'https://notes.demo/long' },
-  { key: 'tune', title: '别人的站点', href: './tune.html', origin: 'https://letterpress.demo' },
+  { key: 'home', title: '产品说明页', href: './home.html', origin: 'https://yancongya.github.io/swarm-builder/demos/home.html' },
+  { key: 'console', title: '密集控制台', href: './console.html', origin: 'https://yancongya.github.io/swarm-builder/demos/console.html' },
+  { key: 'blender', title: 'Blender 工作区', href: './blender.html', origin: 'https://yancongya.github.io/swarm-builder/demos/blender.html' },
 ];
 
 // 空白页上给三条现成地址：两条站内（切到内置案例），一条真的公网（适配层决定怎么回应）。
 export const CHIPS = [
   { label: '这一页自己', href: './home.html' },
-  { label: '别人的站点', href: './tune.html' },
+  { label: '密集控制台', href: './console.html' },
   { label: 'example.com', href: 'https://example.com' },
 ];
 
@@ -152,6 +148,8 @@ export function createShellCore(hooks: ShellHooks): ShellCore {
     history.replaceState(null, '', `?${params}`);
     backBtn.disabled = cursor === 0;
     fwdBtn.disabled = cursor >= stack.length - 1;
+    // 按钮的按压态跟着真实开关走：默认值改成关以后，HTML 里的初始 aria-pressed 不再可信。
+    creatorBtn.setAttribute('aria-pressed', String(creatorOn));
   }
 
   function makeTab(item: Case): HTMLButtonElement {
@@ -238,10 +236,7 @@ export function createShellCore(hooks: ShellHooks): ShellCore {
   }
 
   function go(key: string): void {
-    if (key === current()) {
-      hooks.load();
-      return;
-    }
+    if (key === current()) return;
     stack.splice(cursor + 1, stack.length, key);
     cursor = stack.length - 1;
     paintChrome();

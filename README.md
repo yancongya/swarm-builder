@@ -67,6 +67,8 @@ npm pack && npm i ./swarm-builder-0.1.0.tgz
 
 只想先看效果：`npm run dev` 会起案例页。
 
+案例页与小红书小工具的内置页面使用 `scan: 'single'`，挂载后直接进入引擎原有的光标汇聚；动态 Logo 只在准备阶段出现，并在真实集群汇聚时与光标同屏。两端的创造者面板默认收起。抓取的外部页面仍使用 `pre-scroll` 采集懒加载资源，案例浏览器会用准备画面遮住这段滚动。
+
 **2. npm（发版后）**
 
 ```bash
@@ -158,7 +160,9 @@ tuner.restore();              // 停掉施工，把页面原样交还——跑�
 const code = tuner.snippet(); // 可粘贴代码，只列与默认值不同的项
 await tuner.copy();           // 复制那份片段进剪贴板（不可用时改为选中）
 tuner.open();                 // 展开；tuner.close() 收成悬浮球
-console.log(tuner.status, tuner.phase, tuner.expanded); // 给宿主镜像成自己的状态栏
+console.log(tuner.status, tuner.phase, tuner.runPhase, tuner.expanded); // 面板状态与实际施工阶段
+const card = tuner.crewCard(); // 完工班组名片 PNG data URL；无已完成班组时为 null
+tuner.showCard();             // 在面板里显示名片；无可用名片时返回 false
 tuner.destroy();
 ```
 
@@ -169,7 +173,7 @@ tuner.destroy();
 <script>SwarmBuilderTune.tune({ root: '#app', open: true });</script>
 ```
 
-面板按用途分成六页，一共 29 行参数：**规模**（光标数量、动态班组、条目上限、速度、目标时长、性能模式）、**顺序**（构建顺序、工时均衡、随机种子、认领方式、逐段解锁、开场聚群、积压提速）、**光标**（待时飞行、真实鼠标、光标避让、镜头跟随、键盘快捷键）、**采集**（采集方式、复制盖章、每组复制、辅助线、辅助线数、标题步进、跳过）、**声音**（音效、配乐）、**外观**（减少动效、施工线色）。一次只摊开一页，最长的一页七行；默认停在与扩展那条自上而下前沿直接相关的「规模」页。页签悬停里写着这一页的实时值（比如「停在落点 · 当圆心」「预滚动采集 · 复制 12/组」），不翻过去也知道另一头设成了什么；改过但还没应用的页签带一个铜点，翻到别页也不会漏掉。表头上方是扩展那块 HUD：阶段状态行、按 `built/total` 推进的进度条、以及最后五个忙碌光标的色点（颜色 + 首字母 + 悬停名字）。HUD 下面一条工具条改的是**正在跑的这一局**——镜头（Tour，灯亮时写「跟随中」）、1×→2×→3× 倍速、声音（声音 / 解锁 / 静音三态，浏览器还没放行时点它先解锁）、暂停/继续、跳过、重播；参数行则照旧下一局生效。默认尺寸按 900px 高的宿主量出来，一屏不用滚动：整张卡约 423px 高，比六节全开时矮了近一半。宿主变矮按视口高度分四档压缩表头、HUD、工具条、页签与行距，五档实测（宿主 984 / 933 / 841 / 733 / 640px）参数区分别 164 / 152 / 121 / 104 / 104px，都没有滚动；案例视口低于约 514px 才交给可见滚动条——那时也可以按住表头把面板拖到别处，或拽右下角的把手把它拉大，位置和大小写在内联样式里，宿主页面的规则覆盖不动。收起以后剩下的那颗悬浮球同样能按住拖走，移动满 4px 才算拖，所以拖完松手不会顺手再展开一次；球拖到贴近屏幕边上时，展开的那一瞬间面板会按自己的真实尺寸把位置夹回视口里，底部的按钮永远点得到。
+面板按用途分成六页，共 34 行参数：规模 6 项、顺序 7 项、光标 9 项、采集 7 项、声音 2 项、外观 3 项。光标页包括性格、拖尾、竣工印章与观众指挥；外观页包括极简 HUD。默认只显示「规模」页，其他页通过页签切换，参数区在空间不足时滚动。页签提示显示各页当前值，改过但未应用的页签会标记。面板的状态、进度与工具条控制当前这一局；修改参数后需按「应用并重跑」，只有未设置目标时长时拖动速度会立即生效。
 
 面板与引擎的对应关系是照着「一局」建立的：
 
@@ -214,21 +218,27 @@ swarm.start();
 | `SwarmBuilder` | `new (options?: SwarmBuilderOptions)` | 主类 |
 | `mount` | `(options?) => SwarmBuilder` | 建实例并立即 `start()` |
 | `tune` / `SwarmTuner` | 子入口 `swarm-builder/tune` | 创造者模式，见上 |
-| 类型 | `SwarmBuilderOptions` `SwarmConfig` `SwarmResult` `SwarmStatus` `SwarmPhase` `AgentInfo` `CursorShape` | 声明文件随包发布 |
-| `DEFAULT_OPTIONS` / `SPEED_STEPS` | 值与四个元素的数组 | 默认配置与工具条的 1×/2×/3× 三档，可用于对齐宿主的设置界面 |
+| 主入口类型 | `SwarmBuilderOptions`、`SwarmConfig`、`SwarmResult`、`SwarmStatus`、`SwarmPhase`、`AgentInfo`、`CursorShape`、`PersonalityKind` | 声明文件随包发布；`SwarmResult.crew` 的成员含 `AgentInfo` 字段及 `built` 计数 |
+| 创造者子入口导出 | `tune`、`SwarmTuner`、`DEFAULT_CONFIG`；类型 `SwarmConfig`、`Corner`、`Phase` | `swarm-builder/tune`；`TuneOptions` 可由 TypeScript 从 `tune` 参数推断，当前未单独导出 |
+| `DEFAULT_OPTIONS` / `SPEED_STEPS` | 配置对象 / `readonly [1, 2, 3]` | 默认配置与工具条的 1×/2×/3× 三档，可用于对齐宿主设置界面 |
+
+创造者模式的 `tune(options)` 与 `new SwarmTuner(options)` 等价。`options.root` 接受元素或 CSS 选择器（默认 `document.body`）；`initial` 是面板初始配置；`position` 可取 `bottom-right` / `bottom-left` / `top-right` / `top-left`（默认右下）；`open` 默认 `false`；`lang` 可取 `zh` / `en`，省略时跟随 `<html lang>`；`styleRoot` 在目标位于 Shadow Root 时传入该根。`DEFAULT_CONFIG` 是可序列化的默认配置。
+
+`SwarmTuner` 提供 `apply()`（按当前配置重新开局）、`reset()`（只重置面板值）、`restore()`（结束本局并交还页面）、`snippet()`、`copy(): Promise<boolean>`、`open()`、`close()`、`crewCard(): string | null`、`showCard(): boolean`、`destroy()`；只读属性 `expanded`、`status`、`phase` 和 `runPhase`。`phase` 是面板的 `idle/running/paused/done`，`runPhase` 是引擎实际的 `idle/scanning/gathering/building/paused/done`。`copy()` 在剪贴板不可用时将片段留在面板中并选中，返回 `false`。
 
 ### 选项（`SwarmBuilderOptions`）
 
 | 选项 | 类型 | 默认 | 说明 |
 | --- | --- | --- | --- |
 | `root` | `HTMLElement` | `document.body` | 要重建的子树，坐标相对它计算 |
+| `styleRoot` | `Document \| ShadowRoot` | `document` | 引擎样式注入位置；`root` 在 Shadow Root 内时传入该 Shadow Root |
 | `agentCount` | `number` | `8` | 光标数量，1–24。扩展常驻 8 个；`agents: 'auto'` 时它是下限 |
 | `speed` | `number` | `1` | 全局时间倍率，0.25–8 |
 | `targetDuration` | `number` | `0` | 目标秒数，0–120。>0 时取代 `speed`，由估算器反推倍率 |
 | `order` | `'group' \| 'rows' \| 'cols' \| 'snake' \| 'depth' \| 'radial' \| 'random'` | `'rows'` | 光标怎么认领活儿。`rows` 自上而下——配上默认的 `pick: 'live'` + `trigger: 'scroll'` 就是扩展那条前沿（带按元素顶边切，同一位置父先于子——按中线切会把一个两屏高的通栏容器排到它自己孩子的后面，光标就得回头去偷）；`group` 一棵子树一个人（最快，画面铺满整页）；`cols` 同样切带但横过来，一条竖带一个光标——页面没有真的沟（左右两栏之间那种空隙）时自动退回 `rows`；`snake` 也是横带，但带内按 x 走、奇数带反着走；`depth` 每个 DOM 深度内部再切带，外层骨架先亮起来、叶子后填；`radial` 按到蓝图中心的距离一圈圈由内向外；`random` 用 `seed` 洗牌。队列认领（`pick: 'queued'`）下 `rows` 才是 N 个光标各守一条带同时开工 |
 | `balance` | `boolean` | `false` | 把页面切成「等预估工时」的带，而不是「等件数」的带。密集页上半页比下半页厚一倍时，默认切法会让一个光标多干一倍的活、另外五个停下来等它收尾；切分用的是最优连续划分（painters partition DP），所以开了只会更平，不会更差。它只改一条带切多长，不改朝哪个方向扫，和上面任意 `order` 叠加 |
 | `seed` | `number` | `0` | 只在 `order: 'random'` 下参与排程。0 = 每局现抽一个新顺序；同一个数字 = 同一场施工可重放 |
-| `performanceMode` | `'auto' \| 'high' \| 'low'` | `'auto'` | `auto` 在 `root` 内元素数 ≥250 时关辅助线、字号步进并把复制压到 6；`low` 永远裁剪；`high` 永远不裁。音效不在裁剪名单里：它按秒限量发声、不产生 DOM 节点，砍掉只会让人以为选项坏了 |
+| `performanceMode` | `'auto' \| 'high' \| 'low'` | `'auto'` | `auto` 在 `root` 内元素数 ≥250 时关辅助线、字号步进、竣工印章与光标拖尾，并把复制压到 6；`low` 永远裁剪；`high` 永远不裁。音效不在裁剪名单里 |
 | `ignore` | `string \| string[]` | `[]` | 命中选择器的元素连同子树整块跳过 |
 | `maxItems` | `number` | `4000` | 蓝图条目上限，1–5000，超出计入 `dropped`。扩展也是 4000 |
 | `duplicate` | `boolean` | `true` | 重复兄弟节点只真做一个，其余 Option 拖拽盖章 |
@@ -238,19 +248,26 @@ swarm.start();
 | `grow` | `boolean` | `true` | 大标题一边打字一边长到真实字号 |
 | `sound` | `boolean` | `true` | 合成音效，无音频文件。开着但浏览器还没放行时是「解锁」态：第一次按键 / 点按 / 滚动才真正出声，和扩展一样。设 `false` 才完全静音 |
 | `flocking` | `boolean` | `true` | 光标途中互相避让（只做 separation，不做对齐/聚合） |
+| `personality` | `boolean` | `true` | 每个光标按种子分配 `rush` / `tidy` / `drift` / `steady` 性格；关闭后全员为 `steady` |
+| `trailLife` | `number` | `0.3` | 光标拖尾停留秒数，范围 0–2.5；0 关闭；拥挤页裁剪会关闭 |
+| `stamps` | `boolean` | `true` | 已完成项目盖上对应光标的姓名首字母与颜色印章；拥挤页裁剪会关闭 |
+| `director` | `boolean` | `true` | 施工时点击光标可短暂催工，拖动光标可指定下一件附近的活；聚群、暂停及完工时不生效 |
 | `tour` | `boolean` | `false` | 滚动跟随施工前沿，结束交还页首。默认关：滚动归宿主所有 |
 | `theme` | `'auto' \| 'light' \| 'dark'` | `'auto'` | 施工线墨色。`auto` 按 backdrop → root → body → html 第一个不透明底色判断明暗 |
+| `hud` | `boolean` | `false` | 库自带的极简进度、跳过与继续滚动提示；已有宿主状态栏时可保持关闭 |
 | `autoStart` | `boolean` | `false` | 下一帧自动开始，不用手动 `start()` |
-| `onStart` | `(agents: AgentInfo[]) => void` | — | 本局所有光标的 `{ id, name, color }` |
+| `onStart` | `(agents: AgentInfo[]) => void` | — | 本局初始光标的 `{ id, name, color, personality }` |
 | `onProgress` | `(built: number, total: number) => void` | — | 每建成一项回调一次 |
-| `onComplete` | `(result: SwarmResult) => void` | — | `{ built, dropped, durationMs, seed }` |
+| `onComplete` | `(result: SwarmResult) => void` | — | `{ built, dropped, agents, durationMs, seed, crew? }`；`crew` 是完成过工作的光标及各自计数，空局不提供 |
 | `onStatus` | `(status: SwarmStatus) => void` | — | 200ms 一拍的 HUD 数据（阶段、`built/total`、在场与忙碌人数、最近五个忙碌光标、实际倍速与地面 pace、声音/解锁/镜头、`needsScroll`），阶段切换时立即再报一次。创造者模式面板就是靠它画的 |
 
 `SwarmResult.seed` 是本局**实际**用的种子。传 0 表示「现抽一个」，抽到几只有这里知道——看到一场想重看的，把它填回 `seed` 就能按同一套认领顺序重放。
 
+`SwarmStatus` 可通过 `swarm.status` 随时读取，也会传给 `onStatus`：`phase`（`idle/scanning/gathering/building/paused/done`）、`built`、`total`、`agents`（当前在场人数）、`busy`、`busyCrew`（最近几位忙碌光标）、`speed`（自适应后的实际倍率）、`pace`（基础倍率）、`sound`、`soundBlocked`、`tour`、`needsScroll` 和 `elapsed`（秒）。`AgentInfo` 含 `id/name/color/personality`，性格值为 `rush/tidy/drift/steady`。`SwarmResult.crew` 是可选的完工班组列表，每位成员另有 `built` 计数；跳过动画或空页面时可能没有它。
+
 ### 对齐参考实现的开关（`flight` / `pointer` / `agents` / `gather` / `pick` / `trigger` / `adaptiveSpeed` / `scan` / `score` / `reducedMotion` / `keys`）
 
-这十一项不是「打开才像扩展」的预设：**库默认就是参考扩展这一套**——光标待时绕轨道飞、鼠标当圆心、班组自动增减、开场先聚群、活按运行时价钱挑、只有滚到的那一段才放行、积压自己提速、采集前先滚一遍、声音与生成式配乐开着、读者要求减少动效时直接交还、Esc 与 M 可用。每一项都能关回简单模式；关掉的时候与之对应的轨道场、指针监听、每帧定价、convolver 都不构造，不是「加了个 if 每帧照样算」。创造者模式面板把 29 项按用途分进六个页签（规模 / 顺序 / 光标 / 采集 / 声音 / 外观），一次摊开一页，每行一个 hover 说明。
+这十一项不是「打开才像扩展」的预设：**库默认就是参考扩展这一套**——光标待时绕轨道飞、鼠标当圆心、班组自动增减、开场先聚群、活按运行时价钱挑、只有滚到的那一段才放行、积压自己提速、采集前先滚一遍、声音与生成式配乐开着、读者要求减少动效时直接交还、Esc 与 M 可用。每一项都能关回简单模式；关掉的时候与之对应的轨道场、指针监听、每帧定价、convolver 都不构造，不是「加了个 if 每帧照样算」。创造者模式面板把 34 项按用途分进六个页签（规模 / 顺序 / 光标 / 采集 / 声音 / 外观），一次摊开一页，每行一个 hover 说明。
 
 | 选项 | 类型 | 默认 | 说明 |
 | --- | --- | --- | --- |
@@ -359,24 +376,34 @@ useEffect(() => {
 
 ## 开发与验收
 
+### GitHub Pages 与小红书小工具
+
+两端共享 `demos/home.html`、`console.html`、`blender.html` 和相应样式与本地素材，但**产物不同**：GitHub Pages 使用 `npm run build:site` 生成 `site-dist/`（根 `index.html` 跳转到案例浏览器，资源路径适配仓库子路径）；小红书使用 `npm run build:minitool` 生成 `minitool/dist/`，再按小工具规范将该目录内容打成 ZIP，根目录必须直接包含 `index.html`。主包的 `npm run build` 只构建 npm 库，不会生成网站或小工具。
+
+GitHub Pages 在仓库 Settings → Pages 选择 **GitHub Actions** 作为来源后，可手动运行 `Deploy demo site to GitHub Pages` 工作流。工作流只有 `workflow_dispatch`，不会因普通推送自动部署。静态站无需开发服务器，但第三方网页的 `/__page` 无头转发只存在于本地 `npm run dev`；GitHub Pages 上跨域页面无法通过它重建。小红书版完全离线，使用 Shadow Root 挂载内置三页，不提供第三方网页抓取。
+
 ```bash
 npm run dev              # http://localhost:5199/demos/index.html
 npm run build            # 主包 es/cjs/iife + tune 子入口 + 声明文件
+npm run build:site       # GitHub Pages 静态站 → site-dist/
+npm run build:minitool   # 小红书离线站 → minitool/dist/
 npm run typecheck        # tsc --noEmit
-npm run verify           # Playwright 31 个验收场景，截图落在 .shots/
+npm run verify           # Playwright 验收；以脚本当前场景与输出为准
 npm run verify:consumer  # 把 tarball 装进独立目录，按真实消费者入口各走一遍
 npm publish --dry-run    # 发布预检：跑完整 prepublishOnly，只打包不上传
 ```
 
-`demos/index.html` 是唯一的预览入口：一个铺满屏幕的 mockup 浏览器窗口，标签页切案例（产品说明页 / 简单页基准 / 密集控制台 / 深色落地页 / 复杂工作台 / 长页面跟随 / 别人的站点），地址栏、前进后退、重新载入、GitHub 入口和底部状态栏都按真的浏览器样子画。第一页 `home.html` 是这个项目自己的说明页——功能、用法、参数速查、已知边界都在里面，它和其余案例走同一条重建链路，所以「它能不能重建自己」这件事不用另外证明。案例页本身没有工具栏，参数只在案例 iframe 内的创造者模式面板里改——iframe 不是偷懒：镜头跟随读的是 `window.scrollY / innerHeight`，换成内联滚动容器会让相机跟着错误的视口走。`tall.html` 专门做镜头跟随：实测页高 2767px、默认 `order: 'rows' + tour: true`，一眼能看出页面是一层层往下盖的。`tune.html` 假装成「别人家的站点」（满屏裸选择器 + 故意和面板撞名的类），专门用来验证面板隔离。每个案例的预设都默认开着 `sound` 与 `tour`，验收直接读面板上打勾的控件核对，不读 HTML 里的字符串。
+`demos/index.html` 是案例浏览器入口，提供首页、密集控制台和 Blender 工作区三个标签；小红书离线版复用这三页素材，但使用 Shadow Root 挂载，浏览器预览使用 iframe。案例页的创造者面板默认收起，顶栏在首次构建完成后展开。案例预设使用 `scan: 'single'` 以便直接进场；抓取第三方页面仍可使用 `pre-scroll`。`tests/fixtures/tall.html` 是本地滚动与镜头跟随测试夹具；`simple.html`、`landing.html`、`dark-ui.html`、`tune.html` 等仅供本地开发与验收，不在静态站和小红书产物中。
+
+预设案例首次打开时运行构建；已完成的标签保留页面实例，切回时直接恢复，包括输入和滚动位置。同一标签重复点击不会重跑；地址栏旁的刷新按钮和浏览器整页刷新会重新构建当前案例。
 
 双语那套机制值得单独说：**中文是源语言**，英文是查表换出来的。外壳与案例页靠 `demos/lang.ts`——`?lang=en` 时按文本节点整段匹配 `demos/dicts/<页>.ts` 的字典，运行时才写进 DOM 的句子走 `tr()` / `trf()`。创造者模式面板同理，字典在库里的 `src/tune/locale.ts`：`localize()` 换建好就固定的标签、选项与 hover 提示，`phrase()` 换带 `{0}` 的状态行，语言由 `tune({ lang })` 决定、不写就跟 `<html lang>` 走。之所以不做成「英文为源」：注释、验收断言、README 全是中文，反过来会让默认语言变成二次翻译的结果。第三方网页只换外壳和面板，被重建的那一页留着它自己的文字。验收的 `i18n @1280` 不只看字典覆盖率（`window.__sbI18n.missed`），还把渲染后的整棵 DOM 连同 iframe、shadow root 扫一遍，汉字与中文标点一个都不许漏——上一版靠人眼抽查，漏了整块参数提示。
 
-「别人的站点」那个标签能重建任意地址，靠的是本地开发服务器上的 `/__page?url=` 转发口（`vite.config.ts` 里的插件 + `tools/relay-render.mjs`）：浏览器不让跨源 `fetch` 读正文，没有 `Access-Control-Allow-Origin` 就直接抛，所以 `demos/browser.ts` 先试直连、再走同源转发，只放行 http(s)、不带访问者凭据。转发口不是 `curl` 一下那么简单：静态 HTML 只是站点发货时的空壳（B 站首页静态只有 13 张 `<img>`、文档高 1078px），所以它开一台共享的无头 Chromium，让页面自己的脚本跑完、一屏一屏滚下去逼出懒加载、等图落地后再序列化 DOM——同一页渲染后是 56 张图、四千多像素高。一次渲染有总预算、滚动步数与距离上限、序列化体积上限，视频流直接掐掉；Playwright 或浏览器二进制不在时一律退回原来的静态 fetch，dev server 照常起。响应头 `x-relay-render: headless | fallback | fetch` 写明这次走的是哪条路（`?render=off` / `?render=fail` 可以现场演示两条退路）。静态托管上没有这个转发口，那里诚实地降级为直接嵌，状态栏写清楚为什么没盖。
+新标签页里输入的地址能被重建，靠的是本地开发服务器上的 `/__page?url=` 转发口（`vite.config.ts` 里的插件 + `tools/relay-render.mjs`）：浏览器不让跨源 `fetch` 读正文，没有 `Access-Control-Allow-Origin` 就直接抛，所以 `demos/browser.ts` 先试直连、再走同源转发，只放行 http(s)、不带访问者凭据。转发口不是 `curl` 一下那么简单：静态 HTML 只是站点发货时的空壳（B 站首页静态只有 13 张 `<img>`、文档高 1078px），所以它开一台共享的无头 Chromium，让页面自己的脚本跑完、一屏一屏滚下去逼出懒加载、等图落地后再序列化 DOM——同一页渲染后是 56 张图、四千多像素高。一次渲染有总预算、滚动步数与距离上限、序列化体积上限，视频流直接掐掉；Playwright 或浏览器二进制不在时一律退回原来的静态 fetch，dev server 照常起。响应头 `x-relay-render: headless | fallback | fetch` 写明这次走的是哪条路（`?render=off` / `?render=fail` 可以现场演示两条退路）。静态托管上没有这个转发口，那里诚实地降级为直接嵌，状态栏写清楚为什么没盖。
 
 还有一处坑写进配置里：vite 默认把 `**/dist/**` 排除在 watch 之外，dev server 会一直发它缓存过的旧产物，走 IIFE 的 `demos/cdn.html` 于是拿着旧的面板字符串，看起来像「面板不跟语言」。`server.watch.ignored` 已经把 `dist` 收回来，`npm run build` 之后刷新即见新产物；验收脚本每次自己起服务器，不受影响。
 
-手机模式统一收在 `@media (max-width: 760px)` 这一档（定在 760 而不是 800，验收矩阵的 @800 一档仍是桌面版）：多栏网格换单列、控制台与工作台把两侧面板收到主列下面、代码块自己横滚；外壳的标签条横滚、地址栏单独换一行——标签条**必须**滚得起来，滚不起来就说明它把窗口撑宽了，这条是正向断言。创造者模式面板另外按视口高度分档，壳里那块案例视口只有 607px 高（标签条 + 顶栏 + 状态栏要吃掉一百多像素），默认展开的 13 行参数 + 6 个节标题仍然不滚动全露；其余四节默认折起（标题上写着当前值），正是按这一档量的——607px 下把 29 行全铺开必然出滚动条，`panel-fit` 场景按 984/983/933/932/841/840/733/732/640 九个宿主高度逐档量 `scrollHeight ≤ clientHeight`，并要求每一档都恰好露出 13 行 + 6 节。`mobile @390` 场景逐页量 `documentElement.scrollWidth`，还采样施工中的那一趟——光标箭头和名字标签贴着右边缘时最容易把文档悄悄撑宽，窄屏上实测多出的曾是整整一屏，撑宽了就是一条闪出来的横向滚动条。`swarm-builder-plan.md` 是交接文档：能力分级、每批实测数据、踩过的坑都在里面。
+手机布局以 `@media (max-width: 760px)` 为主要断点：多栏内容改为窄屏布局，标签条可横向滚动，文档宽度不能超过视口。创造者面板默认收起，打开后参数区在可用高度内滚动。修改页面或面板时要分别检查桌面、390px 手机和施工中状态，尤其关注光标标签与横向溢出。
 
 `prepublishOnly` 串起 typecheck → build → verify → verify:consumer，任何一环红了都发不出去。消费端门禁会真的 `npm pack` + 安装，检查 ESM/CJS/两个 IIFE 全局形状、声明文件正例过反例拦、以及装完包之后页面里真跑一场。
 

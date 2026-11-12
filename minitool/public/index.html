@@ -5,6 +5,7 @@
   <meta name="viewport"
         content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
   <title>Swarm Builder · 为你的网页开始创造模式，集群构建前端！</title>
+  <link rel="icon" type="image/png" href="./favicon.png" />
   <link rel="stylesheet" href="./app.css" />
 </head>
 <body>
@@ -52,9 +53,9 @@
           <div class="blank-chips" data-blank-chips></div>
           <!-- 新文案不在 demos/dicts 字典里（母本不可改），双语由外壳按 data-say 二选一填充。 -->
           <p class="blank-note" data-say
-             data-say-zh="小工具容器不联网：第三方地址抓不进来。内置的七个案例就是全部内容——点标签栏切换，或用下面两条现成地址。"
-             data-say-en="This mini-tool container is offline: third-party addresses cannot be fetched. The seven built-in cases are the whole content — switch via the tabs, or use the two ready-made addresses below.">
-            小工具容器不联网：第三方地址抓不进来。内置的七个案例就是全部内容——点标签栏切换，或用下面两条现成地址。
+             data-say-zh="小工具容器不联网：第三方地址抓不进来。内置三个案例——点标签栏切换，或用下面两条现成地址。"
+             data-say-en="This mini-tool container is offline: third-party addresses cannot be fetched. Three built-in cases are available — switch via the tabs, or use the two ready-made addresses below.">
+            小工具容器不联网：第三方地址抓不进来。内置三个案例——点标签栏切换，或用下面两条现成地址。
           </p>
         </div>
       </div>
@@ -67,6 +68,16 @@
       <span data-meta></span>
     </div>
   </main>
+
+  <div class="boot-intro" data-boot-intro hidden aria-live="polite">
+    <div class="boot-intro-inner">
+      <div class="boot-intro-stage" aria-hidden="true">
+        <span class="logo-motion"></span>
+      </div>
+      <p class="boot-intro-title" data-intro-title>创造模式准备中</p>
+      <p class="boot-intro-note" data-intro-note>正在准备页面资源…</p>
+    </div>
+  </div>
 
   <!-- 经典脚本：容器禁 type=module 与内联 script；外壳逻辑与案例挂载都在 app.js 里。 -->
   <script src="./app.js"></script>

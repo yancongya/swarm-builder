@@ -137,237 +137,365 @@ body { margin: 0; font: 15px/1.6 system-ui, -apple-system, "Segoe UI", Roboto, s
   transform: rotate(45deg);
 }
 
-/* --- home：产品自己的说明页，也是 mockup 浏览器的第一个模板 --- */
-/* 石墨墨色 + 铜：和外壳同一套语言，只是这里活在纸上而不是屏幕上。
-   面板挂在页面上，页面亮它就自动换深色施工线，不用在这里额外配 theme。 */
+/* --- home：精简长页 · 可操作版 --- */
+/* 六节各带一个纯 CSS 交互组件（阶段选择器 / 卡片检视器 / 配置切换 / 六页签 /
+   参数开关 / 视角切换）。全部走 :checked ~ 与原生 <details>，小红书端剥掉 script
+   照样能玩；所有元素始终 display:block、opacity:1，选中只改颜色、边框与位移，
+   采集器按 DOM 走查，物量、盖章、辅助线一条不丢。
+   长页仍是一屏一节、大字大留白，tour 镜头有真实滚动空间可跟。 */
 .page-home {
-  --ink: #1f1d1a;
-  --dim: #6f6a5f;
-  --line: #e0dbcf;
-  --rule: #eae5da;
-  --paper: #f6f4ee;
-  --card: #fffdf8;
-  --copper: #a2601f;
-  background: var(--paper);
+  --ink: #f0ece1;
+  --dim: #a59d8d;
+  --line: #3a352c;
+  --rule: #2e2a22;
+  --paper: #171410;
+  --card: #211d17;
+  --copper: #d98e4f;
   color: var(--ink);
-  /* 通栏版式：页面本身铺满，左右只留一条随窗口伸缩的边距。栏宽不再由一个居中的
-     max-width 决定——那样只是「底色铺满、架构还是居中的一栏」。 */
-  padding: 0 clamp(20px, 4.5vw, 72px) 44px;
+  padding: 0 6vw;
+  background:
+    repeating-linear-gradient(0deg, transparent 0 23px, rgba(240, 236, 225, .03) 23px 24px),
+    repeating-linear-gradient(90deg, transparent 0 23px, rgba(240, 236, 225, .03) 23px 24px),
+    var(--paper);
 }
-.page-home .top { display: flex; align-items: center; gap: 18px; padding: 18px 0; border-bottom: 1px solid var(--line); }
-.page-home .brand { display: flex; align-items: center; gap: 9px; color: var(--ink); text-decoration: none; }
-.page-home .brand .mark { width: 26px; height: 26px; }
-.page-home .brand b { font-size: 16px; letter-spacing: -.01em; }
-.page-home .links { display: flex; gap: 16px; margin-left: auto; }
-.page-home .links a { color: var(--dim); text-decoration: none; font-size: 14px; }
-.page-home .links a:hover { color: var(--copper); }
-.page-home .gh {
-  display: flex; align-items: center; gap: 7px; flex: 0 0 auto;
-  padding: 7px 13px; border: 1px solid var(--line); border-radius: 999px;
-  background: var(--card); color: var(--ink); text-decoration: none; font-size: 13px; font-weight: 600;
-}
-.page-home .gh svg { width: 16px; height: 16px; }
-.page-home .gh:hover { border-color: var(--copper); color: var(--copper); }
+.page-home ::selection { background: var(--copper); color: #1d1409; }
+.page-home label { -webkit-tap-highlight-color: transparent; cursor: pointer; }
 
-.page-home .hero { padding: 52px 0 38px; border-bottom: 1px solid var(--line); }
-/* hero 是两栏：左边讲它是什么，右边摆这一页自己正在用的参数；数字条单独占满整行。 */
-.page-home .hero-grid {
-  display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(300px, 1fr);
-  gap: 28px 56px; align-items: start;
+/* 原生 radio/checkbox 收成 1px，靠 label 激活；不用 display:none，读屏不丢。 */
+.page-home .pick {
+  position: absolute; top: 0; left: 0;
+  width: 1px; height: 1px; opacity: 0; pointer-events: none;
+  clip: rect(0 0 0 0);
 }
-/* 原来是一行铜色小字；现在拆成四枚标签，版本、许可、格式扫一眼就到手。 */
-.page-home .kicker { display: flex; flex-wrap: wrap; gap: 7px; margin: 0 0 16px; }
-.page-home .kicker span {
-  padding: 3px 10px; border: 1px solid var(--line); border-radius: 999px;
-  background: var(--card); color: var(--dim);
-  font-size: 10.5px; font-weight: 650; letter-spacing: .09em; text-transform: uppercase;
+
+/* 顶栏：品牌 + 五个锚点 + 开源入口 */
+.page-home .topbar {
+  display: flex; align-items: center; flex-wrap: wrap;
+  padding: 18px 0; border-bottom: 1px solid var(--line);
 }
-.page-home .kicker span:first-child { border-color: var(--copper); color: var(--copper); }
-.page-home .hero h1 { margin: 0 0 16px; font-size: clamp(38px, 4.2vw, 62px); line-height: 1.07; letter-spacing: -.035em; }
-.page-home .lead { margin: 0 0 20px; max-width: 62ch; color: var(--dim); font-size: clamp(15px, 1.35vw, 18px); line-height: 1.65; }
-/* 一局怎么走：采集 → 拆蓝图 → 认领 → 施工 → 交还，五个动词压在 CTA 上方。 */
-.page-home .rail { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 9px; margin: 0 0 26px; }
-.page-home .rail-tag { margin-right: 2px; color: var(--dim); font-size: 10.5px; font-weight: 650; letter-spacing: .09em; text-transform: uppercase; }
-.page-home .rail-step {
-  padding: 3px 9px; border: 1px solid var(--line); border-radius: 6px; background: var(--card);
-  color: #4c463c; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 11.5px;
+.page-home .brand { display: flex; align-items: center; color: var(--ink); text-decoration: none; }
+.page-home .brand .logo-motion { display: block; width: 38px; height: 38px; flex: 0 0 auto; margin-right: 10px; }
+.page-home .brand .logo-motion svg, .page-home .brand .logo-motion img { display: block; width: 100%; height: 100%; }
+.page-home .brand b { font-size: 16px; letter-spacing: -.01em; }
+.page-home .jump { display: flex; flex-wrap: wrap; margin-left: auto; }
+.page-home .jump a { margin-right: 22px; color: var(--dim); text-decoration: none; font-size: 13px; }
+.page-home .jump a:hover { color: var(--copper); }
+.page-home .gh {
+  display: flex; align-items: center; margin-left: 20px;
+  padding: 7px 13px; border: 1px solid var(--line); border-radius: 999px;
+  background: transparent; color: var(--ink); text-decoration: none; font-size: 13px; font-weight: 600;
 }
-.page-home .rail-arrow { color: var(--copper); font-size: 12px; }
-.page-home .cta { display: flex; gap: 12px; flex-wrap: wrap; }
-.page-home .hero-board { padding: 18px 20px; border: 1px solid var(--line); border-radius: 16px; background: var(--card); }
-.page-home .board-head { display: flex; align-items: center; gap: 10px; margin: 0 0 12px; }
-.page-home .board-tag {
-  padding: 2px 7px; border-radius: 4px; background: var(--ink); color: var(--paper);
+.page-home .gh svg { width: 16px; height: 16px; margin-right: 7px; }
+.page-home .gh:hover { border-color: var(--copper); color: var(--copper); }
+.page-home .colophon .gh.inline {
+  display: inline; margin-left: 0; padding: 0; border: 0; border-radius: 0;
+  background: transparent; color: var(--copper); font-size: inherit; font-weight: 400;
+}
+.page-home .colophon .gh.inline svg { display: inline-block; width: 12px; height: 12px; margin-right: 4px; vertical-align: -2px; }
+
+/* 每章一屏，右上角水印序号；交互提示与视角开关都挂在图头右上角。 */
+.page-home .chapter {
+  position: relative; box-sizing: border-box;
+  min-height: 100vh;
+  display: flex; flex-direction: column; justify-content: center;
+  padding: 96px 0;
+  border-bottom: 1px solid var(--line);
+}
+.page-home .ghost-no {
+  position: absolute; top: 32px; right: 0;
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: 9.5px; font-weight: 650; letter-spacing: .14em;
+  font-size: 110px; line-height: 1; font-weight: 700; letter-spacing: -.06em;
+  color: transparent; -webkit-text-stroke: 1px #5a5346;
+  pointer-events: none;
 }
-.page-home .board-title { margin: 0; color: var(--dim); font-size: 11.5px; font-weight: 600; letter-spacing: .07em; text-transform: uppercase; }
-.page-home .board { margin: 0; display: grid; gap: 0; }
-.page-home .board > div { display: flex; align-items: baseline; justify-content: space-between; gap: 18px; padding: 8px 0; border-top: 1px solid var(--rule); }
-.page-home .board dt { color: var(--copper); font-size: 13px; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
-.page-home .board dd { margin: 0; color: var(--dim); font-size: 13px; text-align: right; }
-.page-home .board-note { margin: 12px 0 0; color: var(--dim); font-size: 12.5px; line-height: 1.6; }
+.page-home .chapter-head { position: relative; margin-bottom: 36px; }
+.page-home .chapter h2 { margin: 0 0 16px; font-size: 56px; line-height: 1.06; letter-spacing: -.035em; font-weight: 650; }
+.page-home .chapter-head p { margin: 0; color: var(--dim); font-size: 17px; line-height: 1.6; }
+.page-home .hint {
+  position: absolute; right: 0; top: 8px;
+  padding: 5px 12px; border: 1px dashed var(--copper); border-radius: 999px;
+  color: var(--copper); font-size: 12px; letter-spacing: .04em;
+}
+
+/* 00 主张 */
+.page-home .kicker {
+  margin: 0 0 22px; color: var(--copper);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px; font-weight: 650; letter-spacing: .12em;
+}
+/* hero 多了一块示意板，单独收紧上下留白，保证整块板连状态行都能落在首屏。 */
+.page-home .hero { padding: 60px 0 56px; }
+.page-home .hero h1 { margin: 0 0 20px; font-size: 64px; line-height: 1.08; letter-spacing: -.04em; font-weight: 650; }
+.page-home .lead { margin: 0 0 22px; max-width: 24em; color: var(--dim); font-size: 20px; line-height: 1.6; }
+.page-home .rail { display: flex; flex-wrap: wrap; align-items: center; margin-bottom: 20px; }
+.page-home .rail-step {
+  padding: 6px 13px; margin-right: 6px; border: 1px dashed var(--line); border-radius: 6px;
+  color: var(--dim); font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px;
+  transition: background .18s, color .18s, border-color .18s;
+}
+.page-home .rail-step:hover { border-color: var(--copper); color: var(--copper); }
+.page-home .rail-arrow { margin-right: 6px; color: var(--copper); font-size: 13px; }
+.page-home .cta { display: flex; flex-wrap: wrap; margin-bottom: 18px; }
 .page-home .btn {
-  display: inline-block; padding: 12px 20px; border-radius: 10px;
+  display: inline-block; margin-right: 12px; padding: 13px 22px; border-radius: 9px;
   font: inherit; font-size: 15px; font-weight: 600; text-decoration: none; cursor: pointer;
 }
-.page-home .btn.primary { background: var(--copper); border: 1px solid var(--copper); color: #fff; }
-.page-home .btn.primary:hover { filter: brightness(1.08); }
+.page-home .btn.primary { background: var(--copper); border: 1px solid var(--copper); color: #1d1409; }
+.page-home .btn.primary:hover { filter: brightness(1.1); }
 .page-home .btn.ghost { background: transparent; border: 1px solid var(--line); color: var(--ink); }
-.page-home .stats {
-  margin-top: 34px; padding-top: 26px; border-top: 1px solid var(--line);
-  display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 24px;
-}
-.page-home .stat b { display: block; font-size: clamp(24px, 2.6vw, 34px); letter-spacing: -.02em; color: var(--copper); font-variant-numeric: tabular-nums; }
-.page-home .stat span { color: var(--dim); font-size: 12.5px; }
+.page-home .btn.ghost:hover { border-color: var(--copper); color: var(--copper); }
+.page-home .oss { display: flex; align-items: center; flex-wrap: wrap; margin: 0; color: var(--dim); font-size: 14px; line-height: 1.7; }
+.page-home .oss svg { width: 15px; height: 15px; flex: none; margin-right: 8px; color: var(--copper); }
+.page-home .oss a { color: var(--ink); text-decoration: none; border-bottom: 1px solid var(--copper); }
+.page-home .oss a:hover { color: var(--copper); }
 
-.page-home section { padding: 44px 0; border-bottom: 1px solid var(--line); }
-/* 栏目头：左边序号 + 标题，右边一句说明。序号是栏目的位置，不是装饰。 */
-.page-home .head {
-  display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr);
-  gap: 10px 48px; align-items: end; margin-bottom: 24px;
+/* 阶段示意板：五段线稿，点 rail 里哪一步，哪一段亮成铜色。 */
+.page-home .hero-grid { display: block; }
+.page-home .stage-board {
+  margin-top: 0; padding: 12px 16px 12px;
+  border: 1px solid var(--line); border-radius: 12px; background: #14110d;
 }
-.page-home .head-idx { display: flex; align-items: baseline; gap: 14px; min-width: 0; }
-.page-home .idx {
-  flex: 0 0 auto; padding-bottom: 3px; border-bottom: 2px solid var(--copper);
-  color: var(--copper); font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: 12px; font-weight: 650; letter-spacing: .08em;
+.page-home .board-cap { display: flex; align-items: center; margin-bottom: 8px; }
+.page-home .board-cap span { color: var(--ink); font-size: 13px; }
+.page-home .board-cap i {
+  margin-left: auto; color: var(--copper); font-style: normal;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 11px;
 }
-.page-home .head h2 { margin: 0; font-size: clamp(22px, 2.2vw, 30px); letter-spacing: -.02em; }
-.page-home .features .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; }
-.page-home .feature { padding: 18px 20px 20px; border: 1px solid var(--line); border-radius: 14px; background: var(--card); }
-.page-home .fmeta { display: flex; align-items: center; justify-content: space-between; margin: 0 0 14px; }
-.page-home .ftag { color: var(--copper); font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 10px; font-weight: 650; letter-spacing: .16em; }
-.page-home .feature .icon { width: 22px; height: 22px; display: block; color: var(--copper); }
-.page-home .feature h3 { margin: 0 0 6px; font-size: 16px; }
-.page-home .feature p { margin: 0; color: var(--dim); font-size: 13.5px; line-height: 1.6; }
+.page-home .board-svg { display: block; width: 100%; height: 158px; }
+.page-home .board-svg .seg { color: #4a443a; }
+.page-home .board-legend { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); grid-gap: 8px; margin-top: 10px; }
+.page-home .bl { display: flex; align-items: center; padding: 7px 9px; border: 1px solid var(--rule); border-radius: 6px; transition: background .18s, border-color .18s; }
+.page-home .bl i { margin-right: 8px; color: #6f685c; font-style: normal; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 10px; }
+.page-home .bl b { color: var(--dim); font-size: 12px; font-weight: 500; }
+#s1:checked ~ .hero-grid .rail label[for='s1'],
+#s2:checked ~ .hero-grid .rail label[for='s2'],
+#s3:checked ~ .hero-grid .rail label[for='s3'],
+#s4:checked ~ .hero-grid .rail label[for='s4'],
+#s5:checked ~ .hero-grid .rail label[for='s5'] { background: var(--copper); border-style: solid; border-color: var(--copper); color: #1d1409; }
+#s1:checked ~ .hero-grid .board-svg .seg-1,
+#s2:checked ~ .hero-grid .board-svg .seg-2,
+#s3:checked ~ .hero-grid .board-svg .seg-3,
+#s4:checked ~ .hero-grid .board-svg .seg-4,
+#s5:checked ~ .hero-grid .board-svg .seg-5 { color: var(--copper); }
+#s1:checked ~ .hero-grid .board-legend .bl-1,
+#s2:checked ~ .hero-grid .board-legend .bl-2,
+#s3:checked ~ .hero-grid .board-legend .bl-3,
+#s4:checked ~ .hero-grid .board-legend .bl-4,
+#s5:checked ~ .hero-grid .board-legend .bl-5 { border-color: var(--copper); background: #2a2117; }
+#s1:checked ~ .hero-grid .board-legend .bl-1 b,
+#s2:checked ~ .hero-grid .board-legend .bl-2 b,
+#s3:checked ~ .hero-grid .board-legend .bl-3 b,
+#s4:checked ~ .hero-grid .board-legend .bl-4 b,
+#s5:checked ~ .hero-grid .board-legend .bl-5 b { color: var(--copper); }
 
-/* 和扩展版：一句同源压成一排 11/11 芯片，再给对照表和两张各三行的得失卡。
-   深色只给这块同源条，是施工墨色的引用，不是另起一套主题。 */
-.page-home .same {
-  display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 8px 28px; align-items: center;
-  margin-bottom: 22px; padding: 20px 22px; border: 1px solid #2c2924; border-radius: 16px;
-  background: var(--ink); color: #eceadf;
+/* 01 六张卡就是六个可点标签，底部圆点指示当前选中。 */
+.page-home .grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); grid-gap: 16px; }
+.page-home .feature {
+  display: block; padding: 26px 24px 28px;
+  border: 1px solid var(--line); border-radius: 14px; background: var(--card);
+  transition: transform .18s, border-color .18s, background .18s;
 }
-.page-home .dflt-num { margin: 0; color: #d08a4d; font-size: clamp(40px, 4vw, 56px); font-weight: 650; line-height: 1; letter-spacing: -.04em; font-variant-numeric: tabular-nums; }
-.page-home .dflt-num span { color: #8f887a; font-size: .4em; letter-spacing: 0; }
-.page-home .dflt-cap { margin: 0 0 10px; font-size: 13.5px; font-weight: 600; }
-.page-home .chips { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 7px; }
-.page-home .chips li { display: flex; align-items: baseline; gap: 6px; padding: 3px 9px; border: 1px solid #3a362f; border-radius: 7px; background: #2a2722; }
-.page-home .chips code { padding: 0; background: none; color: #eceadf; font-size: 11.5px; }
-.page-home .chips li span { color: #8f887a; font-size: 11px; }
-.page-home .same-note { margin: 10px 0 0; color: #8f887a; font-size: 12px; }
-.page-home .same-note a { color: #d08a4d; text-decoration: none; }
-.page-home .same-note a:hover { text-decoration: underline; }
+.page-home .feature:hover { transform: translateY(-4px); border-color: #6b6252; }
+.page-home .ftag {
+  display: block; margin-bottom: 18px; color: var(--copper);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 11px; letter-spacing: .12em;
+}
+.page-home .icon { display: block; width: 34px; height: 34px; margin-bottom: 18px; color: var(--dim); transition: color .18s, transform .18s; }
+.page-home .feature h3 { margin: 0 0 10px; font-size: 20px; letter-spacing: -.01em; }
+.page-home .feature p { margin: 0; color: var(--dim); font-size: 14px; line-height: 1.6; }
+#f1:checked ~ .grid label[for='f1'],
+#f2:checked ~ .grid label[for='f2'],
+#f3:checked ~ .grid label[for='f3'],
+#f4:checked ~ .grid label[for='f4'],
+#f5:checked ~ .grid label[for='f5'],
+#f6:checked ~ .grid label[for='f6'] { border-color: var(--copper); background: #2a2117; transform: translateY(-4px); }
+#f1:checked ~ .grid label[for='f1'] .icon,
+#f2:checked ~ .grid label[for='f2'] .icon,
+#f3:checked ~ .grid label[for='f3'] .icon,
+#f4:checked ~ .grid label[for='f4'] .icon,
+#f5:checked ~ .grid label[for='f5'] .icon,
+#f6:checked ~ .grid label[for='f6'] .icon { color: var(--copper); transform: scale(1.14); }
+.page-home .dotbar { display: flex; justify-content: center; margin-top: 22px; }
+.page-home .dotbar i { width: 7px; height: 7px; margin: 0 5px; border: 1px solid #5c5548; border-radius: 50%; transition: background .18s, transform .18s; }
+#f1:checked ~ .dotbar i:nth-child(1),
+#f2:checked ~ .dotbar i:nth-child(2),
+#f3:checked ~ .dotbar i:nth-child(3),
+#f4:checked ~ .dotbar i:nth-child(4),
+#f5:checked ~ .dotbar i:nth-child(5),
+#f6:checked ~ .dotbar i:nth-child(6) { background: var(--copper); border-color: var(--copper); transform: scale(1.4); }
 
-/* 三步是先后关系（装 → 接 → 调），并排会把顺序读成并列，所以一列一行。 */
-.page-home .steps { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: 1fr; gap: 14px; }
-.page-home .step { display: grid; grid-template-columns: 34px minmax(0, 1fr); gap: 14px; padding: 18px; border: 1px solid var(--line); border-radius: 16px; background: var(--card); }
-.page-home .step .no {
-  width: 34px; height: 34px; display: grid; place-items: center;
-  border-radius: 50%; background: var(--ink); color: var(--paper); font-size: 15px; font-weight: 650;
+/* 02 三个 order 值可点，代码块里对应那一行跟着亮。 */
+.page-home .opts { display: flex; flex-wrap: wrap; margin-bottom: 14px; }
+.page-home .opts label {
+  padding: 6px 14px; margin: 0 8px 8px 0; border: 1px dashed var(--line); border-radius: 6px;
+  color: var(--dim); font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 13px;
+  transition: background .18s, color .18s, border-color .18s;
 }
-.page-home .step h3 { margin: 4px 0 6px; font-size: 16px; }
-.page-home .step p { margin: 0 0 10px; color: var(--dim); font-size: 14px; }
+.page-home .opts label:hover { border-color: var(--copper); color: var(--copper); }
+#o1:checked ~ .opts label[for='o1'],
+#o2:checked ~ .opts label[for='o2'],
+#o3:checked ~ .opts label[for='o3'] { border-style: solid; border-color: var(--copper); background: #2a2117; color: var(--copper); }
 .page-home pre {
-  margin: 0; padding: 12px 14px; border-radius: 10px; background: #232220; color: #eceadf;
-  overflow-x: auto; font-size: 12.5px; line-height: 1.65; scrollbar-width: thin;
+  margin: 0; padding: 26px 30px; border-radius: 14px;
+  background: #100e0b; color: #e9e3d5;
+  overflow-x: auto; font-size: 15px; line-height: 1.8; scrollbar-width: thin;
 }
-.page-home pre code { font: 12.5px/1.65 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+.page-home pre code { font: 15px/1.8 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
 .page-home code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
-/* 行内代码的胶囊底色只给正文里的 code。原来写成 `.page-home li code`，把 <pre> 里的
-   整块代码也一起刷成了米色——米色底压米色字，代码块看起来就是一排白条。 */
-.page-home :not(pre) > code { background: #ece6da; color: #4c463c; padding: 1px 6px; border-radius: 5px; font-size: 12.5px; }
+.page-home .opt, .page-home .tv { color: #6f685c; transition: color .18s, background .18s; }
+#o1:checked ~ pre .opt-1,
+#o2:checked ~ pre .opt-2,
+#o3:checked ~ pre .opt-3 { color: var(--copper); background: #2a2117; padding: 0 5px; border-radius: 4px; }
+.page-home .note { margin: 18px 0 0; color: var(--dim); font-size: 15px; line-height: 1.7; }
 
-.page-home .note { margin: 0; color: var(--dim); font-size: 13.5px; }
-/* 表格包一层：桌面是一张卡，窄屏在卡里自己横向滚，不把整页撑宽。 */
-.page-home .table-wrap {
-  margin-bottom: 22px; overflow-x: auto; border: 1px solid var(--line);
-  border-radius: 14px; background: var(--card);
+/* 03 六页签真的能切：chip、悬浮球轨道、导出片段三者联动。 */
+.page-home .creator { display: grid; grid-template-columns: 170px minmax(0, 1fr); grid-gap: 36px; align-items: center; }
+.page-home .orb { width: 150px; height: 150px; }
+.page-home .orb svg { display: block; width: 100%; height: 100%; }
+.page-home .orb-ring { transform-origin: 32px 32px; transition: transform .35s, stroke .2s; }
+.page-home .orb-body { transition: stroke .2s; }
+.page-home .chips { display: flex; flex-wrap: wrap; margin-bottom: 16px; }
+.page-home .chip {
+  padding: 6px 14px; margin: 0 8px 8px 0; border: 1px solid var(--line); border-radius: 999px;
+  color: var(--dim); font-size: 14px; transition: background .18s, color .18s, border-color .18s;
 }
-.page-home .table { width: 100%; min-width: 560px; border-collapse: collapse; font-size: 13.5px; }
-.page-home .table th {
-  text-align: left; padding: 10px 16px; border-bottom: 1px solid var(--line); background: #f3efe6;
-  color: var(--dim); font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase;
-}
-.page-home .table td { padding: 11px 16px; border-bottom: 1px solid var(--rule); color: #4c463c; vertical-align: top; }
-.page-home .table tr:last-child td { border-bottom: 0; }
-.page-home .table td:first-child { white-space: nowrap; color: var(--ink); }
+.page-home .chip:hover { border-color: var(--copper); color: var(--copper); }
+#t1:checked ~ .creator .chips label[for='t1'],
+#t2:checked ~ .creator .chips label[for='t2'],
+#t3:checked ~ .creator .chips label[for='t3'],
+#t4:checked ~ .creator .chips label[for='t4'],
+#t5:checked ~ .creator .chips label[for='t5'],
+#t6:checked ~ .creator .chips label[for='t6'] { border-color: var(--copper); background: var(--copper); color: #1d1409; }
+#t1:checked ~ .creator pre .tv-1,
+#t2:checked ~ .creator pre .tv-2,
+#t3:checked ~ .creator pre .tv-3,
+#t4:checked ~ .creator pre .tv-4,
+#t5:checked ~ .creator pre .tv-5,
+#t6:checked ~ .creator pre .tv-6 { color: var(--copper); background: #2a2117; padding: 0 5px; border-radius: 4px; }
+#t1:checked ~ .creator .orb-ring { transform: rotate(-24deg); }
+#t2:checked ~ .creator .orb-ring { transform: rotate(22deg); }
+#t3:checked ~ .creator .orb-ring { transform: rotate(64deg); }
+#t4:checked ~ .creator .orb-ring { transform: rotate(106deg); }
+#t5:checked ~ .creator .orb-ring { transform: rotate(148deg); }
+#t6:checked ~ .creator .orb-ring { transform: rotate(190deg); }
+.page-home .orb-side .note { margin-top: 0; margin-bottom: 16px; }
 
-/* 和扩展版那一节：表格回答「哪儿不一样」，两张卡回答「哪一头赢、哪一头输」。
-   输的那张不藏短处，铜色边只给赢的一侧。 */
-.page-home .give { display: grid; grid-template-columns: repeat(auto-fit, minmax(360px, 1fr)); gap: 16px; }
-.page-home .pc { padding: 18px 20px; border: 1px solid var(--line); border-radius: 14px; background: var(--card); }
-.page-home .pc.win { border-left: 3px solid var(--copper); }
-.page-home .pc.loss { border-left: 3px solid #b3aa9a; }
-.page-home .pc-head { display: flex; align-items: center; gap: 9px; margin: 0 0 12px; }
-.page-home .pc-head h3 { margin: 0; font-size: 16px; }
-.page-home .pc-mark { width: 22px; height: 22px; display: grid; place-items: center; border-radius: 50%; font-size: 13px; font-weight: 700; }
-.page-home .pc.win .pc-mark { background: #f3e4d2; color: #8a4c12; }
-.page-home .pc.loss .pc-mark { background: #e7e4dc; color: #6b6558; }
-.page-home .pc ul { margin: 0; padding-left: 18px; display: grid; gap: 9px; font-size: 13.5px; line-height: 1.6; color: #4c463c; }
+/* 04 六个原生开关：勾选点亮卡片与参数名。 */
+.page-home .pgrid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); grid-gap: 0 24px; margin-bottom: 28px; }
+.page-home .pcell {
+  position: relative; display: block; padding: 18px 0 18px 26px;
+  border-bottom: 1px dashed var(--line);
+  transition: background .18s, border-color .18s;
+}
+.page-home .pcell::before {
+  content: ''; position: absolute; left: 0; top: 24px;
+  width: 12px; height: 12px; border: 1px solid #5c5548; border-radius: 3px;
+  transition: background .18s, border-color .18s;
+}
+.page-home .pcell:hover::before { border-color: var(--copper); }
+.page-home .pcell code { display: block; margin-bottom: 6px; color: var(--dim); font-size: 16px; transition: color .18s; }
+.page-home .pcell span { color: var(--dim); font-size: 13.5px; }
+#p1:checked ~ label[for='p1'],
+#p2:checked ~ label[for='p2'],
+#p3:checked ~ label[for='p3'],
+#p4:checked ~ label[for='p4'],
+#p5:checked ~ label[for='p5'],
+#p6:checked ~ label[for='p6'] { background: #241d15; border-bottom-color: var(--copper); }
+#p1:checked ~ label[for='p1']::before,
+#p2:checked ~ label[for='p2']::before,
+#p3:checked ~ label[for='p3']::before,
+#p4:checked ~ label[for='p4']::before,
+#p5:checked ~ label[for='p5']::before,
+#p6:checked ~ label[for='p6']::before { background: var(--copper); border-color: var(--copper); }
+#p1:checked ~ label[for='p1'] code,
+#p2:checked ~ label[for='p2'] code,
+#p3:checked ~ label[for='p3'] code,
+#p4:checked ~ label[for='p4'] code,
+#p5:checked ~ label[for='p5'] code,
+#p6:checked ~ label[for='p6'] code { color: var(--copper); }
+.page-home .limits { list-style: none; margin: 0; padding: 0; }
+.page-home .limits li { padding: 14px 0; border-top: 1px solid var(--rule); color: var(--dim); font-size: 15px; }
 
-/* 参数速查：六张用途卡，和创造者面板的六个页签一一对应。
-   一行两件事——左边键、右边取值，说明压在下一行，窄卡里也不会挤成一条。 */
-.page-home .pgrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; align-items: start; }
-.page-home .pgroup { padding: 16px 18px 8px; border: 1px solid var(--line); border-radius: 16px; background: var(--card); }
-.page-home .phead { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; margin: 0 0 10px; }
-.page-home .pchip { padding: 2px 9px; border-radius: 999px; background: #efe3cf; color: #7a4a18; font-size: 10.5px; font-weight: 650; letter-spacing: .06em; }
-.page-home .phead h3 { margin: 0; font-size: 15px; }
-.page-home .pnote { flex-basis: 100%; margin: 0; color: var(--dim); font-size: 12px; }
-.page-home .plist { display: grid; }
-.page-home .prow { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 1px 12px; padding: 8px 0; border-top: 1px solid var(--rule); }
-.page-home .prow:first-child { border-top: 0; }
-/* 行内 code 是网格项时会横向拉满，胶囊就变成一条长米色横杠；让它按内容收窄。 */
-.page-home .prow code { justify-self: start; align-self: center; font-size: 12px; }
-.page-home .pv {
-  align-self: center; justify-self: end; color: #4c463c; text-align: right;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 11.5px; font-weight: 600;
+/* 05 参考项目：三档切换只抬升选中卡，三张卡始终可见（采集器按 DOM 走查）。 */
+/* 切换放标题下方，别压住右上角的幽灵序号水印。 */
+.page-home .seg-switch {
+  display: inline-flex; margin-top: 14px;
+  border: 1px solid var(--line); border-radius: 999px; overflow: hidden;
 }
-.page-home .pref {
-  display: inline-block; margin-left: 6px; padding: 0 5px;
-  border: 1px solid rgba(162, 96, 31, .45); border-radius: 4px;
-  color: var(--copper); font-family: system-ui, sans-serif; font-style: normal;
-  font-size: 9px; font-weight: 650; letter-spacing: .08em; vertical-align: 1px;
+.page-home .seg-switch label { padding: 7px 15px; color: var(--dim); font-size: 13px; transition: background .18s, color .18s; }
+.page-home .seg-switch label:hover { color: var(--copper); }
+#ref-a:checked ~ .chapter-head .seg-switch label[for='ref-a'],
+#ref-b:checked ~ .chapter-head .seg-switch label[for='ref-b'],
+#ref-c:checked ~ .chapter-head .seg-switch label[for='ref-c'] { background: var(--copper); color: #1d1409; }
+.page-home .refgrid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); grid-gap: 14px; margin-bottom: 16px; }
+.page-home .refcard {
+  display: block; padding: 20px 20px 18px; border: 1px solid var(--line); border-radius: 12px;
+  background: var(--card); transition: background .18s, border-color .18s, transform .18s;
 }
-.page-home .pw { grid-column: 1 / -1; color: var(--dim); font-size: 12.5px; line-height: 1.55; }
-.page-home .params > .board-note { margin-top: 16px; }
-
-.page-home .limits .list { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 10px; }
-.page-home .limits li {
-  padding: 12px 14px; border-left: 2px solid var(--copper); background: var(--card);
-  border-radius: 0 10px 10px 0; font-size: 14px; color: #4c463c;
+.page-home .refcard:hover { border-color: var(--copper); }
+.page-home .ref-no {
+  display: block; margin-bottom: 14px; color: var(--dim);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 11px; letter-spacing: .1em; transition: color .18s;
 }
-.page-home .colophon { padding-top: 24px; color: var(--dim); font-size: 13px; line-height: 1.7; }
-.page-home .colophon p { margin: 0; max-width: 110ch; }
-.page-home .gh.inline {
-  display: inline-flex; align-items: center; gap: 5px; padding: 0 4px;
-  border: 0; background: none; color: var(--copper); font-weight: 600;
+.page-home .refcard b { display: block; margin-bottom: 10px; font-size: 15px; overflow-wrap: anywhere; }
+.page-home .ref-desc { display: block; min-height: 68px; margin-bottom: 14px; color: var(--dim); font-size: 14px; line-height: 1.6; }
+.page-home .ref-tags { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 14px; }
+.page-home .ref-tags i {
+  padding: 4px 9px; border: 1px dashed var(--line); border-radius: 6px;
+  color: var(--dim); font-size: 12px; font-style: normal;
+  transition: color .18s, border-color .18s;
 }
-.page-home .gh.inline svg { width: 14px; height: 14px; }
-
-/* 给 AI 的提示词：整段摊开可读，复制走的就是屏幕上这一份，所以不做「点开才显示」。
-   长段落用 pre-wrap，不然一行编号说明会把页面撑出横向滚动。 */
-.page-home .prompt {
-  margin-top: 18px; border: 1px solid var(--line); border-radius: 16px;
-  background: var(--card); overflow: hidden;
+.page-home .refcard em { display: block; color: var(--dim); font-size: 12px; font-style: normal; line-height: 1.6; }
+#ref-a:checked ~ .refgrid label[for='ref-a'],
+#ref-b:checked ~ .refgrid label[for='ref-b'],
+#ref-c:checked ~ .refgrid label[for='ref-c'] { border-color: var(--copper); background: #2a2117; transform: translateY(-4px); }
+#ref-a:checked ~ .refgrid label[for='ref-a'] .ref-no,
+#ref-b:checked ~ .refgrid label[for='ref-b'] .ref-no,
+#ref-c:checked ~ .refgrid label[for='ref-c'] .ref-no { color: var(--copper); }
+#ref-a:checked ~ .refgrid label[for='ref-a'] .ref-tags i,
+#ref-b:checked ~ .refgrid label[for='ref-b'] .ref-tags i,
+#ref-c:checked ~ .refgrid label[for='ref-c'] .ref-tags i { border-color: var(--copper); color: #e9e3d5; }
+.page-home .ref-links { margin: 0 0 24px; color: var(--dim); font-size: 12.5px; line-height: 1.8; }
+.page-home .ref-links a { color: var(--dim); text-decoration: none; border-bottom: 1px dotted var(--line); }
+.page-home .ref-links a:hover { color: var(--copper); border-bottom-color: var(--copper); }
+.page-home .ours { margin-bottom: 26px; }
+.page-home .ours h3 { margin: 0 0 14px; font-size: 21px; letter-spacing: -.01em; }
+.page-home .ours ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.page-home .ours li {
+  padding-left: 16px; border-left: 2px solid var(--copper);
+  color: #d8d2c4; font-size: 15px; line-height: 1.6;
 }
-.page-home .prompt-bar {
-  display: flex; align-items: center; gap: 8px 14px; flex-wrap: wrap;
-  padding: 14px 16px; border-bottom: 1px solid var(--rule);
-}
-.page-home .prompt-bar b { font-size: 15px; }
-.page-home .prompt-hint { flex: 1 1 260px; color: var(--dim); font-size: 13px; line-height: 1.5; }
+/* 这一章内容最多，单独收紧节奏，保证连页尾提示词都落在一屏内。 */
+#refs.chapter { padding: 60px 0; }
+#refs .chapter-head { margin-bottom: 24px; }
+#refs .ref-desc { min-height: 56px; }
+#refs .refgrid { margin-bottom: 12px; }
+#refs .ref-links { margin-bottom: 16px; }
+#refs .ours { margin-bottom: 18px; }
+#refs .stats { margin-bottom: 18px; }
+#refs .colophon { margin-bottom: 16px; }
+.page-home .stats { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); grid-gap: 14px; margin-bottom: 28px; }
+.page-home .stat { padding: 8px 10px; border: 1px solid transparent; border-radius: 8px; transition: transform .18s, border-color .18s, background .18s; }
+.page-home .stat:hover { transform: translateY(-4px); border-color: var(--line); background: var(--card); }
+.page-home .stat b { display: block; margin-bottom: 4px; color: var(--copper); font-size: 38px; letter-spacing: -.03em; font-variant-numeric: tabular-nums; }
+.page-home .stat span { color: var(--dim); font-size: 13px; }
+.page-home .colophon { margin: 0 0 24px; color: var(--dim); font-size: 13px; line-height: 1.8; }
+.page-home .prompt { padding-top: 20px; border-top: 1px solid var(--line); }
+.page-home .prompt summary { cursor: pointer; color: var(--dim); font-size: 14px; }
+.page-home .prompt summary:hover { color: var(--copper); }
+.page-home .prompt-body { margin-top: 16px; }
+.page-home .prompt-actions { display: flex; justify-content: flex-end; margin-bottom: 10px; }
 .page-home pre.prompt-text {
-  margin: 0; border-radius: 0; background: #1f1e1b; padding: 14px 16px;
-  max-height: 340px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere;
+  max-height: 200px; overflow: auto; white-space: pre-wrap; overflow-wrap: break-word;
+  font-size: 12px; line-height: 1.7; padding: 16px 18px;
 }
 .page-home .btn.tiny {
-  flex: 0 0 auto; padding: 8px 14px; font-size: 13px; border-radius: 9px;
+  margin: 0; padding: 8px 14px; font-size: 13px; border-radius: 8px;
   background: transparent; border: 1px solid var(--copper); color: var(--copper);
 }
-.page-home .btn.tiny:hover { background: var(--copper); color: #fff; }
-.page-home .btn.tiny[data-copied='true'] { background: var(--copper); border-color: var(--copper); color: #fff; }
+.page-home .btn.tiny:hover { background: var(--copper); color: #1d1409; }
+.page-home .btn.tiny[data-copied='true'] { background: var(--copper); border-color: var(--copper); color: #1d1409; }
 
 /* 长页面：唯一目的是让文档比视口高好几倍，镜头才有东西可跟。通栏长文版式——
    章节标题走左栏，正文与图走右栏，宽度是真的被用起来，不是居中一栏再铺个底色。 */
@@ -399,46 +527,86 @@ body { margin: 0; font: 15px/1.6 system-ui, -apple-system, "Segoe UI", Roboto, s
   .page-simple h1 { font-size: 26px; }
   .page-simple .cards { grid-template-columns: 1fr; gap: 12px; }
 
-  .page-home { padding: 0 16px 32px; }
-  .page-home .top { flex-wrap: wrap; gap: 10px 14px; padding: 14px 0; }
-  .page-home .links { order: 3; width: 100%; margin-left: 0; gap: 15px; overflow-x: auto; scrollbar-width: none; }
-  .page-home .links::-webkit-scrollbar { display: none; }
-  .page-home .gh { margin-left: auto; padding: 6px 11px; }
-  .page-home .hero { padding: 30px 0 26px; }
-  .page-home .hero-grid { grid-template-columns: minmax(0, 1fr); gap: 22px; }
-  .page-home .kicker { gap: 6px; margin-bottom: 13px; }
-  .page-home .kicker span { padding: 2px 8px; font-size: 9.5px; }
-  .page-home .hero h1 { font-size: 30px; line-height: 1.15; }
-  .page-home .lead { font-size: 15px; }
-  .page-home .rail { gap: 5px 7px; margin-bottom: 20px; }
-  .page-home .rail-step { padding: 2px 7px; font-size: 10.5px; }
-  .page-home .btn { padding: 11px 16px; font-size: 14px; }
-  .page-home .stats { margin-top: 22px; padding-top: 18px; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px 12px; }
-  .page-home .stat b { font-size: 21px; }
-  .page-home section { padding: 28px 0; }
-  .page-home .head { grid-template-columns: minmax(0, 1fr); align-items: start; gap: 8px; margin-bottom: 18px; }
-  .page-home .head-idx { gap: 10px; }
-  .page-home .head h2 { font-size: 21px; }
-  .page-home .features .grid { grid-template-columns: 1fr; gap: 12px; }
-  .page-home .feature { padding: 16px; }
-  .page-home .same { grid-template-columns: minmax(0, 1fr); gap: 8px; padding: 18px; }
-  .page-home .pgrid { grid-template-columns: minmax(0, 1fr); }
-  .page-home .pgroup { padding: 14px 14px 6px; }
-  .page-home .prow { gap: 1px 8px; }
-  .page-home .pv { font-size: 11px; }
-  .page-home .step { grid-template-columns: 28px minmax(0, 1fr); gap: 10px; padding: 14px; }
-  .page-home .step .no { width: 28px; height: 28px; font-size: 13px; }
-  .page-home .limits .list { grid-template-columns: 1fr; }
-  .page-home pre { font-size: 11.5px; }
+  /* 手机：仍是一屏一节，交互控件保持大点击区；提示与视角开关落到标题下方，
+     示意板压扁但五段仍可辨，目录横向滚、不留横向滚动条。 */
+  .page-home { padding: 0 20px; }
+  .page-home .topbar { padding: 14px 0; }
+  .page-home .brand .logo-motion { width: 32px; height: 32px; }
+  .page-home .brand b { font-size: 15px; }
+  .page-home .jump {
+    order: 3; width: 100%; margin: 12px 0 0;
+    flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none;
+  }
+  .page-home .jump::-webkit-scrollbar { display: none; }
+  .page-home .jump a { margin-right: 18px; white-space: nowrap; font-size: 12.5px; }
+  .page-home .gh { margin-left: auto; padding: 5px 10px; font-size: 12px; }
+  .page-home .chapter { min-height: 100vh; padding: 76px 0 52px; }
+  .page-home .ghost-no { top: 20px; font-size: 60px; }
+  .page-home .chapter-head { margin-bottom: 24px; }
+  .page-home .chapter h2 { font-size: 32px; }
+  .page-home .chapter-head p { font-size: 14px; }
+  .page-home .hint {
+    position: static; display: inline-block; margin-top: 12px;
+    padding: 4px 10px; font-size: 11px;
+  }
+  .page-home .kicker { margin-bottom: 14px; font-size: 10px; letter-spacing: .07em; }
+  .page-home .hero h1 { margin-bottom: 16px; font-size: 28px; line-height: 1.2; letter-spacing: -.045em; }
+  .page-home .lead { margin-bottom: 20px; font-size: 16px; }
+  .page-home .rail { margin-bottom: 18px; }
+  .page-home .rail-step { padding: 5px 8px; margin-right: 4px; font-size: 10.5px; }
+  .page-home .rail-arrow { margin-right: 4px; font-size: 11px; }
+  .page-home .cta { margin-bottom: 18px; }
+  .page-home .btn { padding: 11px 16px; margin-right: 8px; font-size: 14px; }
+  .page-home .oss { font-size: 12.5px; }
+  .page-home .stage-board { margin-top: 4px; padding: 10px 10px 12px; }
+  .page-home .board-cap span { font-size: 11.5px; }
+  .page-home .board-cap i { font-size: 10px; }
+  .page-home .board-svg { height: 104px; }
+  .page-home .board-legend { grid-template-columns: repeat(5, minmax(0, 1fr)); grid-gap: 4px; margin-top: 8px; }
+  .page-home .bl { padding: 5px 4px; }
+  .page-home .bl i { display: none; }
+  .page-home .bl b { font-size: 10px; }
+  .page-home .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); grid-gap: 10px; }
+  .page-home .feature { padding: 16px 14px 18px; border-radius: 10px; }
+  .page-home .ftag { margin-bottom: 12px; font-size: 9.5px; }
+  .page-home .icon { width: 24px; height: 24px; margin-bottom: 12px; }
+  .page-home .feature h3 { font-size: 15px; }
+  .page-home .feature p { font-size: 11.5px; }
+  .page-home .dotbar { margin-top: 16px; }
+  .page-home .opts label { padding: 5px 11px; font-size: 12px; }
+  .page-home pre { padding: 16px 14px; font-size: 11.5px; }
   .page-home pre code { font-size: 11.5px; }
-  .page-home .table { font-size: 12px; }
-  .page-home .table th, .page-home .table td { padding: 8px 10px; }
-  /* 名字列桌面是不换行的；参数表长到二十六行以后，最宽的那一格把整张表顶到 402px，
-     比 390 的屏还宽——整页因此出横向滚动条。窄屏放开换行，取值列那些不带空格的
-     组合名（ignore·follow·repel）也允许硬断。 */
-  .page-home .table td:first-child { white-space: normal; }
-  .page-home .table code { overflow-wrap: anywhere; }
-  .page-home .limits li { padding: 10px 12px; font-size: 13px; }
+  .page-home .note { font-size: 13px; }
+  .page-home .creator { grid-template-columns: minmax(0, 1fr); grid-gap: 14px; }
+  .page-home .orb { width: 88px; height: 88px; }
+  .page-home .chip { padding: 5px 11px; margin: 0 6px 6px 0; font-size: 12px; }
+  .page-home .pgrid { grid-template-columns: repeat(2, minmax(0, 1fr)); grid-gap: 0 12px; }
+  .page-home .pcell { padding: 12px 0 12px 22px; }
+  .page-home .pcell::before { top: 17px; width: 10px; height: 10px; }
+  .page-home .pcell code { font-size: 13px; }
+  .page-home .pcell span { font-size: 11.5px; }
+  .page-home .limits li { padding: 10px 0; font-size: 13px; }
+  .page-home .seg-switch { position: static; display: inline-flex; margin-top: 12px; }
+  .page-home .seg-switch label { padding: 6px 12px; font-size: 12px; }
+  .page-home .refgrid { grid-template-columns: minmax(0, 1fr); grid-gap: 10px; margin-bottom: 14px; }
+  .page-home .refcard { padding: 15px 16px; }
+  .page-home .ref-no { margin-bottom: 10px; font-size: 10px; }
+  .page-home .refcard b { font-size: 13.5px; }
+  .page-home .ref-desc { min-height: 0; margin-bottom: 10px; font-size: 12.5px; }
+  .page-home .ref-tags { margin-bottom: 10px; }
+  .page-home .ref-tags i { font-size: 11px; }
+  .page-home .refcard em { font-size: 11px; }
+  .page-home .ref-links { margin-bottom: 18px; font-size: 11.5px; }
+  .page-home .ours { margin-bottom: 20px; }
+  .page-home .ours h3 { margin-bottom: 10px; font-size: 17px; }
+  .page-home .ours li { font-size: 13px; }
+  #refs.chapter { padding: 60px 0 40px; }
+  .page-home .stats { grid-template-columns: repeat(3, minmax(0, 1fr)); grid-gap: 10px; }
+  .page-home .stat { padding: 6px 8px; }
+  .page-home .stat b { font-size: 26px; }
+  .page-home .stat span { font-size: 11px; }
+  .page-home .colophon { font-size: 12px; }
+  .page-home pre.prompt-text { max-height: 170px; font-size: 11px; }
 
   .page-landing nav { padding: 14px 16px; gap: 10px 14px; flex-wrap: wrap; }
   .page-landing .hero { padding: 44px 16px 32px; }

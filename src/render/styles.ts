@@ -3,9 +3,11 @@ export const LIB_STYLE_ID = 'swarm-builder-style';
 export const CSS = `
 .sb-overlay{position:absolute;left:0;top:0;z-index:2147483000;pointer-events:none;
   /* 施工层不该改变页面自身的滚动尺寸：光标箭头和标签在右边缘会伸出画框，手机上就是
-     一条闪出来的横向滚动条。clip 只裁不滚（hidden 会顺带把另一轴也变成滚动容器），
+     一条闪出来的横向滚动条；纵向同理——带 max-height + 内部滚动的正文（说明页那段
+     给 AI 的提示词）实测到的是全文高，幽灵把自己的盒子撑到页脚下面，容器里就是
+     页脚底下那条白框。clip 只裁不滚（hidden 会顺带把另一轴也变成滚动容器），
      4px 余量留给带边框的 root——画框比 border box 短一个左边框宽。 */
-  overflow-x:clip;overflow-clip-margin:4px;
+  overflow:clip;overflow-clip-margin:4px;
   font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;-webkit-font-smoothing:antialiased;
   --sb-ghost:rgba(148,155,168,.22);--sb-edge:rgba(255,255,255,.5);--sb-copy-edge:rgba(147,165,79,.9)}
 .sb-overlay[data-sb-theme="light"]{--sb-ghost:rgba(100,116,139,.2);--sb-edge:rgba(15,23,42,.55);
@@ -21,7 +23,9 @@ export const CSS = `
 .sb-fixed{position:fixed;left:0;top:0;width:0;height:0;pointer-events:none}
 .sb-text{position:absolute;box-sizing:border-box;white-space:pre-wrap;opacity:1;margin:0;padding:0}
 .sb-caret{position:absolute;width:2px;background:currentColor;border-radius:1px}
-.sb-cursor{position:absolute;left:0;top:0;will-change:transform;color:#fff}
+/* 光标（连同肚子里的拖尾）必须压住后建的条目：条目按施工顺序追加，同为 z-index:auto
+   时后来者居上，会把光标和尾巴盖掉。点名横幅再高一层，始终读得到。 */
+.sb-cursor{position:absolute;left:0;top:0;z-index:2;will-change:transform;color:#fff}
 .sb-cursor[hidden]{display:none}
 .sb-cursor__arrow,.sb-cursor__ibeam{position:absolute;left:0;top:0;display:none}
 .sb-cursor.is-arrow .sb-cursor__arrow{display:block}
@@ -105,7 +109,7 @@ export const CSS = `
 /* 开场点名：名牌逐个弹一下，延迟由 CursorLayer.rollCall 按进场顺序排。 */
 @keyframes sb-roll{0%{transform:scale(1)}35%{transform:scale(1.28)}100%{transform:scale(1)}}
 .sb-name.sb-rolling{animation:sb-roll .45s ease both}
-.sb-rollcall{position:absolute;transform:translateX(-50%);padding:3px 12px;border-radius:999px;
+.sb-rollcall{position:absolute;z-index:3;transform:translateX(-50%);padding:3px 12px;border-radius:999px;
   background:rgba(11,13,16,.82);color:#fff;font-size:11px;line-height:16px;white-space:nowrap;
   pointer-events:none}
 .sb-hud{position:fixed;left:0;right:0;bottom:12px;bottom:calc(12px + env(safe-area-inset-bottom,0px));

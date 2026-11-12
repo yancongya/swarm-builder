@@ -1,0 +1,625 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>Blender</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{height:100%;overflow:hidden}
+body{
+  font:12px/1.25 "Segoe UI",system-ui,"Microsoft YaHei",sans-serif;
+  background:#1d1d1d;color:#e0e0e0;
+  display:flex;flex-direction:column;user-select:none;
+}
+
+/* ========== TOPBAR ========== */
+.topbar{
+  height:28px;background:#303030;
+  border-bottom:1px solid #1b1b1b;
+  display:flex;align-items:center;
+  padding:0 2px 0 6px;flex-shrink:0;gap:0;
+}
+.logo{
+  width:22px;height:22px;margin-right:4px;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;flex-shrink:0;
+}
+.logo svg{width:20px;height:20px;display:block}
+.mi{padding:2px 7px;color:#b8b8b8;cursor:pointer;border-radius:2px}
+.mi:hover{background:#3e3e3e;color:#fff}
+.workspaces{display:flex;align-items:center;margin-left:6px;height:100%;gap:1px}
+.ws{
+  padding:0 9px;height:22px;display:flex;align-items:center;
+  color:#7a7a7a;cursor:pointer;border-radius:3px;font-size:11px;
+}
+.ws:hover{color:#c0c0c0;background:#383838}
+.ws.on{background:#3e3e3e;color:#eee}
+.top-r{margin-left:auto;display:flex;align-items:center;gap:8px;color:#666;font-size:11px}
+.wb{width:40px;height:28px;border:0;background:0;color:#888;cursor:pointer;font-size:11px}
+.wb:hover{background:#404040;color:#fff}
+.wb.x:hover{background:#c42b1c;color:#fff}
+
+/* ========== WORKSPACE GRID ========== */
+.main{
+  flex:1;display:grid;
+  grid-template-columns:34px minmax(0,1fr) 270px;
+  grid-template-rows:minmax(0,1fr) 24px 160px;
+  gap:1px;background:#0f0f0f;min-height:0;
+}
+
+/* 工具栏（贴在视口左侧） */
+.tools{
+  grid-row:1/3;background:#303030;
+  display:flex;flex-direction:column;align-items:center;
+  padding:3px 0;gap:1px;border-right:1px solid #1b1b1b;
+}
+.tool{
+  width:28px;height:28px;border-radius:3px;
+  display:flex;align-items:center;justify-content:center;
+  cursor:pointer;color:#8a8a8a;border:1px solid transparent;
+}
+.tool:hover{background-color:#3e3e3e;color:#ddd}
+.tool.on{background-color:#4772b3;border-color:#5a8ad4;color:#fff}
+.tool svg{width:14px;height:14px;fill:currentColor}
+.tsep{width:18px;height:1px;background:#444;margin:3px 0}
+
+/* 3D 视口 */
+.viewport{
+  grid-column:2;grid-row:1;
+  display:flex;flex-direction:column;min-height:0;background:#2a2a2a;
+}
+.vp-head{
+  height:24px;background:#303030;border-bottom:1px solid #1b1b1b;
+  display:flex;align-items:center;padding:0 4px;gap:2px;flex-shrink:0;
+}
+.mode{
+  background:#242424;border:1px solid #3a3a3a;color:#ccc;
+  padding:1px 4px;border-radius:2px;font-size:11px;height:19px;
+}
+.vm{padding:1px 6px;border-radius:2px;color:#888;cursor:pointer;font-size:11px}
+.vm:hover{background:#3e3e3e;color:#ddd}
+.vm.on{background:#4772b3;color:#fff}
+.vp-view{
+  flex:1;position:relative;overflow:hidden;
+  background:#303030;
+  background-image:
+    linear-gradient(#353535 1px,transparent 1px),
+    linear-gradient(90deg,#353535 1px,transparent 1px);
+  background-size:48px 48px;
+  background-position:center center;
+}
+.ax-x{position:absolute;left:0;right:0;top:50%;height:1px;background:#a33;opacity:.65}
+.ax-y{position:absolute;top:0;bottom:0;left:50%;width:1px;background:#3a3;opacity:.65}
+.origin{position:absolute;left:50%;top:50%;width:5px;height:5px;margin:-2.5px 0 0 -2.5px;background:#ccc;border-radius:50%}
+.nav{
+  position:absolute;top:8px;right:8px;width:56px;height:56px;
+  background:rgba(35,35,35,.8);border:1px solid #4a4a4a;border-radius:5px;
+  font-size:9px;font-weight:700;
+}
+.nav .nx{position:absolute;right:5px;top:50%;transform:translateY(-50%);color:#e74c3c}
+.nav .ny{position:absolute;top:5px;left:50%;transform:translateX(-50%);color:#2ecc71}
+.nav .nz{position:absolute;bottom:5px;left:50%;transform:translateX(-50%);color:#3498db}
+.vp-info{position:absolute;bottom:6px;left:8px;font:10px Consolas,monospace;color:#5a5a5a}
+
+/* 编辑器类型切换条 */
+.editor-bar{
+  grid-column:2;grid-row:2;
+  background:#303030;border-top:1px solid #1b1b1b;
+  display:flex;align-items:center;padding:0 6px;gap:8px;
+  font-size:11px;color:#7a7a7a;
+}
+.editor-bar select{
+  background:#242424;border:1px solid #3a3a3a;color:#ccc;
+  padding:1px 4px;border-radius:2px;font-size:11px;
+}
+
+/* 右侧边栏 */
+.side{
+  grid-column:3;grid-row:1/4;
+  background:#303030;display:flex;flex-direction:column;
+  min-height:0;border-left:1px solid #1b1b1b;
+}
+.ph{
+  height:22px;background:#383838;border-bottom:1px solid #1b1b1b;
+  display:flex;align-items:center;padding:0 8px;
+  font-size:11px;color:#9a9a9a;gap:5px;flex-shrink:0;
+}
+.ph i{color:#e87d0d;font-style:normal;font-size:8px}
+
+/* Outliner */
+.outliner{height:32%;display:flex;flex-direction:column;min-height:0;border-bottom:1px solid #1b1b1b}
+.ol-body{flex:1;overflow:auto;padding:2px 0}
+.ol{
+  display:flex;align-items:center;gap:4px;
+  height:17px;padding:0 6px 0 8px;cursor:pointer;font-size:11px;
+}
+.ol:hover{background:rgba(255,255,255,.05)}
+.ol.sel{background:#4772b3}
+.ol .v{width:12px;color:#555;font-size:9px;text-align:center}
+.ol .i{width:13px;text-align:center;font-size:10px;opacity:.9}
+.ol .n{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ol.c1{padding-left:18px}
+.ol.c2{padding-left:28px}
+
+/* Properties */
+.props{flex:1;display:flex;flex-direction:column;min-height:0}
+.ptabs{
+  display:flex;flex-wrap:wrap;gap:0;padding:2px 2px;
+  background:#2a2a2a;border-bottom:1px solid #1b1b1b;flex-shrink:0;
+}
+.pt{
+  width:22px;height:20px;display:flex;align-items:center;justify-content:center;
+  border-radius:2px;cursor:pointer;color:#5a5a5a;font-size:10px;
+}
+.pt:hover{background:#3a3a3a;color:#aaa}
+.pt.on{background:#4772b3;color:#fff}
+.pbody{flex:1;overflow:auto;padding:4px 8px}
+.blk{margin-bottom:8px}
+.btitle{
+  font-size:11px;color:#8a8a8a;padding:2px 0 3px;
+  border-bottom:1px solid #3a3a3a;margin-bottom:4px;cursor:pointer;
+}
+.btitle:hover{color:#ccc}
+.row{display:flex;align-items:center;gap:4px;margin-bottom:3px;font-size:11px;min-height:18px}
+.lab{width:52px;color:#7a7a7a;flex-shrink:0}
+.fld{
+  flex:1;background:#1c1c1c;border:1px solid #3a3a3a;border-radius:2px;
+  padding:2px 4px;color:#ccc;font-size:11px;min-width:0;font-family:Consolas,monospace;
+}
+.fld:focus{border-color:#5a8ad4;outline:0}
+.sl{flex:1;height:3px;accent-color:#5a8ad4}
+.sw{width:16px;height:14px;border-radius:2px;border:1px solid #555;flex-shrink:0;cursor:pointer}
+.btn{
+  padding:3px 8px;background:#3a3a3a;border:1px solid #4a4a4a;
+  border-radius:2px;color:#ccc;font-size:11px;cursor:pointer;
+}
+.btn:hover{background:#454545}
+.btn.pri{background:#4772b3;border-color:#5a8ad4;color:#fff}
+
+/* Timeline */
+.tl{
+  grid-column:1/3;grid-row:3;
+  background:#242424;display:flex;flex-direction:column;
+  min-height:0;border-top:1px solid #1b1b1b;
+}
+.tl-h{
+  height:22px;background:#303030;border-bottom:1px solid #1b1b1b;
+  display:flex;align-items:center;padding:0 4px;gap:1px;flex-shrink:0;
+}
+.tlb{
+  width:20px;height:18px;border:0;background:0;color:#7a7a7a;
+  border-radius:2px;cursor:pointer;font-size:10px;
+  display:flex;align-items:center;justify-content:center;
+}
+.tlb:hover{background:#3e3e3e;color:#ddd}
+.tlb.play{color:#e87d0d}
+.fn{font:600 12px Consolas,monospace;color:#e87d0d;min-width:28px;text-align:center}
+.tm{color:#555;font-size:10px;margin-left:3px}
+.tl-b{flex:1;display:flex;overflow:hidden;min-height:0}
+.ch{width:130px;border-right:1px solid #2c2c2c;overflow-y:auto;flex-shrink:0;background:#282828}
+.cr{
+  height:16px;display:flex;align-items:center;padding:0 6px;
+  font-size:10px;color:#8a8a8a;border-bottom:1px solid rgba(255,255,255,.03);cursor:pointer;
+}
+.cr:hover{background:rgba(255,255,255,.05)}
+.cr.sel{background:#4772b3;color:#fff}
+.cr.sub{padding-left:12px;color:#666;font-size:10px}
+.tracks{flex:1;position:relative;overflow:auto;background:#242424}
+.ruler{
+  height:15px;background:#2a2a2a;border-bottom:1px solid #333;
+  position:sticky;top:0;z-index:5;font:8px Consolas,monospace;color:#555;
+}
+.tick{position:absolute;bottom:0;width:1px;background:#3a3a3a}
+.tick.maj{height:7px;background:#4a4a4a}
+.tick.min{height:3px}
+.tlab{position:absolute;bottom:0;transform:translateX(-50%);white-space:nowrap}
+.trow{height:16px;border-bottom:1px solid rgba(255,255,255,.03);position:relative}
+.kf{position:absolute;width:5px;height:5px;background:#e87d0d;transform:rotate(45deg);top:5px;z-index:3}
+.phline{position:absolute;top:0;bottom:0;width:1px;background:#e87d0d;z-index:10;pointer-events:none}
+.phline::before{
+  content:"";position:absolute;top:0;left:-3px;
+  border-left:3px solid transparent;border-right:3px solid transparent;
+  border-top:5px solid #e87d0d;
+}
+
+/* Status */
+.status{
+  height:18px;background:#303030;border-top:1px solid #1b1b1b;
+  display:flex;align-items:center;padding:0 8px;
+  font-size:10px;color:#5a5a5a;flex-shrink:0;gap:10px;
+}
+
+/* ========== SPLASH ========== */
+.splash{
+  position:fixed;inset:0;z-index:1000;
+  background:rgba(18,18,18,.75);
+  display:flex;align-items:center;justify-content:center;
+}
+.splash.hidden{display:none}
+.splash-box{
+  width:min(540px,94vw);background:#2e2e2e;
+  border:1px solid #4a4a4a;border-radius:5px;
+  box-shadow:0 12px 40px rgba(0,0,0,.6);overflow:hidden;
+}
+.splash-img{
+  height:200px;position:relative;
+  background:linear-gradient(160deg,#2a2218,#141210 60%);
+}
+.splash-img svg{width:100%;height:100%;display:block}
+.splash-ver{
+  position:absolute;top:8px;right:10px;
+  font:600 13px system-ui;color:#fff;text-shadow:0 1px 3px #000;
+}
+.splash-badge{
+  position:absolute;bottom:10px;left:12px;
+  display:flex;align-items:center;gap:7px;
+}
+.splash-badge svg{width:26px;height:26px}
+.splash-badge b{font-size:15px;color:#eee;text-shadow:0 1px 2px #000}
+.splash-body{padding:10px 12px 8px;background:#2a2a2a}
+.splash-h{font-size:9px;color:#777;text-transform:uppercase;letter-spacing:.4px;margin:0 0 5px}
+.tpls{display:flex;gap:5px;margin-bottom:10px}
+.tpl{
+  flex:1;background:#353535;border:1px solid #404040;border-radius:3px;
+  padding:8px 4px;text-align:center;cursor:pointer;color:#aaa;font-size:10px;
+}
+.tpl:hover{background:#404040;color:#fff;border-color:#555}
+.tpl .ic{font-size:15px;margin-bottom:3px}
+.tpl strong{display:block;font-size:10px;color:#ccc}
+.recents{margin-bottom:8px;max-height:72px;overflow:auto}
+.ri{
+  display:flex;align-items:center;gap:6px;padding:3px 5px;
+  border-radius:2px;cursor:pointer;font-size:11px;color:#9a9a9a;
+}
+.ri:hover{background:#383838;color:#ddd}
+.ri .f{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ri .d{color:#555;font-size:9px}
+.slinks{display:flex;align-items:center;gap:3px;border-top:1px solid #3a3a3a;padding-top:7px;flex-wrap:wrap}
+.sl{
+  padding:3px 8px;border-radius:2px;font-size:11px;color:#8a8a8a;
+  cursor:pointer;border:0;background:0;
+}
+.sl:hover{background:#3a3a3a;color:#ddd}
+.sl.pri{background:#4772b3;color:#fff;margin-left:auto}
+.sl.pri:hover{background:#5a8ad4}
+
+/* Blender 4.2 startup workspace: one rendered 3D viewport inside DOM chrome. */
+body{font-family:Inter,"Segoe UI",Arial,sans-serif;background:#202020;color:#d4d4d4}
+.app-shell{height:100%;min-height:0;display:flex;flex-direction:column;background:#202020}
+.topbar{height:34px;background:#202020;border-bottom-color:#111;padding-left:8px}
+.logo{width:28px;height:28px;margin-right:5px}
+.logo img{width:23px;height:23px;display:block}
+.mi{font-size:12px;padding:4px 9px;color:#ddd}
+.workspaces{margin-left:18px;overflow:hidden;min-width:0}
+.ws{font-size:11px;white-space:nowrap;color:#999;height:25px}
+.ws.on{background:#343434;color:#eee}
+.top-r{white-space:nowrap;color:#777}
+.main{grid-template-columns:minmax(0,1fr) 260px;grid-template-rows:minmax(0,1fr) 108px;gap:1px;position:relative}
+.editor-bar{display:none}
+.tools{display:flex;position:absolute;z-index:4;top:39px;left:8px;width:32px;padding:3px 1px;background:#24272b;border:1px solid #151719;border-radius:4px;box-shadow:0 2px 10px rgba(0,0,0,.35)}
+.tool{width:27px;height:27px;flex:none;background-image:url('./assets/blender/viewport-reference.webp');background-size:792px 426.5px;background-repeat:no-repeat;background-position-x:-7px}
+.tool svg{display:none}
+.tool[data-n="Box Select"]{background-position-y:-25px}
+.tool[data-n="3D Cursor"]{background-position-y:-54px}
+.tool[data-n="Move"]{background-position-y:-82px}
+.tool[data-n="Rotate"]{background-position-y:-110px}
+.tool[data-n="Scale"]{background-position-y:-138px}
+.tool[data-n="Annotate"]{background-position-y:-195px}
+.tool[data-n="Measure"]{background-position-y:-223px}
+.tool.on,.tool:hover{background-image:url('./assets/blender/viewport-reference.webp')}
+.tool.on{border-color:#5a8ad4}
+.viewport{grid-column:1;grid-row:1}
+.vp-head{height:32px;background:#292929;padding:0 8px;gap:7px}
+.mode{background:#333;border-color:#444;height:23px;min-width:112px;color:#eee}
+.vm{font-size:12px;color:#bbb;padding:3px 5px}
+.vm.on{background:transparent;color:#ddd}
+.vp-controls{color:#a9b9c5;background:#303030;border-radius:3px;padding:4px 7px;white-space:nowrap}
+.tool-label{display:none}
+.vp-view{background:#393939}
+.scene-canvas{position:absolute;inset:0;transform:scale(1.22);transform-origin:center;will-change:transform}
+.viewport-render{display:block;width:100%;height:100%;object-fit:cover;object-position:50% 50%;background:#303030}
+.vp-view{position:relative}
+.vp-view::after{content:"";position:absolute;z-index:2;top:0;left:0;width:130px;height:26px;background:linear-gradient(90deg,#303030 70%,rgba(48,48,48,0));pointer-events:none}
+.scene-picks{position:absolute;inset:0;width:100%;height:100%;overflow:hidden;pointer-events:all}
+.scene-picks .pick{fill:transparent;stroke:transparent;stroke-width:5;cursor:pointer;vector-effect:non-scaling-stroke}
+.scene-picks .pick:hover,.scene-picks .pick.selected{stroke:#ed9d36;stroke-width:2}
+.scene-picks .pick:focus{outline:none}
+.selection-marquee{position:absolute;z-index:5;border:1px dashed #d7e8ff;background:rgba(95,151,233,.15);pointer-events:none}
+.side{grid-column:2;grid-row:1/3;background:#262626}
+.ph{height:29px;background:#292929;color:#bbb;font-size:12px;padding:0 9px}
+.editor-icon{font-size:15px;color:#ddd}
+.ph-search{margin-left:auto;background:#1e1e1e;border:1px solid #404040;border-radius:3px;color:#999;width:78px;padding:1px 6px}
+.outliner{height:34%;background:#252525}
+.ol{height:23px;font-size:12px;gap:6px;padding-left:8px}
+.ol.c1{padding-left:23px}.ol.c2{padding-left:40px}
+.ol.sel{background:#383838}.ol.sel .n{color:#eda35a}
+.ol img{width:15px;height:15px;object-fit:contain}
+.ol .n{flex:1;color:#c8c8c8}.disclose{width:9px;color:#888;font-size:10px}
+.collection-icon{color:#b7b7b7}.ol-vis{color:#777;font-size:10px;white-space:nowrap}
+.props{position:relative;background:#292929}
+.ptabs{position:absolute;left:0;top:29px;bottom:0;width:31px;display:flex;flex-direction:column;flex-wrap:nowrap;align-items:center;padding:5px 0;background:#242424;border-right:1px solid #111;overflow:auto}
+.pt{width:27px;height:28px;flex-shrink:0;background:transparent!important}
+.pt img{width:17px;height:17px;display:block;opacity:.72}
+.pt.on{border-left:2px solid #e58d35}
+.pt.on img{opacity:1}
+.pbody{margin-left:31px;padding:8px 10px 20px}
+.blk{margin-bottom:5px;background:#303030;border:1px solid #393939;border-radius:3px;padding:6px 8px}
+.btitle{font-size:12px;color:#ddd;border:0;margin:0 0 6px;padding:2px 0}
+.blk:nth-child(n+2){padding:4px 8px}
+.blk:nth-child(n+2) .btitle{margin:0;color:#aaa}
+.row{height:24px;margin:0;gap:5px}
+.lab{width:69px;text-align:right;color:#bdbdbd;font-size:11px}
+.fld{height:20px;background:#444;border-color:#4b4b4b;color:#dedede;text-align:center;font-family:inherit;font-size:11px}
+.tl{grid-column:1;grid-row:2;border-top-color:#111}
+.tl-h{height:28px;background:#292929;gap:5px}
+.tlb{color:#bbb;font-size:12px}.tlb.play{color:#f0963d}
+.ch{display:none}
+.tracks{background:#282828}
+.ruler{height:36px;background:#2d2d2d;border-bottom:1px solid #3e3e3e}
+.trow,.kf{display:none}
+#ta{height:95px!important}
+.phline{background:#568ed0}
+.phline::before{border-top-color:#568ed0}
+.status{height:20px;background:#252525;color:#888}
+
+.splash{position:absolute;background:rgba(0,0,0,.54)}
+.splash-box{width:min(540px,94vw);background:#181818;border:1px solid #3d3d3d;border-radius:4px;box-shadow:0 18px 54px rgba(0,0,0,.68)}
+.splash-img{height:270px;background:#1d2e25}
+.splash-img img{display:block;width:100%;height:100%;object-fit:cover}
+.splash-ver{top:10px;right:13px;font-size:12px}
+.splash-body{height:242px;padding:13px 22px 12px;background:#1b1b1b}
+.splash-columns{display:grid;grid-template-columns:1fr 1fr;gap:28px;min-height:174px}
+.splash-h{font-size:11px;color:#aaa;letter-spacing:0;text-transform:none;margin:0 0 7px}
+.tpls{display:flex;flex-direction:column;gap:0;margin:0}
+.tpl,.ri{width:100%;display:flex;align-items:center;text-align:left;gap:7px;background:transparent;border:0;color:#ddd;font-size:11px;padding:3px 5px;min-height:25px;cursor:pointer;border-radius:3px;font-family:inherit}
+.tpl:hover,.ri:hover{background:#383838;color:#fff}
+.tpl .ic{font-size:12px;margin:0;color:#b8b8b8;width:14px}
+.recents{max-height:145px;margin:0}
+.ri img{width:15px;height:15px;object-fit:contain}
+.slinks{border-top:1px solid #353535;padding-top:8px;gap:10px}
+.splash-spacer{flex:1}
+.sl{font-size:11px;padding:3px 5px;color:#aaa;text-decoration:none}
+
+@media(max-width:800px){.side{width:220px}.main{grid-template-columns:minmax(0,1fr) 220px}.top-r,.wb,.ws:nth-child(n+5){display:none}.vp-controls{display:none}}
+@media(max-width:580px){
+  .topbar{height:29px}.logo{width:23px;height:23px}.logo img{width:20px;height:20px}.mi{font-size:10px;padding:3px 5px}.ws{font-size:10px;padding:0 6px}
+  .main{display:flex;flex-direction:column;min-height:0}
+  .viewport{flex:0 0 auto;height:64vw;max-height:360px;min-height:0}.vp-head{height:27px}.vm{font-size:10px;padding:2px 4px}
+  .tools{top:33px;left:5px;width:26px;padding:2px 0}.tool{width:24px;height:24px}.tool svg{width:12px;height:12px}
+  .viewport-render{object-fit:contain}
+  .side{display:flex;flex:1 1 auto;min-height:0;width:100%;flex-direction:row}
+  .outliner{width:41%;height:100%;flex:none;border-bottom:0;border-right:1px solid #111}
+  .props{flex:1;min-width:0;overflow:auto}.pbody{padding-right:5px}.lab{width:58px;font-size:10px}
+  .tl{flex:0 0 88px;min-height:0}
+  .splash-img{height:44vw;max-height:270px}.splash-body{height:auto;min-height:242px}.splash-columns{gap:12px}.splash-box{max-height:94vh;overflow:auto}
+}
+
+::-webkit-scrollbar{width:5px;height:5px}
+::-webkit-scrollbar-thumb{background:#404040;border-radius:3px}
+</style>
+</head>
+<body data-demo="blender" data-swarm='{"agentCount":10,"speed":1.6,"maxItems":360,"performanceMode":"high","tour":true,"sound":true}'>
+
+<!-- 启动页 -->
+<div class="splash" id="splash">
+  <div class="splash-box">
+    <div class="splash-img">
+      <img src="./assets/blender/splash.webp" alt="Blender 4.2 LTS Gold splash artwork by Blender Studio" />
+      <div class="splash-ver">4.2 LTS</div>
+    </div>
+    <div class="splash-body">
+      <div class="splash-columns">
+        <section>
+          <div class="splash-h">New File</div>
+          <div class="tpls">
+            <button class="tpl" type="button" data-go><span class="ic">✦</span>General</button>
+            <button class="tpl" type="button" data-go><span class="ic">✦</span>2D Animation</button>
+            <button class="tpl" type="button" data-go><span class="ic">✦</span>Sculpting</button>
+            <button class="tpl" type="button" data-go><span class="ic">✦</span>VFX</button>
+            <button class="tpl" type="button" data-go><span class="ic">✦</span>Video Editing</button>
+          </div>
+        </section>
+        <section>
+          <div class="splash-h">Recent Files</div>
+          <div class="recents">
+            <button class="ri" type="button" data-go><img src="./assets/blender/file_blend.svg" alt=""/><span class="f">Untitled.blend</span></button>
+            <button class="ri" type="button" data-go><img src="./assets/blender/file_blend.svg" alt=""/><span class="f">project_logo.blend</span></button>
+            <button class="ri" type="button" data-go><img src="./assets/blender/file_blend.svg" alt=""/><span class="f">char_rig_v3.blend</span></button>
+          </div>
+        </section>
+      </div>
+      <div class="slinks">
+        <button class="sl" type="button" data-go>▣ &nbsp;Open...</button>
+        <button class="sl" type="button" data-go>◴ &nbsp;Recover Last Session</button>
+        <span class="splash-spacer"></span>
+        <a class="sl" href="https://www.blender.org/about/" rel="noreferrer">About Blender</a>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="app" class="app-shell">
+<!-- 顶栏 -->
+<div class="topbar">
+  <div class="logo" title="Blender" id="logo-btn">
+    <img src="./assets/blender/blender.svg" alt="Blender" />
+  </div>
+  <div class="mi">File</div>
+  <div class="mi">Edit</div>
+  <div class="mi">Render</div>
+  <div class="mi">Window</div>
+  <div class="mi">Help</div>
+  <div class="workspaces">
+    <div class="ws on">Layout</div>
+    <div class="ws">Modeling</div>
+    <div class="ws">Sculpting</div>
+    <div class="ws">UV Editing</div>
+    <div class="ws">Texture Paint</div>
+    <div class="ws">Shading</div>
+    <div class="ws">Animation</div>
+    <div class="ws">Rendering</div>
+    <div class="ws">Compositing</div>
+    <div class="ws">Geometry Nodes</div>
+    <div class="ws">Scripting</div>
+  </div>
+  <div class="top-r"><span>Blender 4.2 LTS</span></div>
+  <button class="wb">─</button><button class="wb">□</button><button class="wb x">✕</button>
+</div>
+
+<div class="main">
+  <!-- 工具 -->
+  <div class="tools">
+    <div class="tool on" data-n="Box Select" title="Box Select (W)"><svg viewBox="0 0 16 16"><path d="M2 1v13l3.5-3.5L8 15l1.5-.7L7.2 9.5H13z"/></svg></div>
+    <div class="tool" data-n="3D Cursor" title="3D Cursor"><svg viewBox="0 0 16 16"><circle cx="8" cy="8" r="2.2" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M8 1.5v3M8 11.5v3M1.5 8h3M11.5 8h3" stroke="currentColor" stroke-width="1.2" fill="none"/></svg></div>
+    <div class="tsep"></div>
+    <div class="tool" data-n="Move" title="Move (G)"><svg viewBox="0 0 16 16"><path d="M8 1.5v13M1.5 8h13" stroke="currentColor" stroke-width="1.2" fill="none"/><path d="M8 1.5l-1.8 2.2h3.6zM8 14.5l-1.8-2.2h3.6zM1.5 8l2.2-1.8v3.6zM14.5 8l-2.2-1.8v3.6z"/></svg></div>
+    <div class="tool" data-n="Rotate" title="Rotate (R)"><svg viewBox="0 0 16 16"><path d="M12.5 4.2A5.2 5.2 0 1 0 13.5 9" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M12.5 4.2l-1.8.7 1.1 1.1z"/></svg></div>
+    <div class="tool" data-n="Scale" title="Scale (S)"><svg viewBox="0 0 16 16"><path d="M2 2h4v1.5H3.5V6H2zM14 2h-4v1.5h2.5V6H14zM2 14h4v-1.5H3.5V10H2zM14 14h-4v-1.5h2.5V10H14z"/></svg></div>
+    <div class="tsep"></div>
+    <div class="tool" data-n="Annotate" title="Annotate"><svg viewBox="0 0 16 16"><path d="M2.5 13l2-5.2 7-4.3 2.5 2.5-4.3 7z" fill="none" stroke="currentColor" stroke-width="1.2"/></svg></div>
+    <div class="tool" data-n="Measure" title="Measure"><svg viewBox="0 0 16 16"><path d="M2 13L13 2" stroke="currentColor" stroke-width="1.2"/><path d="M10.5 3l2 2M5 8.5l1.5 1.5" stroke="currentColor" stroke-width="1.1"/></svg></div>
+  </div>
+
+  <!-- 视口 -->
+  <div class="viewport">
+    <div class="vp-head">
+      <select class="mode">
+        <option>Object Mode</option><option>Edit Mode</option><option>Sculpt Mode</option>
+        <option>Vertex Paint</option><option>Weight Paint</option><option>Texture Paint</option>
+      </select>
+      <div class="vm">View</div>
+      <div class="vm">Select</div>
+      <div class="vm">Add</div>
+      <div class="vm">Object</div>
+      <div style="flex:1"></div>
+      <span class="vp-controls">⌖　◉　◩　●　◐　◌　▾</span>
+      <span class="tool-label">Tool: <span id="tn">Box Select</span></span>
+    </div>
+    <div class="vp-view">
+      <div class="scene-canvas">
+        <img class="viewport-render" src="./assets/blender/viewport-reference.webp" alt="Blender startup scene with selected cube, camera, light and perspective grid" />
+        <svg class="scene-picks" viewBox="0 0 1584 853" preserveAspectRatio="xMidYMid slice" aria-label="Scene objects">
+          <polygon class="pick" data-object="Camera" points="260,405 357,355 468,379 463,454 364,431" role="button" tabindex="0" aria-label="Select Camera"/>
+          <polygon class="pick selected" data-object="Cube" points="710,354 821,335 878,380 875,492 760,520 715,464" role="button" tabindex="0" aria-label="Select Cube"/>
+          <circle class="pick" data-object="Light" cx="1018" cy="80" r="32" role="button" tabindex="0" aria-label="Select Light"/>
+        </svg>
+      </div>
+    </div>
+  </div>
+
+  <div class="editor-bar">
+    <select>
+      <option>3D Viewport</option><option>Image Editor</option><option>UV Editor</option>
+      <option>Shader Editor</option><option>Geometry Nodes</option><option>Compositor</option>
+    </select>
+    <span style="color:#444">|</span>
+    <span>Perspective</span>
+    <span style="color:#444">·</span>
+    <span>Solid</span>
+  </div>
+
+  <!-- 右侧 -->
+  <div class="side">
+    <div class="outliner">
+      <div class="ph"><span class="editor-icon">▤</span> Outliner <span class="ph-search">⌕</span></div>
+      <div class="ol-body">
+        <div class="ol"><span class="disclose">▾</span><span class="collection-icon">▤</span><span class="n">Scene Collection</span></div>
+        <div class="ol c1"><span class="disclose">▾</span><span class="collection-icon">▣</span><span class="n">Collection</span><span class="ol-vis">◉　◎</span></div>
+        <div class="ol c2" data-object="Camera"><span class="disclose">▸</span><img src="./assets/blender/outliner_ob_camera.svg" alt=""/><span class="n">Camera</span><span class="ol-vis">◉　◎</span></div>
+        <div class="ol c2 sel" data-object="Cube"><span class="disclose">▸</span><img src="./assets/blender/outliner_ob_mesh.svg" alt=""/><span class="n">Cube</span><span class="ol-vis">◉　◎</span></div>
+        <div class="ol c2" data-object="Light"><span class="disclose">▸</span><img src="./assets/blender/outliner_ob_light.svg" alt=""/><span class="n">Light</span><span class="ol-vis">◉　◎</span></div>
+      </div>
+    </div>
+    <div class="props">
+      <div class="ph"><span class="editor-icon">▤</span> Properties <span class="ph-search">⌕</span></div>
+      <div class="ptabs">
+        <div class="pt" title="Tool Settings"><img src="./assets/blender/tool_settings.svg" alt=""/></div>
+        <div class="pt" title="Output"><img src="./assets/blender/output.svg" alt=""/></div>
+        <div class="pt" title="Scene"><img src="./assets/blender/scene_data.svg" alt=""/></div>
+        <div class="pt" title="World"><img src="./assets/blender/world_data.svg" alt=""/></div>
+        <div class="pt on" title="Object"><img src="./assets/blender/object_data.svg" alt=""/></div>
+        <div class="pt" title="Material"><img src="./assets/blender/material.svg" alt=""/></div>
+        <div class="pt" title="Texture"><img src="./assets/blender/texture.svg" alt=""/></div>
+      </div>
+      <div class="pbody">
+        <div class="blk">
+          <div class="btitle">▾ &nbsp;Transform</div>
+          <div class="row"><span class="lab">Location X</span><input class="fld" value="0 m"/></div>
+          <div class="row"><span class="lab">Y</span><input class="fld" value="0 m"/></div>
+          <div class="row"><span class="lab">Z</span><input class="fld" value="0 m"/></div>
+          <div class="row"><span class="lab">Rotation X</span><input class="fld" value="0°"/></div>
+          <div class="row"><span class="lab">Y</span><input class="fld" value="0°"/></div>
+          <div class="row"><span class="lab">Z</span><input class="fld" value="0°"/></div>
+          <div class="row"><span class="lab">Scale X</span><input class="fld" value="1.000"/></div>
+          <div class="row"><span class="lab">Y</span><input class="fld" value="1.000"/></div>
+          <div class="row"><span class="lab">Z</span><input class="fld" value="1.000"/></div>
+        </div>
+        <div class="blk">
+          <div class="btitle">▸ &nbsp;Delta Transforms</div>
+        </div>
+        <div class="blk">
+          <div class="btitle">▸ &nbsp;Relations</div>
+        </div>
+        <div class="blk">
+          <div class="btitle">▸ &nbsp;Collections</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 时间轴 -->
+  <div class="tl">
+    <div class="tl-h">
+      <button class="tlb" id="s0" title="First Frame">⏮</button>
+      <button class="tlb" id="sp" title="Previous Frame">◀</button>
+      <button class="tlb" id="pl" title="Play">▶</button>
+      <button class="tlb" id="sn" title="Next Frame">▶</button>
+      <button class="tlb" id="se" title="Last Frame">⏭</button>
+      <span class="fn" id="fr">1</span>
+      <span class="tm">/ 250</span>
+      <div style="flex:1"></div>
+      <span class="tm">Start 1</span>
+      <span class="tm">End 250</span>
+      <span class="tm">24 fps</span>
+    </div>
+    <div class="tl-b">
+      <div class="ch">
+        <div class="cr sel" data-object="Cube">Cube</div>
+        <div class="cr sub">Location</div>
+        <div class="cr sub">Rotation</div>
+        <div class="cr sub">Scale</div>
+        <div class="cr" data-object="Camera">Camera</div>
+        <div class="cr sub">Location</div>
+        <div class="cr" data-object="Light">Light</div>
+      </div>
+      <div class="tracks">
+        <div class="ruler" id="ruler"></div>
+        <div id="ta" style="position:relative;width:680px">
+          <div class="trow"><div class="kf" style="left:20px"></div><div class="kf" style="left:120px"></div><div class="kf" style="left:280px"></div></div>
+          <div class="trow"><div class="kf" style="left:20px"></div><div class="kf" style="left:200px"></div></div>
+          <div class="trow"><div class="kf" style="left:40px"></div><div class="kf" style="left:160px"></div><div class="kf" style="left:340px"></div></div>
+          <div class="trow"><div class="kf" style="left:60px"></div></div>
+          <div class="trow"><div class="kf" style="left:20px"></div><div class="kf" style="left:240px"></div></div>
+          <div class="trow"><div class="kf" style="left:20px"></div></div>
+          <div class="trow"></div>
+          <div class="phline" id="ph" style="left:20px"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="status">
+  <span>Select</span><span>|</span>
+  <span>Rotate View</span><span>|</span><span>Object Context Menu</span>
+  <div style="flex:1"></div>
+  <span>Memory: 128 MB</span>
+  <span>Blender 4.2.0</span>
+</div>
+</div>
+
+<script type="module" src="./lang.ts"></script>
+<script type="module" src="./blender-ui-entry.ts"></script>
+<script type="module" src="./creator.ts"></script>
+</body>
+</html>

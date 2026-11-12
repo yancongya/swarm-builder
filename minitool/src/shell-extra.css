@@ -2,10 +2,11 @@
    ------------------------------------------------------------------
    - tabs + nav 固定视口顶部、statusbar 固定底部，三者不透明，永远压住内容；
    - 顶部出血：小红书容器里系统状态栏浮在 webview 上方，fixed top:0 会被盖住。
-     --sb-safe-top 由 shell.ts 调容器官方 getWindowInfo().statusBarHeight 写入
-     （文档明令禁止硬编码；浏览器直跑 / 旧客户端没有 window.xhs → 0px 兜底，
-     桌面本就没有状态栏）。不用 env(safe-area-inset-)：Chrome 61 不识别会把
-     整条声明打成无效；
+     --sb-safe-top 由 shell.ts 调容器官方 getWindowInfo() 写入，取 statusBarHeight、
+     safeArea.top 与可见 menuButtons 底边三者的最大值（刘海/挖孔与原生按钮都会
+     盖住只按状态栏高度避让的顶栏；文档明令禁止硬编码；浏览器直跑 / 旧客户端
+     没有 window.xhs → 0px 兜底，桌面本就没有状态栏；窗口形态变化后随 resize 重读）。
+     不用 env(safe-area-inset-)：Chrome 61 不识别会把整条声明打成无效；
    - 进场（html.pre-build）：顶栏（tabs+nav）整体上移藏起，构建完成
      （onComplete → revealChrome）才落回——先看全屏构建，chrome 后登场；
      viewport.top 同步从 safe-top 过渡到 safe-top + chrome-h；

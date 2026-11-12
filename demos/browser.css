@@ -36,6 +36,10 @@ body {
   height: 100dvh;
   background: var(--chrome-2);
 }
+html.web-shell.pre-build .win { grid-template-rows: 0 0 minmax(0, 1fr) auto; }
+html.web-shell.pre-build .tabs, html.web-shell.pre-build .nav { visibility: hidden; overflow: hidden; pointer-events: none; }
+html.web-shell:not(.pre-build) .tabs, html.web-shell:not(.pre-build) .nav { animation: sb-chrome-enter .42s ease both; }
+@keyframes sb-chrome-enter { from { opacity: 0; transform: translateY(-100%); } to { opacity: 1; transform: translateY(0); } }
 
 .tabs {
   display: flex;

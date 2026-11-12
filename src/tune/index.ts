@@ -1,5 +1,5 @@
 import { SwarmBuilder } from '../index';
-import type { SwarmBuilderOptions, SwarmConfig, SwarmResult } from '../types';
+import type { SwarmBuilderOptions, SwarmConfig, SwarmPhase, SwarmResult } from '../types';
 import { Panel, type Corner, type Phase } from './panel';
 import { renderCrewCard } from './card';
 import { resolveLang, type Lang } from './locale';
@@ -107,7 +107,11 @@ export class SwarmTuner {
       autoStart: false,
       // HUD 一条线接管状态行、进度、班组点和工具条：面板读的是和宿主同一份
       // `SwarmStatus`，不再自己拼「重建中 x/y」那种会盖掉实时状态的临时句。
-      onStatus: (status) => this.panel.setHud(status),
+      onStatus: (status) => {
+        this.panel.setHud(status);
+        this.initial.onStatus?.(status);
+      },
+      onStart: (agents) => this.initial.onStart?.(agents),
       onComplete: (result: SwarmResult) => {
         this.result = result;
         this.panel.setResult(result);
@@ -206,6 +210,16 @@ export class SwarmTuner {
 
   get phase(): Phase {
     return this.panel.currentPhase;
+  }
+
+  /**
+   * The run's own phase. `phase` is the panel's collapsed one (scanning /
+   * gathering / building all read as `running`); hosts driving an entrance
+   * animation need the distinction, and polling this beats asking every page
+   * to forward `onStatus` itself.
+   */
+  get runPhase(): SwarmPhase {
+    return this.swarm?.status.phase ?? 'idle';
   }
 
   destroy(): void {

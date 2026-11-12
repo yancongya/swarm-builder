@@ -1,389 +1,66 @@
 <!doctype html>
-<html lang="zh">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Swarm Builder · 为你的网页开始创造模式</title>
-  <link rel="stylesheet" href="./demo.css" />
-</head>
-<body data-demo="home" data-swarm='{"sound":true,"tour":true,"order":"rows","speed":1.5,"maxItems":320,"performanceMode":"high"}'>
-  <div id="app">
-    <div class="page-home">
-
-      <nav class="top">
-        <a class="brand" href="#top">
-          <svg class="mark" viewBox="0 0 32 32" aria-hidden="true">
-            <circle cx="16" cy="16" r="15" fill="#232220" stroke="#4a443b" />
-            <ellipse cx="16" cy="16" rx="13" ry="6" fill="none" stroke="#c9793c" stroke-width="1.3" transform="rotate(-24 16 16)" />
-            <path d="M9 20l3.4-8.2 1.5 3.1 3-.6z" fill="#eceadf" />
-            <circle cx="23.4" cy="10.4" r="1.8" fill="#c9793c" />
-          </svg>
-          <b>Swarm Builder</b>
-        </a>
-        <div class="links">
-          <a href="#features">它盖什么</a>
-          <a href="#vs">和原版</a>
-          <a href="#use">怎么接</a>
-          <a href="#params">参数</a>
-          <a href="#limits">边界</a>
-        </div>
-        <a class="gh" href="https://github.com/yancongya/swarm-builder" target="_blank" rel="noreferrer"
-           title="GitHub 仓库：源码、Issue 与发行说明">
-          <svg viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M8 .2a8 8 0 0 0-2.5 15.6c.4.1.5-.2.5-.4v-1.4c-2.2.5-2.7-1-2.7-1-.4-.9-.9-1.2-.9-1.2-.7-.5.1-.5.1-.5.8.1 1.2.8 1.2.8.7 1.2 1.9.9 2.4.7.1-.5.3-.9.5-1.1-1.8-.2-3.6-.9-3.6-4 0-.9.3-1.6.8-2.1-.1-.2-.4-1 .1-2.1 0 0 .7-.2 2.2.8a7.4 7.4 0 0 1 4 0c1.5-1 2.2-.8 2.2-.8.5 1.1.2 1.9.1 2.1.5.5.8 1.2.8 2.1 0 3.1-1.8 3.8-3.6 4 .3.3.6.8.6 1.5v2.2c0 .2.1.5.5.4A8 8 0 0 0 8 .2z"/></svg>
-          <span>GitHub</span>
-        </a>
-      </nav>
-
-      <header class="hero" id="top">
-        <div class="hero-grid">
-          <div class="hero-main">
-            <p class="kicker"><span>v0.1.0</span><span>零依赖</span><span>MIT</span><span>ESM / CJS / IIFE</span></p>
-            <h1>为你的网页开始创造模式，<br />集群构建前端！</h1>
-            <p class="lead">
-              读一遍你的 DOM，拆成矩形、文字、媒体、重复模块与辅助线，再交给一群光标自上而下重新盖出来。
-              默认就是原版那一整套——开场聚群、镜头跟着施工前沿、生成式配乐；盖完收工，真实页面原样交还。
-              你现在看到的这一页，就是它盖的。
-            </p>
-            <div class="rail">
-              <span class="rail-tag">一局怎么走</span>
-              <span class="rail-step">采集</span>
-              <span class="rail-arrow" aria-hidden="true">→</span>
-              <span class="rail-step">拆蓝图</span>
-              <span class="rail-arrow" aria-hidden="true">→</span>
-              <span class="rail-step">认领</span>
-              <span class="rail-arrow" aria-hidden="true">→</span>
-              <span class="rail-step">施工</span>
-              <span class="rail-arrow" aria-hidden="true">→</span>
-              <span class="rail-step">交还</span>
-            </div>
-            <div class="cta">
-              <button class="btn primary" type="button" data-replay>再盖一遍</button>
-              <a class="btn ghost" href="#use">怎么接 ↓</a>
-            </div>
-          </div>
-
-          <!-- 这一页自己正在用哪几个参数，直接写在 hero 右边：读文档的人不用再猜。 -->
-          <aside class="hero-board">
-            <div class="board-head">
-              <span class="board-tag">SPEC</span>
-              <h2 class="board-title">这一页正在用的参数</h2>
-            </div>
-            <dl class="board">
-              <div><dt>order</dt><dd>rows · 自上而下</dd></div>
-              <div><dt>speed</dt><dd>1.5×</dd></div>
-              <div><dt>maxItems</dt><dd>320</dd></div>
-              <div><dt>performanceMode</dt><dd>high · 本页不裁剪</dd></div>
-              <div><dt>sound / tour</dt><dd>开 / 开</dd></div>
-              <div><dt>agentCount</dt><dd>8 · 自动最多 48</dd></div>
-            </dl>
-            <p class="board-note">右下角面板按用途分六页，一次只摊开一页，这里列的只是其中几项。这页把 performanceMode 写死成 high：盒子太密时自动档会剪掉辅助线和标题步进，而那两个正是这页要演示的东西。</p>
-          </aside>
-        </div>
-
-        <div class="stats">
-          <div class="stat"><b>6</b><span>类拆解</span></div>
-          <div class="stat"><b>7</b><span>套构建顺序</span></div>
-          <div class="stat"><b>29</b><span>项可调参数</span></div>
-          <div class="stat"><b>26</b><span>KB · gzip 核心包</span></div>
-          <div class="stat"><b>0</b><span>运行时依赖</span></div>
-        </div>
-      </header>
-
-      <section class="features" id="features">
-        <div class="head">
-          <div class="head-idx"><span class="idx">01</span><h2>它拆出什么，就盖回什么</h2></div>
-          <p class="note">从外框到文字、媒体、重复模块与对齐线，采集到什么就照原样盖回去，盒子位置一像素不挪。</p>
-        </div>
-        <div class="grid">
-          <article class="feature">
-            <div class="fmeta">
-              <span class="ftag">RECT</span>
-              <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="12" rx="2" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M7 20h10" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
-            </div>
-            <h3>矩形与骨架</h3>
-            <p>盒子带着尺寸徽章落位，边框、圆角、底色照采集那一帧还原；容器先把骨架撑起来。</p>
-          </article>
-          <article class="feature">
-            <div class="fmeta">
-              <span class="ftag">TEXT</span>
-              <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h11M4 18h7" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
-            </div>
-            <h3>逐字打字</h3>
-            <p>文本一个字符一个字符敲出来，I 型光标与插入符跟着走；大标题能边打字边长到真实字号。</p>
-          </article>
-          <article class="feature">
-            <div class="fmeta">
-              <span class="ftag">MEDIA</span>
-              <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="10" height="8" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M16 9l4 3-4 3z" fill="currentColor"/></svg>
-            </div>
-            <h3>媒体与降级</h3>
-            <p>img、svg、canvas/video 截帧都会真的呈现；采集前先把整页滚一遍把懒加载逼出来，取不到的才降级成占位框。</p>
-          </article>
-          <article class="feature">
-            <div class="fmeta">
-              <span class="ftag">CLONE</span>
-              <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="8" height="8" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.6"/><rect x="13" y="13" width="8" height="8" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M13 6h8M6 13v8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
-            </div>
-            <h3>重复模块盖章</h3>
-            <p>一列相似的兄弟只真做一个，其余按住 ⌥ 拖过去盖章；卡片墙不必一行行重打。</p>
-          </article>
-          <article class="feature">
-            <div class="fmeta">
-              <span class="ftag">GUIDE</span>
-              <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v18M4 9h16" stroke="currentColor" stroke-width="1.5" stroke-dasharray="3 3"/><circle cx="12" cy="9" r="2.4" fill="currentColor"/></svg>
-            </div>
-            <h3>辅助线与吸附</h3>
-            <p>布局本来就有的对齐线先画出来，盒子落位时吸上去，收尾再淡出。</p>
-          </article>
-          <article class="feature">
-            <div class="fmeta">
-              <span class="ftag">SWARM</span>
-              <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="8" cy="9" r="2.2" fill="currentColor"/><circle cx="15" cy="14" r="2.2" fill="currentColor"/><path d="M8 11v4a3 3 0 0 0 3 3h3" stroke="currentColor" stroke-width="1.6" fill="none" stroke-linecap="round"/></svg>
-            </div>
-            <h3>多光标集群</h3>
-            <p>1–24 个光标同场施工，七套认领顺序；默认 8 个起，随滚动与积压自动增减到 48。想让大家差不多同时收工，就打开工时均衡。</p>
-          </article>
-        </div>
-      </section>
-
-      <section class="defaults" id="vs">
-        <div class="head">
-          <div class="head-idx"><span class="idx">02</span><h2>和原版：默认同一套</h2></div>
-          <p class="note">十一个开关默认全开，算法和声音就是原版 Swarm Rebuild 那一套；区别只在装法——原版盖任意网页，本库只盖你部署的子树。</p>
-        </div>
-        <div class="same">
-          <p class="dflt-num">11<span>/11</span></p>
-          <div class="same-body">
-            <p class="dflt-cap">个开关默认打开</p>
-            <ul class="chips">
-              <li><code>flight</code><span>live</span></li>
-              <li><code>pointer</code><span>follow</span></li>
-              <li><code>agents</code><span>auto</span></li>
-              <li><code>gather</code><span>on</span></li>
-              <li><code>pick</code><span>live</span></li>
-              <li><code>trigger</code><span>scroll</span></li>
-              <li><code>adaptiveSpeed</code><span>on</span></li>
-              <li><code>scan</code><span>pre-scroll</span></li>
-              <li><code>score</code><span>generative</span></li>
-              <li><code>reducedMotion</code><span>skip</span></li>
-              <li><code>keys</code><span>on</span></li>
-            </ul>
-            <p class="same-note">关掉任一项就退回朴素模式，逐项见 <a href="#params">参数速查</a>。</p>
-          </div>
-        </div>
-        <div class="table-wrap">
-          <table class="table">
-            <thead>
-              <tr><th>维度</th><th>原版</th><th>本库</th></tr>
-            </thead>
-            <tbody>
-              <tr><td>装在哪</td><td>浏览器里，只对你生效</td><td>页面里，每个访问者都有</td></tr>
-              <tr><td>盖谁</td><td>任何打开的网页</td><td>你部署的 root 子树</td></tr>
-              <tr><td>改参数</td><td>面板里点</td><td>29 项、六页签，可导出成代码</td></tr>
-              <tr><td>第二遍</td><td>每次新的一局</td><td>seed 固定就逐帧重放</td></tr>
-              <tr><td>自动化</td><td>人对着浏览器点</td><td>headless 跑完直接读结果</td></tr>
-              <tr><td>体积与许可</td><td>一个插件，源码不可复用</td><td>gzip 26 KB，MIT</td></tr>
-            </tbody>
-          </table>
-        </div>
-        <div class="give">
-          <article class="pc win">
-            <div class="pc-head"><span class="pc-mark plus">+</span><h3>库这头多出来的</h3></div>
-            <ul>
-              <li>给秒数定速收尾，七套认领顺序任选；原版只有一套固定顺序。</li>
-              <li>只盖首屏或单个子树，结束后真实 DOM 原样交还；参数一键导出成代码。</li>
-            </ul>
-          </article>
-          <article class="pc loss">
-            <div class="pc-head"><span class="pc-mark minus">−</span><h3>库这头不如原版的</h3></div>
-            <ul>
-              <li>盖不了别人家的页面，也跨不了页：取不回 HTML 就原样显示。</li>
-              <li>只是进场动画：盒子不带交互，原版更新了也不会自动跟。</li>
-            </ul>
-          </article>
-        </div>
-      </section>
-
-      <section class="use" id="use">
-        <div class="head">
-          <div class="head-idx"><span class="idx">03</span><h2>怎么接</h2></div>
-          <p class="note">三步：装包、指一个容器、调好再抄配置。每一步都能在一页 HTML 里完成。</p>
-        </div>
-        <ol class="steps">
-          <li class="step">
-            <span class="no">1</span>
-            <div>
-              <h3>装它</h3>
-              <p>零依赖，一个包三种格式。还没上架 npm：克隆后构建一次再本地安装；发版后换成 <code>npm i swarm-builder</code>，CDN 也能直接用。</p>
-              <pre><code>git clone https://github.com/yancongya/swarm-builder.git
-cd swarm-builder && npm install && npm run build
-
-# then, in your project:
-npm i ../swarm-builder
-# or: npm pack && npm i ./swarm-builder-0.1.0.tgz</code></pre>
-            </div>
-          </li>
-          <li class="step">
-            <span class="no">2</span>
-            <div>
-              <h3>指一个容器</h3>
-              <p><code>root</code> 给谁就重建谁，页面其余部分照常跑；不传其余参数，落地就是原版那套：自上而下、镜头跟随、声音全开。</p>
-              <pre><code>import { mount } from 'swarm-builder';
+<html lang="zh"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Swarm Builder · 网页开工，交给一群光标</title><link rel="icon" href="./favicon.png"><link rel="stylesheet" href="./demo.css">
+<style>
+.page-home.home-v2{--bg:#18191e;--fg:#f7f3e9;--lime:#d7fa47;--orange:#ff9c51;--muted:#b8b8b3;--line:#4a4b50;box-sizing:border-box;min-height:100%;padding:0;background:var(--bg);color:var(--fg);font-family:Arial,"Microsoft YaHei",sans-serif;overflow:hidden}
+.home-v2 *{box-sizing:border-box}.home-v2 .wrap{max-width:1120px;margin:auto;padding-left:28px;padding-right:28px}.home-v2 a{color:inherit}.home-v2 .mast{display:flex;align-items:center;justify-content:space-between;min-height:74px;border-bottom:1px solid var(--line)}
+.home-v2 .brand{display:flex;align-items:center;text-decoration:none;font-size:17px}.home-v2 .brand .logo-motion{display:block;width:44px;height:44px;margin-right:10px;flex:none}.home-v2 .brand .logo-motion svg,.home-v2 .brand .logo-motion img{display:block;width:100%;height:100%}
+.home-v2 .mast-link{padding:9px 14px;border:1px solid var(--line);border-radius:30px;font-size:12px;font-weight:bold;text-decoration:none}
+.home-v2 .hero{padding-top:62px;padding-bottom:44px}.home-v2 .eyebrow{margin:0 0 20px;color:var(--lime);font:bold 11px Arial;letter-spacing:.16em}.home-v2 .hero h1{margin:0;max-width:1000px;font-size:clamp(48px,8vw,110px);line-height:1.06;letter-spacing:-.075em;font-weight:900;color:var(--fg)}.home-v2 h1 em,.home-v2 h2 em{color:var(--lime);font-style:normal}
+.home-v2 .hero-deck{display:flex;align-items:flex-end;justify-content:space-between;margin-top:32px}.home-v2 .lead{max-width:500px;margin:0;color:#d0cec5;font-size:18px;line-height:1.65}.home-v2 .actions{display:flex;flex-wrap:wrap;margin-left:16px}
+.home-v2 .action{display:inline-flex;align-items:center;justify-content:center;min-height:46px;margin:4px;padding:0 16px;border:1px solid var(--line);border-radius:6px;background:transparent;color:var(--fg);font:bold 13px Arial;text-decoration:none;cursor:pointer}.home-v2 .action.primary{background:var(--lime);border-color:var(--lime);color:var(--bg)}.home-v2 a:focus-visible,.home-v2 button:focus-visible{outline:2px solid var(--orange);outline-offset:3px}
+.home-v2 .theatre{padding-bottom:70px}.home-v2 .window{position:relative;overflow:hidden;border:1px solid #6d6a62;border-radius:13px;background:#ebe7dc;color:#272a29;box-shadow:0 24px 55px #0005}.home-v2 .window-bar,.home-v2 .window-foot{display:flex;align-items:center;justify-content:space-between;padding:13px 17px;background:#f8f5ed;color:#646760;font:bold 11px Arial;letter-spacing:.08em}.home-v2 .window-bar{border-bottom:1px solid #d1ccc0}.home-v2 .window-foot{border-top:1px solid #d1ccc0}
+.home-v2 .workbench{display:grid;grid-template-columns:1fr 1fr;min-height:330px}.home-v2 .bench-side{padding:26px}.home-v2 .bench-side:first-child{border-right:1px dashed #aaa69e;background:#e2dfd6}.home-v2 .side-label{display:block;margin-bottom:24px;color:#6c706b;font:bold 11px Arial;letter-spacing:.12em}.home-v2 .ghost-box{height:64px;margin-bottom:13px;border:2px dashed #b6b2aa;border-radius:8px}.home-v2 .ghost-box.short{width:70%}.home-v2 .ghost-box.small{width:84%;height:36px}
+.home-v2 .made-box{display:flex;align-items:center;height:64px;margin-bottom:13px;padding:12px;border:2px solid #ec934f;border-radius:8px;background:#fffaf0;box-shadow:5px 5px 0 #ff9c5130}.home-v2 .made-box strong{width:36px;height:36px;border-radius:5px;background:var(--lime)}.home-v2 .made-box b{margin-left:12px}.home-v2 .made-box.chart{align-items:flex-end;justify-content:space-around}.home-v2 .made-box.chart i{width:18%;background:#b8df45;border-radius:3px 3px 0 0}.home-v2 .made-box.chart i:nth-child(1){height:28%}.home-v2 .made-box.chart i:nth-child(2){height:50%}.home-v2 .made-box.chart i:nth-child(3){height:80%}
+.home-v2 .cursor{position:absolute;width:0;height:0;border-top:18px solid currentColor;border-right:12px solid transparent;transform:rotate(-28deg);filter:drop-shadow(2px 3px 0 #222)}.home-v2 .cursor.one{color:#35c9ed;left:44%;top:35%}.home-v2 .cursor.two{color:#ff9c51;left:70%;top:62%}.home-v2 .cursor.three{color:#d7fa47;left:83%;top:30%}.home-v2 .cursor.four{color:#f071bc;left:56%;top:77%}
+.home-v2 .section{padding-top:76px;padding-bottom:80px;border-top:1px solid var(--line)}.home-v2 .section-head{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:34px}.home-v2 .section-no{color:var(--orange);font:bold 12px Arial}.home-v2 h2{max-width:740px;margin:0;color:var(--fg);font-size:clamp(34px,5vw,64px);line-height:1.12;letter-spacing:-.06em}
+.home-v2 .steps{display:grid;grid-template-columns:repeat(4,1fr);border-top:1px solid var(--line);border-left:1px solid var(--line)}.home-v2 .step{min-height:190px;padding:20px;border-right:1px solid var(--line);border-bottom:1px solid var(--line)}.home-v2 .step span{color:var(--lime);font:bold 12px Arial}.home-v2 .step h3{margin:44px 0 10px;font-size:24px}.home-v2 .step p{margin:0;color:var(--muted);font-size:13px;line-height:1.6}
+.home-v2 .split{display:grid;grid-template-columns:1fr 1fr;column-gap:70px}.home-v2 .body-text{color:#cfcdc7;font-size:16px;line-height:1.8}.home-v2 .body-text p{margin:0 0 16px}.home-v2 .facts{border-top:1px solid var(--line)}.home-v2 .fact{display:flex;justify-content:space-between;padding:18px 0;border-bottom:1px solid var(--line);font-size:14px}.home-v2 .fact span{color:var(--muted)}.home-v2 .fact strong{color:var(--lime);text-align:right}
+.home-v2 .code-card{margin-top:28px;overflow:hidden;border:1px solid #55575c;border-radius:9px;background:#101116}.home-v2 .code-top{padding:12px 18px;border-bottom:1px solid #3c3d42;color:var(--orange);font:bold 11px Arial;letter-spacing:.12em}.home-v2 pre{margin:0;overflow:auto;padding:19px;color:#e6ede2;font:13px/1.75 Consolas,monospace;white-space:pre}.home-v2 pre code{font:inherit}.home-v2 .code-note{margin-top:13px;color:var(--muted);font-size:13px;line-height:1.6}
+.home-v2 .prompt-row{display:flex;align-items:center;justify-content:space-between;margin:26px 0 12px}.home-v2 .prompt-row h3{margin:0;font-size:21px}.home-v2 .prompt-text{max-height:175px;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere}.home-v2 .footer{padding-top:32px;padding-bottom:40px;border-top:1px solid var(--line);color:var(--muted);font-size:12px;line-height:1.7}.home-v2 .footer strong{color:var(--fg)}
+/* The miniature build loops without scripts, so it also runs inside the offline mini-tool. */
+.home-v2 .window-bar{position:relative;overflow:hidden}.home-v2 .window-bar:after{content:"";position:absolute;left:0;bottom:0;width:100%;height:3px;background:#a7dc30;transform-origin:left;animation:bench-progress 8s linear infinite}
+.home-v2 .ghost-box{animation:bench-scan 8s ease-in-out infinite}.home-v2 .ghost-box.short{animation-delay:.35s}.home-v2 .ghost-box.small{animation-delay:.7s}
+.home-v2 .made-box{animation:bench-build 8s ease-in-out infinite}.home-v2 .made-box:nth-of-type(2){animation-delay:.65s}.home-v2 .made-box:nth-of-type(3){animation-delay:1.3s}
+.home-v2 .cursor.one{animation:cursor-blue 8s ease-in-out infinite}.home-v2 .cursor.two{animation:cursor-orange 8s ease-in-out infinite}.home-v2 .cursor.three{animation:cursor-lime 8s ease-in-out infinite}.home-v2 .cursor.four{animation:cursor-pink 8s ease-in-out infinite}
+@keyframes bench-progress{0%,8%{transform:scaleX(0)}68%,88%{transform:scaleX(1)}100%{transform:scaleX(0)}}
+@keyframes bench-scan{0%,9%,83%,100%{border-color:#b6b2aa;background:transparent}16%,32%{border-color:#35c9ed;background:#35c9ed18}46%,66%{border-color:#d7fa47;background:#d7fa4718}}
+@keyframes bench-build{0%,17%,92%,100%{opacity:.28;transform:translateY(9px) scale(.98)}30%,79%{opacity:1;transform:translateY(0) scale(1)}}
+@keyframes cursor-blue{0%,100%{transform:translate(-95px,45px) rotate(-28deg)}17%{transform:translate(0,0) rotate(-28deg)}34%{transform:translate(90px,-30px) rotate(-28deg)}58%{transform:translate(175px,45px) rotate(-28deg)}82%{transform:translate(28px,65px) rotate(-28deg)}}
+@keyframes cursor-orange{0%,100%{transform:translate(75px,-45px) rotate(-28deg)}23%{transform:translate(-85px,-45px) rotate(-28deg)}47%{transform:translate(15px,0) rotate(-28deg)}68%{transform:translate(-100px,35px) rotate(-28deg)}83%{transform:translate(55px,22px) rotate(-28deg)}}
+@keyframes cursor-lime{0%,100%{transform:translate(85px,-15px) rotate(-28deg)}15%{transform:translate(-105px,42px) rotate(-28deg)}38%{transform:translate(-22px,86px) rotate(-28deg)}60%{transform:translate(-155px,125px) rotate(-28deg)}84%{transform:translate(5px,30px) rotate(-28deg)}}
+@keyframes cursor-pink{0%,100%{transform:translate(-120px,18px) rotate(-28deg)}18%{transform:translate(25px,-115px) rotate(-28deg)}42%{transform:translate(125px,-70px) rotate(-28deg)}66%{transform:translate(45px,12px) rotate(-28deg)}84%{transform:translate(130px,-115px) rotate(-28deg)}}
+@media(prefers-reduced-motion:reduce){.home-v2 .window-bar:after,.home-v2 .ghost-box,.home-v2 .made-box,.home-v2 .cursor{animation:none!important}}
+@media(max-width:760px){.home-v2 .wrap{padding-left:20px;padding-right:20px}.home-v2 .mast{min-height:65px}.home-v2 .hero{padding-top:42px;padding-bottom:32px}.home-v2 .hero h1{font-size:clamp(42px,11vw,72px)}.home-v2 .hero-deck{display:block;margin-top:25px}.home-v2 .lead{font-size:15px}.home-v2 .actions{margin:22px -4px 0}.home-v2 .theatre{padding-bottom:48px}.home-v2 .workbench{min-height:225px}.home-v2 .bench-side{padding:14px}.home-v2 .side-label{margin-bottom:16px;font-size:9px}.home-v2 .ghost-box,.home-v2 .made-box{height:46px;margin-bottom:10px}.home-v2 .ghost-box.small{height:30px}.home-v2 .made-box strong{width:24px;height:24px}.home-v2 .made-box b{font-size:11px}.home-v2 .section{padding-top:52px;padding-bottom:56px}.home-v2 .section-head{display:block}.home-v2 .section-no{display:block;margin-bottom:16px}.home-v2 .steps{grid-template-columns:repeat(2,1fr)}.home-v2 .step{min-height:156px;padding:14px}.home-v2 .step h3{margin-top:29px;font-size:20px}.home-v2 .split{grid-template-columns:1fr}.home-v2 .facts{margin-top:20px}.home-v2 pre{font-size:12px}.home-v2 .prompt-row{display:block}.home-v2 .prompt-row .action{margin:15px 0 0}}
+@media(max-width:360px){.home-v2 .brand{font-size:14px}.home-v2 .brand .logo-motion{width:35px;height:35px}.home-v2 .step{min-height:175px}}
+</style></head>
+<body data-demo="home" data-swarm='{"sound":true,"tour":true,"order":"rows","speed":1.5,"maxItems":420,"performanceMode":"high"}'><div id="app"><main class="page-home home-v2">
+<header class="mast wrap" id="top"><a class="brand" href="#top"><span class="logo-motion" aria-hidden="true"></span><b>Swarm Builder</b></a><a class="mast-link" href="https://github.com/yancongya/swarm-builder">GitHub ↗</a></header>
+<section class="hero wrap"><p class="eyebrow">SWARM BUILDER / OPEN SOURCE</p><h1>网页开工，<br><em>交给一群光标。</em></h1><div class="hero-deck"><p class="lead">它们聚到一起，拆解当前页面，分头把内容盖出来。施工结束，真实网页原样交还。</p><div class="actions"><button class="action primary" type="button" data-replay>再看一次构建 ↗</button><a class="action" href="#quickstart">怎么接入 ↓</a></div></div></section>
+<section class="theatre wrap" aria-label="集群构建示意"><div class="window"><div class="window-bar"><span>● ● ●</span><span>PAGE / UNDER CONSTRUCTION</span></div><div class="workbench"><div class="bench-side"><span class="side-label">01 / 页面蓝图</span><div class="ghost-box"></div><div class="ghost-box short"></div><div class="ghost-box small"></div></div><div class="bench-side"><span class="side-label">02 / 集群施工</span><div class="made-box"><strong></strong><b>页面内容</b></div><div class="made-box chart"><i></i><i></i><i></i></div><div class="made-box"><strong></strong><b>真实 DOM</b></div></div></div><i class="cursor one"></i><i class="cursor two"></i><i class="cursor three"></i><i class="cursor four"></i><div class="window-foot"><span>SCAN → PLAN → CLAIM → BUILD</span><span>完成后交还原页面</span></div></div></section>
+<section class="section wrap" id="flow"><div class="section-head"><span class="section-no">01 / HOW IT WORKS</span><h2>不是播放录像。<br><em>是重新盖一遍。</em></h2></div><div class="steps"><div class="step"><span>01</span><h3>采集</h3><p>读取指定容器里的文字、矩形与媒体。</p></div><div class="step"><span>02</span><h3>拆解</h3><p>把页面整理成可分配的构建任务。</p></div><div class="step"><span>03</span><h3>协作</h3><p>彩色光标认领任务，逐块完成画面。</p></div><div class="step"><span>04</span><h3>交还</h3><p>动画退场，原本的页面恢复交互。</p></div></div></section>
+<section class="section wrap" id="quickstart"><div class="section-head"><span class="section-no">02 / QUICK START</span><h2>接入你的页面，<br><em>让它开工。</em></h2></div><div class="split"><div class="body-text"><p>指定一个容器，Swarm Builder 只处理这块区域。动画结束后，原来的 DOM 和交互继续工作。</p><p>想边看边调？右下角的创造者模式可调整光标数量、构建顺序、速度、声音与镜头跟随。</p></div><div class="facts"><div class="fact"><span>运行时依赖</span><strong>0</strong></div><div class="fact"><span>模块格式</span><strong>ESM / CJS / IIFE</strong></div><div class="fact"><span>许可证</span><strong>MIT</strong></div></div></div><div class="code-card"><div class="code-top">MOUNT / JAVASCRIPT</div><pre><code>import { mount } from 'swarm-builder';
 
 mount({
   root: document.querySelector('#app'),
   agentCount: 8,
-  order: 'rows',   // 自上而下
-  tour: true,      // 镜头跟着施工前沿
-  sound: true,
-});</code></pre>
-            </div>
-          </li>
-          <li class="step">
-            <span class="no">3</span>
-            <div>
-              <h3>改到满意，再抄配置</h3>
-              <p>创造者模式挂在页面上，29 项参数按用途分成六页，一次只摊开一页；调好一键导出，那份片段可以直接粘进代码。</p>
-              <pre><code>import { tune } from 'swarm-builder/tune';
+  order: 'rows',
+  tour: true
+});</code></pre></div><p class="code-note">当前可从 GitHub 源码构建后本地安装。框架项目请等目标容器挂载完成再启动。</p></section>
+<section class="section wrap" id="limits"><div class="section-head"><span class="section-no">03 / BEFORE YOU BUILD</span><h2>页面是你的。<br><em>进场交给我们。</em></h2></div><div class="split"><div class="body-text"><p>这是进场动画。施工中的临时盒子用于呈现构建过程，不承载业务交互；结束后才显示真实页面。</p><p>你可以重播，也可以打开右下角悬浮窗口，现场调整参数后重新构建。</p></div><div class="facts"><div class="fact"><span>构建范围</span><strong>指定的 root 子树</strong></div><div class="fact"><span>运行方式</span><strong>纯前端</strong></div><div class="fact"><span>进场结束</span><strong>交还真实页面</strong></div></div></div><div class="prompt-row"><h3>交给 AI 接入</h3><button class="action" type="button" data-copy-prompt>一键复制</button></div><div class="code-card"><pre class="prompt-text" data-prompt data-i18n-skip>请为我的项目接入 Swarm Builder 的网页进场动画。请按下面的步骤实际执行，不要只给安装建议。
 
-tune({ root: '#app', initial: { order: 'depth', balance: true } });</code></pre>
-            </div>
-          </li>
-        </ol>
-
-        <!-- 提示词整段摊在页面上：复制走的就是这里显示的那一份，改了立刻看得见。 -->
-        <div class="prompt">
-          <div class="prompt-bar">
-            <b>给 AI 的提示词</b>
-            <span class="prompt-hint">把下面这段原样粘给 coding agent，它能在你自己的项目里接完</span>
-            <button class="btn tiny" type="button" data-copy-prompt>一键复制</button>
-          </div>
-<pre class="prompt-text" data-prompt data-i18n-skip>用 swarm-builder 在我的项目里做「一群光标把页面重建出来」的进场动画。它是零依赖的 MIT 库，ESM / CJS / IIFE 三种格式都有。
-
-1. 装：npm i swarm-builder；还没上架时先 git clone https://github.com/yancongya/swarm-builder.git，npm install && npm run build，再在项目里 npm i 本地路径或用 npm pack 出的 tgz。走 CDN 就引 dist/swarm-builder.iife.js，全局名 SwarmBuilder。框架里等容器挂载完再开局（React 用 useEffect、Vue 用 onMounted），部署就是把这几个文件当静态资源发出去，没有服务端。
-2. 指一个容器来重建，页面其余部分不动：
+1. 下载并构建源码（当前 npm 尚未发布，仓库不提交 dist，请不要直接运行 npm i swarm-builder 或 npm i github:yancongya/swarm-builder）：
+   git clone https://github.com/yancongya/swarm-builder.git
+   cd swarm-builder
+   npm install
+   npm run build
+2. 回到我的项目目录，从本地构建好的仓库安装：
+   npm i ../swarm-builder
+   如果目录不相邻，请改成 swarm-builder 仓库的实际路径。也可以在仓库运行 npm pack，再在我的项目安装生成的 swarm-builder-0.1.0.tgz。
+3. 等我的目标容器挂载后接入：
    import { mount } from 'swarm-builder';
-   mount({ root: document.querySelector('#app'), agentCount: 8, order: 'rows', tour: true, sound: true });
-3. 要边看边调就换成创造者模式（右下角悬浮球，29 项参数按用途分六页：规模 / 顺序 / 光标 / 采集 / 声音 / 外观。一次只摊开一页，页签悬停能看到这一页的当前值，改完点「应用并重跑」）：
-   import { tune } from 'swarm-builder/tune';
-   tune({ root: '#app', initial: { order: 'depth', balance: true } });
-4. 常规参数：agentCount 1–24 个光标；order 取 group / rows / cols / snake / depth / radial / random；balance 按预估工时均衡各队列；speed 是 0.25–8 倍率，targetDuration 给秒数让估算器反推倍率；seed 固定即可重放（0 = 每局现抽）；maxItems 是蓝图上限，超出计入 dropped；ignore 用选择器跳过整棵子树；duplicate / maxCopies 管重复模块盖章；guides / maxGuides 管辅助线；grow 是标题字号步进；flocking 让光标互相避让；tour 让镜头跟随施工前沿；sound 是合成音效；theme 是施工线墨色；performanceMode 在密集页面自动裁剪特效。
-5. 下面十一个开关默认就按原版那一套打开，关掉才退回朴素模式：flight（live 待时绕圆心飞 / idle 停在落点），pointer（follow 鼠标当圆心 / ignore / repel 48px 排斥环，只在 live 下有用），agents（auto 人数随滚动速度与积压活增减，上限 48 / fixed 固定），gather（开局先聚 18 只再散开 / 直接开工），pick（live 每帧给所有活定价谁近谁抢 / queued 按预切队列），trigger（scroll 只放行滚过的部分 / immediate 第一帧全放），adaptiveSpeed（积压每件 +45% 最多 4 倍），scan（pre-scroll 先把整页滚一遍等懒加载和图片，重建别人的站点要用这档 / single 走一遍），score（generative 104 BPM 生成式配乐 / off 只有点击声），reducedMotion（skip 一项不建直接交还 / run 照跑），keys（Esc 收工、M 静音，输入框留给宿主 / 关掉不碰键盘）。
-6. 别做的事：不要为了动画改我的页面结构；这是进场动画，重建出来的盒子没有交互，结束后真实 DOM 原样交还。
-7. 验收：跑完 console 无报错、文档宽度不超出视口、动画结束后原页面照常可交互。</pre>
-        </div>
-      </section>
-
-      <section class="params" id="params">
-        <div class="head">
-          <div class="head-idx"><span class="idx">04</span><h2>参数速查</h2></div>
-          <p class="note">29 项按用途分六页，和面板一一对应；完整签名在 README，这里给的是最常动的那一面。</p>
-        </div>
-        <div class="pgrid">
-          <article class="pgroup">
-            <div class="phead"><span class="pchip">规模</span><h3>施工规模</h3><p class="pnote">几个光标、建多少、多快。</p></div>
-            <div class="plist">
-              <div class="prow"><code>agentCount</code><span class="pv">1–24</span><span class="pw">同时施工的光标数，越多越快，画面也越吵</span></div>
-              <div class="prow"><code>agents</code><span class="pv">auto / fixed</span><span class="pw">auto 时人数是下限、48 是上限，按滚动速度与积压活增减</span></div>
-              <div class="prow"><code>maxItems</code><span class="pv">数字</span><span class="pw">蓝图上限，超出的计入 dropped</span></div>
-              <div class="prow"><code>speed</code><span class="pv">0.25–8×</span><span class="pw">基础倍率；开了积压提速后它变成下限</span></div>
-              <div class="prow"><code>targetDuration</code><span class="pv">秒，0 = 关</span><span class="pw">交给估算器反推倍率，把整场压进固定时长</span></div>
-              <div class="prow"><code>performanceMode</code><span class="pv">auto / high / low</span><span class="pw">auto 超过 250 个盒子就裁剪辅助线与标题步进</span></div>
-            </div>
-          </article>
-
-          <article class="pgroup">
-            <div class="phead"><span class="pchip">顺序</span><h3>认领与顺序</h3><p class="pnote">活怎么分、按什么顺序放行。</p></div>
-            <div class="plist">
-              <div class="prow"><code>order</code><span class="pv">7 套</span><span class="pw">光标怎么认领这一页；竖列在没有真沟时自动退回横带</span></div>
-              <div class="prow"><code>balance</code><span class="pv">布尔</span><span class="pw">按预估工时切等分而不是件数，避免别人干等一个收尾</span></div>
-              <div class="prow"><code>seed</code><span class="pv">数字，0 = 现抽</span><span class="pw">随机顺序的种子，完成状态会回显实际用的那颗</span></div>
-              <div class="prow"><code>pick</code><span class="pv">queued / live <i class="pref">REF</i></span><span class="pw">守着切好的队列，还是每帧定价、谁近谁抢</span></div>
-              <div class="prow"><code>trigger</code><span class="pv">scroll / immediate <i class="pref">REF</i></span><span class="pw">只放行滚过的部分，还是第一帧全放行</span></div>
-              <div class="prow"><code>gather</code><span class="pv">布尔 <i class="pref">REF</i></span><span class="pw">开局先聚群，一滚或一碰就散开，最多绕 2.4 秒</span></div>
-              <div class="prow"><code>adaptiveSpeed</code><span class="pv">布尔 <i class="pref">REF</i></span><span class="pw">积压每件 +45%、最多 4 倍；speed 与 targetDuration 变成下限</span></div>
-            </div>
-          </article>
-
-          <article class="pgroup">
-            <div class="phead"><span class="pchip">光标</span><h3>光标行为</h3><p class="pnote">没活时怎么飞、鼠标算不算、镜头跟不跟。</p></div>
-            <div class="plist">
-              <div class="prow"><code>flight</code><span class="pv">live / idle <i class="pref">REF</i></span><span class="pw">干完活回群里绕轨道飞，还是停在落点</span></div>
-              <div class="prow"><code>pointer</code><span class="pv">follow / repel / ignore <i class="pref">REF</i></span><span class="pw">鼠标当圆心、48px 排斥环，或干脆不理</span></div>
-              <div class="prow"><code>flocking</code><span class="pv">布尔</span><span class="pw">光标在途中互相避让</span></div>
-              <div class="prow"><code>tour</code><span class="pv">布尔</span><span class="pw">滚动跟着施工前沿走，结束交还页首</span></div>
-              <div class="prow"><code>keys</code><span class="pv">布尔 <i class="pref">REF</i></span><span class="pw">Esc 收工、M 静音；输入框留给宿主</span></div>
-            </div>
-          </article>
-
-          <article class="pgroup">
-            <div class="phead"><span class="pchip">采集</span><h3>采集与内容</h3><p class="pnote">蓝图采哪里、复制、辅助线与跳过。</p></div>
-            <div class="plist">
-              <div class="prow"><code>scan</code><span class="pv">pre-scroll / single <i class="pref">REF</i></span><span class="pw">先滚一遍等懒加载和图片，还是走一遍 DOM 就开建</span></div>
-              <div class="prow"><code>duplicate</code><span class="pv">布尔</span><span class="pw">重复兄弟只真做一个，其余拖拽盖章</span></div>
-              <div class="prow"><code>maxCopies</code><span class="pv">1–48</span><span class="pw">每组重复最多盖几个</span></div>
-              <div class="prow"><code>guides</code><span class="pv">布尔</span><span class="pw">画出布局本来就有的对齐线</span></div>
-              <div class="prow"><code>maxGuides</code><span class="pv">0–64</span><span class="pw">一次运行最多画几条</span></div>
-              <div class="prow"><code>grow</code><span class="pv">布尔</span><span class="pw">大标题边打字边长到真实字号</span></div>
-              <div class="prow"><code>ignore</code><span class="pv">选择器</span><span class="pw">逗号分隔，命中的子树整块跳过</span></div>
-            </div>
-          </article>
-
-          <article class="pgroup">
-            <div class="phead"><span class="pchip">声音</span><h3>声音与配乐</h3><p class="pnote">合成音效与配乐。</p></div>
-            <div class="plist">
-              <div class="prow"><code>sound</code><span class="pv">布尔</span><span class="pw">合成音效，不用带音频文件</span></div>
-              <div class="prow"><code>score</code><span class="pv">generative / off <i class="pref">REF</i></span><span class="pw">104 BPM 生成式配乐，还是只有点击声</span></div>
-            </div>
-          </article>
-
-          <article class="pgroup">
-            <div class="phead"><span class="pchip">外观</span><h3>外观与可访问性</h3><p class="pnote">减少动效与施工线墨色。</p></div>
-            <div class="plist">
-              <div class="prow"><code>reducedMotion</code><span class="pv">skip / run <i class="pref">REF</i></span><span class="pw">系统要省动效就不建直接交还，还是照跑</span></div>
-              <div class="prow"><code>theme</code><span class="pv">auto / light / dark</span><span class="pw">施工线墨色按页面明暗，或手动指定</span></div>
-            </div>
-          </article>
-        </div>
-        <p class="board-note">带 REF 的十一项是原版开关，默认全开；关掉任一项再点「应用并重跑」就退回朴素模式。</p>
-      </section>
-
-      <section class="limits" id="limits">
-        <div class="head">
-          <div class="head-idx"><span class="idx">05</span><h2>用之前知道的几件事</h2></div>
-          <p class="note">它擅长的是「把已经存在的一页盖出来」，下面几条是它的边界，不是待修的 bug。</p>
-        </div>
-        <ul class="list">
-          <li>它是进场动画，不是懒加载：画面定格在采集那一瞬间，重建出来的盒子没有交互。</li>
-          <li>页面很长先看 <code>maxItems</code>，超出的条目计入 <code>dropped</code> 而不是被盖出来。</li>
-          <li>伪元素、跨域 canvas、Web Component 的 shadow DOM 会降级成占位框——有占位，不留空洞。</li>
-          <li>浏览器要求页面已有用户手势才发声，所以自动开局的那一次可能静音，点一下就回来了。</li>
-          <li>系统要求减少动效时怎么走由 <code>reducedMotion</code> 定：默认 <code>'skip'</code> 一项不建、直接把真实页面交还；<code>'run'</code> 才照跑（这是宿主主动要的装饰）。</li>
-          <li>预览壳里输入第三方地址，取得到 HTML 才会重建：同源页面与本地预览的同源转发可以，公网站点多半被 CORS 挡住，那就只原样显示。</li>
-        </ul>
-      </section>
-
-      <footer class="colophon">
-        <p>
-          效果基准来自原版 Swarm Rebuild，本项目按公开可观察的行为重新实现，
-          没有复制任何第三方源码。源码、Issue 与发行说明在
-          <a class="gh inline" href="https://github.com/yancongya/swarm-builder" target="_blank" rel="noreferrer">
-            <svg viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M8 .2a8 8 0 0 0-2.5 15.6c.4.1.5-.2.5-.4v-1.4c-2.2.5-2.7-1-2.7-1-.4-.9-.9-1.2-.9-1.2-.7-.5.1-.5.1-.5.8.1 1.2.8 1.2.8.7 1.2 1.9.9 2.4.7.1-.5.3-.9.5-1.1-1.8-.2-3.6-.9-3.6-4 0-.9.3-1.6.8-2.1-.1-.2-.4-1 .1-2.1 0 0 .7-.2 2.2.8a7.4 7.4 0 0 1 4 0c1.5-1 2.2-.8 2.2-.8.5 1.1.2 1.9.1 2.1.5.5.8 1.2.8 2.1 0 3.1-1.8 3.8-3.6 4 .3.3.6.8.6 1.5v2.2c0 .2.1.5.5.4A8 8 0 0 0 8 .2z"/></svg>
-            yancongya/swarm-builder
-          </a>，MIT 许可。
-        </p>
-      </footer>
-
-    </div>
-  </div>
-
-  <script type="module" src="./lang.ts"></script>
-  <script type="module" src="./prompt.ts"></script>
-  <script type="module" src="./creator.ts"></script>
-  <script type="module">
-    // 按钮是页面上唯一的重放入口：creator.ts 已经把 tuner 挂上 window，这里只是替
-    // 不愿意开面板的人按一下「应用并重跑」。
-    document.querySelector('[data-replay]')?.addEventListener('click', () => window.__tuner?.apply());
-  </script>
-</body>
-</html>
+   mount({ root: document.querySelector('#app'), agentCount: 8, order: 'rows', tour: true });
+   把 #app 换成我的真实容器；React 用 useEffect，Vue 用 onMounted。
+4. 保持现有页面结构与业务逻辑。动画只是进场效果，临时构建盒子不可交互；结束后真实 DOM 应原样交还。请在手机视口检查没有横向溢出，并验证原页面交互正常。</pre></div></section>
+<footer class="footer wrap"><strong>Swarm Builder</strong> · 开源的网页集群构建动画。<br>源码、参数与完整接入说明见 GitHub 仓库。</footer>
+</main></div><script type="module" src="./lang.ts"></script><script type="module" src="./prompt.ts"></script><script type="module" src="./creator.ts"></script><script type="module">document.querySelector('[data-replay]')?.addEventListener('click', () => window.__tuner?.apply());</script></body></html>

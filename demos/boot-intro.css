@@ -1,0 +1,31 @@
+/* Demo-shell entrance covers iframe loading and any custom pre-scroll capture. */
+.boot-intro {
+  position: fixed; top: 0; right: 0; bottom: 0; left: 0; z-index: 2147483002;
+  display: grid; place-items: center; overflow: hidden;
+  color: #eceadf; opacity: 1;
+}
+/* 暗色底单独一层：渐变本身没法过渡，直接切 background 就是从暗到亮的一记硬切。
+   聚群开始时让它淡出，页面自己的亮度是渐显出来的。 */
+.boot-intro::before {
+  content: ''; position: absolute; top: 0; right: 0; bottom: 0; left: 0; opacity: 1;
+  background: radial-gradient(circle at 50% 48%, #363126 0, #1c1b19 42%, #111210 100%);
+  transition: opacity .5s ease;
+}
+.boot-intro[hidden] { display: none; }
+.boot-intro[data-state="gathering"],
+.boot-intro[data-state="handoff"] { pointer-events: none; }
+.boot-intro[data-state="gathering"]::before,
+.boot-intro[data-state="handoff"]::before { opacity: 0; }
+.boot-intro[data-state="gathering"] .boot-intro-title,
+.boot-intro[data-state="gathering"] .boot-intro-note,
+.boot-intro[data-state="handoff"] .boot-intro-title,
+.boot-intro[data-state="handoff"] .boot-intro-note { opacity: 0; }
+.boot-intro-inner { position: absolute; width: 240px; height: 240px; text-align: center; transform: translate(-50%, -50%); }
+.boot-intro-stage { position: relative; width: 240px; height: 240px; display: grid; place-items: center; }
+.boot-intro-stage .logo-motion { display: block; width: 188px; height: 188px; filter: drop-shadow(0 12px 24px rgba(201, 121, 60, .2)); }
+.boot-intro-stage .logo-motion svg, .boot-intro-stage .logo-motion img { display: block; width: 100%; height: 100%; }
+.boot-intro-title { position: absolute; top: 240px; width: 100%; margin: 0; font-size: 17px; font-weight: 700; letter-spacing: .08em; transition: opacity .34s ease; }
+.boot-intro-note { position: absolute; top: 272px; width: 100%; margin: 0; color: #aaa394; font-size: 12px; transition: opacity .34s ease; }
+@media (prefers-reduced-motion: reduce) {
+  .boot-intro::before, .boot-intro-title, .boot-intro-note { transition: none; }
+}

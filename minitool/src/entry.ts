@@ -7,6 +7,7 @@
  *   sideEffects:false，纯副作用的裸 import 有被 tree-shaking 掉的风险。
  */
 import '../../demos/browser.css';
+import '../../demos/boot-intro.css';
 import './shell-extra.css';
 import { start } from './shell';
 

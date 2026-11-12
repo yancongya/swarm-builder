@@ -6,12 +6,35 @@
 import type { SwarmTuner } from '../src/tune/index';
 import { getLang, setLang, tr, trf } from './lang';
 import { createShellCore, need, say, normalize, tabTitle, type Case } from './shell-core';
+import { createBootIntro, decorateOrb } from './boot-intro';
 
-const frame = need<HTMLIFrameElement>('[data-frame]');
+let frame = need<HTMLIFrameElement>('[data-frame]');
+const frameParent = frame.parentElement as HTMLElement;
+const cachedFrames = new Map<string, { frame: HTMLIFrameElement; tuner: SwarmTuner }>();
+let activeCaseKey: string | null = null;
 const langBtn = need<HTMLButtonElement>('[data-lang]');
 
 let generation = 0;
 let tuner: SwarmTuner | null = null;
+function orbTarget() {
+  const orb = frame.contentDocument?.querySelector<HTMLElement>('[data-sb-chrome]')?.shadowRoot?.querySelector<HTMLElement>('.orb');
+  if (!orb) return null;
+  if (!orb.querySelector('.logo-motion')) decorateOrb(orb);
+  const frameRect = frame.getBoundingClientRect();
+  const orbRect = orb.getBoundingClientRect();
+  return { orb, rect: new DOMRect(frameRect.left + orbRect.left, frameRect.top + orbRect.top, orbRect.width, orbRect.height) };
+}
+const intro = createBootIntro(() => frame.getBoundingClientRect(), orbTarget);
+
+// 进场态收尾：顶栏藏到第一局结束（browser.css 的 html.pre-build）。
+let chromeShown = false;
+let overlayEverSeen = false;
+let runEverSeen = false;
+function revealChrome(): void {
+  if (chromeShown) return;
+  chromeShown = true;
+  document.documentElement.classList.remove('pre-build');
+}
 
 function nextLoad(): Promise<void> {
   return new Promise((resolve) => {
@@ -74,12 +97,12 @@ async function waitRebuildReady(limitMs: number): Promise<void> {
 // 冷启动时这份文档要现编译整条 /src 依赖图，8 秒不够——那不等于「装不上」，
 // 只是还没装上。等到上限之前先认 `__tunerBoot`（启动脚本自己报的失败），
 // 有了它才立刻收工，没有就继续等，上限只是「永远装不上」的兜底。
-function waitForTuner(limitMs: number): Promise<{ tuner: SwarmTuner | null; bootError: string }> {
+function waitForTuner(limitMs: number, targetFrame = frame): Promise<{ tuner: SwarmTuner | null; bootError: string }> {
   const mine = generation;
   return new Promise((resolve) => {
     let waited = 0;
     const poll = () => {
-      const win = frame.contentWindow as (Window & { __tuner?: SwarmTuner; __tunerBoot?: string }) | null;
+      const win = targetFrame.contentWindow as (Window & { __tuner?: SwarmTuner; __tunerBoot?: string }) | null;
       if (win?.__tuner) resolve({ tuner: win.__tuner, bootError: '' });
       else if (win?.__tunerBoot) resolve({ tuner: null, bootError: win.__tunerBoot });
       else if (mine !== generation || waited > limitMs) resolve({ tuner: null, bootError: '' });
@@ -197,7 +220,7 @@ function wrapForRebuild(html: string, base: string): string {
     `const mod = await import(${JSON.stringify(new URL('/src/tune/index.ts', location.href).href)}).catch((err) => { window.__tunerBoot = String(err); return null; });`,
     'if (mod) { try {',
     '  const root = document.querySelector("#app") || document.querySelector("main") || document.body;',
-    `  window.__tuner = mod.tune({ root, lang: ${JSON.stringify(getLang())}, initial: { sound: true, tour: true, scan: 'pre-scroll' }, open: true, position: "bottom-right" });`,
+    `  window.__tuner = mod.tune({ root, lang: ${JSON.stringify(getLang())}, initial: { sound: true, tour: true, scan: 'pre-scroll' }, open: false, position: "bottom-right" });`,
     '} catch (err) { window.__tunerBoot = String(err); } }',
   ].join('\n');
   parsed.body.append(boot);
@@ -205,15 +228,18 @@ function wrapForRebuild(html: string, base: string): string {
 }
 
 async function loadPreset(c: Case, mine: number): Promise<void> {
+  const targetFrame = frame;
   const settled = nextLoad();
-  frame.removeAttribute('srcdoc');
-  frame.src = withLang(c.href);
+  targetFrame.removeAttribute('srcdoc');
+  targetFrame.src = withLang(c.href);
   await settled;
 
-  const got = await waitForTuner(20000);
+  const got = await waitForTuner(20000, targetFrame);
   if (mine !== generation) return;
   core.addrEl.dataset.loading = 'false';
   if (!got.tuner) {
+    intro.dismiss();
+    revealChrome();
     core.hintEl.textContent = got.bootError
       ? trf('创造者模式装到这一页时失败了：{0}', got.bootError)
       : tr('这一页没有装上创造者模式');
@@ -223,6 +249,8 @@ async function loadPreset(c: Case, mine: number): Promise<void> {
   tuner = got.tuner;
   if (core.creatorOn) tuner.open();
   else tuner.close();
+  await intro.played();
+  if (mine !== generation || runEverSeen || tuner.runPhase !== 'idle') return;
   tuner.apply();
 }
 
@@ -307,6 +335,8 @@ async function loadCustom(c: Case, mine: number): Promise<void> {
     const boot = await waitForTuner(20000);
     if (mine !== generation) return;
     if (!boot.tuner) {
+      intro.dismiss();
+      revealChrome();
       core.hintEl.textContent = boot.bootError
         ? trf('创造者模式装到这一页时失败了：{0}', boot.bootError)
         : tr('这一页取到了，但创造者模式没装上');
@@ -315,6 +345,8 @@ async function loadCustom(c: Case, mine: number): Promise<void> {
     tuner = boot.tuner;
     if (core.creatorOn) tuner.open();
     else tuner.close();
+    await intro.played();
+    if (mine !== generation || runEverSeen || tuner.runPhase !== 'idle') return;
     tuner.apply();
     return;
   }
@@ -327,16 +359,60 @@ async function loadCustom(c: Case, mine: number): Promise<void> {
   await Promise.race([settled, new Promise<void>((resolve) => setTimeout(resolve, 6000))]);
   if (mine !== generation) return;
   core.addrEl.dataset.loading = 'false';
+  intro.dismiss();
+  revealChrome();
   core.hintEl.textContent = trf('读不到这一页的 DOM（{0}）：只能原样显示，重建不了', 'why' in got ? got.why : '');
 }
 
 async function load(): Promise<void> {
   const mine = ++generation;
+  const c = core.caseOf(core.current());
+  if (activeCaseKey !== null && activeCaseKey !== c.key) {
+    // Keep a completed preset's actual iframe and tuner alive. Returning to its
+    // tab restores the same DOM, inputs and scroll position without another run.
+    if (!core.caseOf(activeCaseKey).custom && tuner?.runPhase === 'done') {
+      cachedFrames.set(activeCaseKey, { frame, tuner });
+      tuner.close();
+      frame.style.display = 'none';
+      frame.removeAttribute('data-frame');
+    } else {
+      tuner?.destroy();
+      frame.remove();
+    }
+    const cached = cachedFrames.get(c.key);
+    if (cached) {
+      frame = cached.frame;
+      frame.dataset.frame = '';
+      frame.style.display = 'block';
+      tuner = cached.tuner;
+      cachedFrames.delete(c.key);
+      activeCaseKey = c.key;
+      intro.dismiss();
+      core.beginLoad();
+      core.addrEl.dataset.loading = 'false';
+      revealChrome();
+      if (core.creatorOn) tuner.open();
+      return;
+    }
+    frame = document.createElement('iframe');
+    frame.dataset.frame = '';
+    frame.title = '案例页面';
+    frameParent.insertBefore(frame, frameParent.querySelector('[data-blank]'));
+  } else if (activeCaseKey === c.key) {
+    tuner?.destroy();
+  }
+  activeCaseKey = c.key;
   tuner = null;
+  chromeShown = false;
+  overlayEverSeen = false;
+  runEverSeen = false;
+  document.documentElement.classList.add('pre-build');
+  intro.show();
   core.beginLoad();
 
-  const c = core.caseOf(core.current());
   if (c.custom && (!c.url || c.mode === 'blank')) {
+    intro.dismiss();
+    revealChrome();
     core.showBlank(c);
     return;
   }
@@ -366,6 +442,7 @@ const core = createShellCore({
   navigate,
   chip: (href) => navigate(core.current(), href),
   tuner: () => tuner,
+  creatorDefault: false,
 });
 
 // 语言切换走整页重载：外壳的静态文案、案例页的字典、srcdoc 里注入的 lang 都从
@@ -379,12 +456,27 @@ langBtn.addEventListener('click', () => {
 });
 
 // Mirror the panel into the window chrome, the way a browser reflects its page.
+// 进场遮罩与顶栏也在这里收尾：相位只有 tuner 一个来源。案例页各自建 tuner
+// （tune.html 就是），靠它们主动 postMessage 报相位的话，漏一个就整页卡在遮罩后面。
 setInterval(() => {
   if (!tuner) return;
+  const run = tuner.runPhase;
   core.barEl.dataset.phase = tuner.phase;
+  intro.phase(run);
   core.hintEl.textContent = `${tr(core.caseOf(core.current()).title)} · ${tuner.status}${relayLabel() ? ` · ${relayLabel()}` : ''}`;
   const items = frame.contentDocument?.querySelectorAll('.sb-item').length ?? 0;
   core.metaEl.textContent = items > 0 ? trf('{0} 个盒子在画', items) : '';
+
+  // Esc 中止与「恢复原状」走 stop()/destroy()，相位回 idle 而不是 done：
+  // 遮罩可能还停在聚群那一步，得有人收；顶栏则另认重建层「曾经在、现在没了」
+  // （reducedMotion 那一局没挂过重建层，由 done 兜）。
+  if (run !== 'idle') runEverSeen = true;
+  else if (runEverSeen) intro.dismiss();
+  if (!chromeShown) {
+    const overlay = frame.contentDocument?.querySelector('.sb-overlay');
+    if (overlay) overlayEverSeen = true;
+    else if (overlayEverSeen || run === 'done') revealChrome();
+  }
 }, 200);
 
 core.boot();

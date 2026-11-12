@@ -3,6 +3,7 @@ export const ROWS: [string, string][] = [
   // 外壳静态 DOM（index.html）
   ['Swarm Builder · 为你的网页开始创造模式，集群构建前端！', 'Swarm Builder · Start creator mode on your web page — build the front end with a swarm.'],
   ['案例', 'Cases'],
+  ['Blender 工作区', 'Blender Workspace'],
   ['新标签页：输入一个地址，让光标把它盖出来', 'New tab: type an address and let the cursors build it'],
   ['新标签页', 'New tab'],
   ['后退', 'Back'],
@@ -25,14 +26,10 @@ export const ROWS: [string, string][] = [
   ],
   ['准备中', 'Getting ready'],
 
-  // browser.ts 的 CASES 标题（makeTab 里走 tr(item.title)）
+  // shell-core.ts 的 CASES 标题（makeTab 里走 tr(item.title)）
   ['产品说明页', 'Product page'],
-  ['简单页基准', 'Simple page baseline'],
   ['密集控制台', 'Dense console'],
-  ['深色落地页', 'Dark landing page'],
-  ['复杂工作台', 'Complex workbench'],
   ['长页面跟随', 'Long page with camera follow'],
-  ['别人的站点', "Someone else's site"],
 
   // blank 页上的三条现成地址（CHIPS 标签）
   ['这一页自己', 'This page itself'],

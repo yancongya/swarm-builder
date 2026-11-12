@@ -6,19 +6,21 @@
  */
 import { getLang } from './lang';
 
-const PROMPT_EN = `Use swarm-builder to add a "swarm of cursors rebuilds this page" entrance animation to my project. It is a zero-dependency MIT library, shipped as ESM / CJS / IIFE.
+const PROMPT_EN = `Add a Swarm Builder entrance animation to my project. Perform these steps, not just describe them.
 
-1. Install: npm i swarm-builder. Before it is published, git clone https://github.com/yancongya/swarm-builder.git, run npm install && npm run build, then npm i the local path (or the tgz from npm pack) in your project. From a CDN, load dist/swarm-builder.iife.js — the global is SwarmBuilder. In a framework, start it after the container is mounted (useEffect / onMounted); deploying is just shipping those files, there is no server side.
-2. Point it at one container; leave the rest of the page alone:
+1. Clone and build the source. The package is not on npm yet and dist is not committed. Do not use npm i swarm-builder or npm i github:yancongya/swarm-builder:
+   git clone https://github.com/yancongya/swarm-builder.git
+   cd swarm-builder
+   npm install
+   npm run build
+2. Return to my project directory and install the locally built repository:
+   npm i ../swarm-builder
+   If the directories are not siblings, use the actual path to the swarm-builder repository. Alternatively, run npm pack in that repository and install the generated swarm-builder-0.1.0.tgz in my project.
+3. After my target container mounts, integrate it:
    import { mount } from 'swarm-builder';
-   mount({ root: document.querySelector('#app'), agentCount: 8, order: 'rows', tour: true, sound: true });
-3. Want to tune while watching? Use creator mode instead (floating ball in the corner; the 29 parameters are split into six purpose tabs - scale / order / cursors / capture / sound / look - with one tab open at a time and the current values in each tab's hover note; hit "Apply & rerun" after editing):
-   import { tune } from 'swarm-builder/tune';
-   tune({ root: '#app', initial: { order: 'depth', balance: true } });
-4. Everyday parameters: agentCount = 1-24 cursors; order = group / rows / cols / snake / depth / radial / random; balance splits the bands by estimated work instead of item count; speed is a 0.25-8 multiplier, targetDuration hands the multiplier to the estimator so the whole run fits a fixed number of seconds; seed makes a random order replayable (0 = drawn per run); maxItems caps the blueprint and anything over it is reported as dropped; ignore takes a selector and skips whole subtrees; duplicate / maxCopies control how repeated modules get stamped; guides / maxGuides control the alignment lines; grow steps a heading up to its real font size; flocking keeps cursors from clipping through each other; tour follows the construction frontier while scrolling; sound is synthesised, no audio files; theme picks the guide ink from the page it is drawn on; performanceMode trims effects automatically on dense pages.
-5. These eleven switches are on by default, matching the original; turn them off to fall back to the plainer mode: flight (live orbits while idle / idle stays where it landed), pointer (follow uses the mouse as the orbit centre / ignore / repel with a 48px ring - only does anything under live), agents (auto grows with scroll velocity and claimable backlog up to 48 / fixed), gather (open with the flock gathering before work / start immediately), pick (live prices every job each frame and the closest cursor takes it / queued sticks to pre-cut queues), trigger (scroll only opens what you have scrolled past / immediate opens the whole page on frame one), adaptiveSpeed (+45% per queued item, 4x at most), scan (pre-scroll runs the page end to end first so lazy content and images arrive - the one to use when rebuilding someone else's site / single walks it once), score (generative is the 104 BPM generative score / off is clicks only), reducedMotion (skip builds nothing and hands the real page straight back / run anyway), keys (Esc ends the run, M mutes, any key or tap unlocks audio / off leaves the host's keyboard alone).
-6. Do not: do not restructure my markup for the sake of the animation; this is an entrance animation, the rebuilt boxes are not interactive and the real DOM is handed back when it ends.
-7. Acceptance: no console errors, document width never exceeds the viewport, and after the animation the real page still works and is still interactive.`;
+   mount({ root: document.querySelector('#app'), agentCount: 8, order: 'rows', tour: true });
+   Replace #app with my real container. Use useEffect in React or onMounted in Vue.
+4. Preserve the page structure and business logic. This is an entrance animation; temporary construction boxes are not interactive and the real DOM must be returned at the end. Check mobile viewports for horizontal overflow and verify the original interactions still work.`;
 
 function need<T extends HTMLElement>(selector: string): T {
   const el = document.querySelector<T>(selector);

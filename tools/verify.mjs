@@ -43,8 +43,8 @@ process.on('exit', () => owned?.child.kill());
 
 const PAGES = ['home', 'simple', 'landing', 'dark-ui', 'cdn'];
 const EXPECTED_MEDIA = { landing: 5, 'dark-ui': 1 };
-const EXPECTED_COPIES = { home: 12, simple: 3, landing: 9, 'dark-ui': 29 };
-const EXPECTED_GUIDES = { home: 12, simple: 3, landing: 5 };
+const EXPECTED_COPIES = { home: 20, simple: 3, landing: 9, 'dark-ui': 29 };
+const EXPECTED_GUIDES = { home: 14, simple: 3, landing: 5 };
 const WIDTHS = [1280, 800];
 const OUT = new URL('../.shots/', import.meta.url).pathname.replace(/^\/(\w:)/, '$1');
 
@@ -112,6 +112,12 @@ const fieldOf = (page, key) => page.evaluate(
   key,
 );
 
+/** 面板默认收进悬浮球：合成一次 orb 点击展开（已开着就跳过），[data-apply] 才可见。 */
+const openPanel = (page) => page.evaluate(() => {
+  const host = document.querySelector('[data-sb-chrome]');
+  if (host?.dataset.open !== 'true') host?.shadowRoot?.querySelector('.orb')?.click();
+});
+
 /** 面板自身那一圈交互状态：进度条、待生效提示、按钮可用性、阶段。 */
 const panelUi = (page) => page.evaluate(() => {
   const sr = document.querySelector('[data-sb-chrome]').shadowRoot;
@@ -140,7 +146,7 @@ for (const width of WIDTHS) {
     page.on('console', (msg) => msg.type() === 'error' && errors.push(msg.text()));
     page.on('pageerror', (err) => errors.push(String(err)));
 
-    await page.goto(`${BASE}/demos/${name}.html`, { waitUntil: 'load' });
+    await page.goto(`${BASE}/${name === 'tall' ? 'tests/fixtures' : 'demos'}/${name}.html`, { waitUntil: 'load' });
     // Ghost boxes are transient, so count them as they appear rather than by sampling.
     await page.evaluate(() => {
       window.__stamps = 0;
@@ -155,7 +161,7 @@ for (const width of WIDTHS) {
         }
       }).observe(document.body, { childList: true, subtree: true });
     });
-    await page.click('[data-apply]');
+    await openPanel(page); await page.click('[data-apply]');
     await page.waitForTimeout(600);
     await page.screenshot({ path: `${OUT}${name}-${width}-mid.png` });
 
@@ -298,7 +304,7 @@ for (const width of WIDTHS) {
   if (idle.phase !== 'idle') problems.push(`未触发时阶段是 ${idle.phase}`);
 
   // pause / resume
-  await page.click('[data-apply]');
+  await openPanel(page); await page.click('[data-apply]');
   // 默认 scan:'pre-scroll'：开局要先等字体图片、把全页滚一遍再采。采完才有第一件
   // sb-item，那之前引擎还没进时钟，点暂停不会生效。等真正的施工出来再量。
   await page.waitForFunction(
@@ -344,7 +350,7 @@ for (const width of WIDTHS) {
 
   // skip
   await setField(page, 'speed', 1);
-  await page.click('[data-apply]');
+  await openPanel(page); await page.click('[data-apply]');
   await page.waitForTimeout(700);
   const beforeSkip = await readState();
   await page.screenshot({ path: `${OUT}controls-mid.png` });
@@ -1026,7 +1032,7 @@ for (const width of WIDTHS) {
   const firstFrame = await frameShape();
   if (first.tab !== 'home' || first.case_ !== 'home') problems.push(`初始标签页不对: ${JSON.stringify(first)}`);
   if (firstFrame.demo !== 'home') problems.push(`第一个案例内容是 ${firstFrame.demo}`);
-  if (first.url !== 'https://swarm-builder.dev') problems.push(`地址栏显示 ${first.url}`);
+  if (first.url !== 'https://yancongya.github.io/swarm-builder/demos/home.html') problems.push(`地址栏显示 ${first.url}`);
   if (first.back !== true || first.fwd !== true) problems.push('首次进入时前进/后退应该都禁用');
   await waitFrameDone(60000);
   const homeDone = await frameShape();
@@ -1057,7 +1063,11 @@ for (const width of WIDTHS) {
     .body?.dataset.demo === 'console', null, { timeout: 15000 });
   const switched = await chromeShape();
   if (switched.tab !== 'console' || switched.case_ !== 'console') problems.push(`切到 console 后外壳没跟上: ${JSON.stringify(switched)}`);
-  if (switched.url !== 'https://orbit.demo/console') problems.push(`地址栏没换成 ${switched.url}`);
+  if (switched.url !== 'https://yancongya.github.io/swarm-builder/demos/console.html') problems.push(`地址栏没换成 ${switched.url}`);
+  // 开场标识要播满一圈（3s）才放行施工，所以「施工中」不能按固定秒数掐表：
+  // 等第一件盒子真的画出来，再让它飞一会儿才截图。
+  await page.waitForFunction(() => (document.querySelector('[data-frame]').contentDocument
+    ?.querySelectorAll('.sb-item').length ?? 0) > 0, null, { timeout: 30000 });
   await page.waitForTimeout(1200);
   await page.screenshot({ path: `${OUT}browser-console-mid.png` });
   await waitFrameDone(120000);
@@ -1112,6 +1122,11 @@ for (const width of WIDTHS) {
   if (wentFwd.tab !== 'console' || wentFwd.fwd !== true) problems.push(`前进后外壳不对: ${JSON.stringify(wentFwd)}`);
 
   // 创造者模式开关：关掉时面板收成一颗悬浮球，页面本身不受影响。
+  // 开场动画先登台，创造者模式默认关着：先点亮，再验「关→球 / 开→展开」两个状态。
+  if ((await chromeShape()).creator !== 'true') {
+    await page.click('[data-creator]');
+    await page.waitForTimeout(200);
+  }
   await page.click('[data-creator]');
   await page.waitForTimeout(200);
   const closed = await chromeShape();
@@ -1125,27 +1140,25 @@ for (const width of WIDTHS) {
   // 重新载入：iframe 真的重新取页，所以面板回到案例自带的默认值——这是浏览器的语义，
   // 面板不该自作主张把改动写进 URL 或 localStorage。
   await page.click('[data-reload]');
-  await page.waitForTimeout(1500);
+  // 重载后开场标识重新播一圈才开跑：等状态条真的报出这一局，而不是掐 1.5s 去读空档。
+  // 只认「采蓝图/开场聚群」——旧文档那句「完成 N 项 · M 个光标」会在换页前先匹配上，
+  // 紧接着 iframe 导航就把 frameShape 读成 null。
+  await page.waitForFunction(() => {
+    const sr = document.querySelector('[data-frame]').contentDocument
+      ?.querySelector('[data-sb-chrome]')?.shadowRoot;
+    return /采蓝图|开场聚群/.test(sr?.querySelector('[data-status]')?.textContent ?? '');
+  }, null, { timeout: 30000 });
   const reloading = await frameShape();
   if (!/采蓝图|开场聚群|个光标|完成/.test(reloading.status)) problems.push(`重新载入后状态异常: ${reloading.status}`);
   await waitFrameDone(120000);
   const reloaded = await frameShape();
   if (reloaded.built !== natural.built) problems.push(`重载后没有回到案例自带默认：${reloaded.built} vs ${natural.built}`);
 
-  // 切回落地页
-  await page.click('.tab[data-key="landing"]');
-  await page.waitForFunction(() => document.querySelector('[data-frame]').contentDocument
-    .body?.dataset.demo === 'landing', null, { timeout: 15000 });
-  await waitFrameDone(60000);
-  const back = await frameShape();
-  await page.screenshot({ path: `${OUT}browser-landing.png` });
-
   // 全部预设都要「音效 + 镜头跟随」开着。查的是面板上真正打勾的控件，
   // 不是 HTML 里那串 data-swarm——字符串写了但没接进配置也算不过。
   const presets = [];
   for (const [key, demo] of [
-    ['home', 'home'], ['simple', 'simple'], ['console', 'console'], ['landing', 'landing'],
-    ['dark-ui', 'blender'], ['tall', 'tall'], ['tune', 'tune'],
+    ['home', 'home'], ['console', 'console'], ['blender', 'blender'],
   ]) {
     await page.click(`.tab[data-key="${key}"]`);
     await page.waitForFunction((d) => document.querySelector('[data-frame]').contentDocument
@@ -1173,7 +1186,6 @@ for (const width of WIDTHS) {
     `案例内 .bar 定位: ${leaked.bar}（应为 static）· 顶栏残留 ${leaked.toolbars} 个`,
     `后退/前进: ${wentBack.tab}(fwd=${wentBack.fwd}) → ${wentFwd.tab}(fwd=${wentFwd.fwd})`,
     `创造者模式: 关=${closed.open} 开=${reopened.open} · 重载回到默认 ${reloaded.built} 项`,
-    `切回: landing · ${back.status}`,
     `预设: ${presets.join(' · ')}`,
   ]);
   await ctx.close();
@@ -1232,7 +1244,7 @@ for (const width of WIDTHS) {
   await page.waitForFunction(() => document.querySelector('[data-frame]')?.contentDocument
     ?.querySelector('[data-sb-chrome]') !== null, null, { timeout: 15000 });
   const start = await shell();
-  if (start.tabs !== 7 || start.closable) problems.push(`预设标签条不对: ${start.tabs} 个，可关闭=${start.closable}`);
+  if (start.tabs !== 3 || start.closable) problems.push(`预设标签条不对: ${start.tabs} 个，可关闭=${start.closable}`);
 
   // 加号开新标签：语义和真浏览器一致——空白页 + 输入框自己拿到焦点。
   await page.click('[data-newtab]');
@@ -1240,7 +1252,7 @@ for (const width of WIDTHS) {
   const blank = await shell();
   if (!blank.blank) problems.push('点加号没有打开空白新标签');
   if (!blank.focused) problems.push('空白页的输入框没有自动聚焦');
-  if (blank.tabs !== 8 || !blank.closable) problems.push(`新标签没带上关闭钮: ${blank.tabs} 个 / closable=${blank.closable}`);
+  if (blank.tabs !== 4 || !blank.closable) problems.push(`新标签没带上关闭钮: ${blank.tabs} 个 / closable=${blank.closable}`);
 
   // javascript:/data: 会被写进重建文档，等于让外壳执行任意脚本，必须挡在门口。
   await page.fill('[data-blank-input]', 'javascript:alert(1)');
@@ -1276,7 +1288,7 @@ for (const width of WIDTHS) {
   await page.click('.tab[aria-selected="true"] .close');
   await page.waitForTimeout(800);
   const closed = await shell();
-  if (closed.tabs !== 7) problems.push(`关闭自定义标签后剩 ${closed.tabs} 个标签`);
+  if (closed.tabs !== 3) problems.push(`关闭自定义标签后剩 ${closed.tabs} 个标签`);
   if (closed.closable) problems.push('预设标签不该有关闭钮');
   if (closed.u) problems.push(`关闭后 URL 还留着 u 参数: ${closed.u}`);
 
@@ -1284,7 +1296,7 @@ for (const width of WIDTHS) {
   await page.goto(`${BASE}/demos/index.html?u=${encodeURIComponent('./simple.html')}`, { waitUntil: 'load' });
   await waitRebuilt('simple', 60000);
   const deep = await shell();
-  if (deep.tabs !== 8 || !deep.rebuild) problems.push(`?u= 直达没开出重建标签: ${deep.tabs} 个 / rebuild=${deep.rebuild}`);
+  if (deep.tabs !== 4 || !deep.rebuild) problems.push(`?u= 直达没开出重建标签: ${deep.tabs} 个 / rebuild=${deep.rebuild}`);
   if (deep.case_ !== 'custom-1') problems.push(`?u= 直达后活动标签是 ${deep.case_}`);
 
   report('custom-tab @1280', problems, [
@@ -1325,7 +1337,7 @@ for (const width of WIDTHS) {
   for (const [w, h] of [[1280, 900], [390, 740]]) {
     await page.setViewportSize({ width: w, height: h });
     for (const name of ['home', 'dark-ui', 'tall', 'console', 'landing']) {
-      await page.goto(`${BASE}/demos/${name}.html`, { waitUntil: 'load' });
+      await page.goto(`${BASE}/${name === 'tall' ? 'tests/fixtures' : 'demos'}/${name}.html`, { waitUntil: 'load' });
       await page.waitForTimeout(400);
       const c = await cover();
       const opaque = c.bg !== 'rgba(0, 0, 0, 0)' && c.bg !== 'transparent';
@@ -1405,7 +1417,7 @@ for (const width of WIDTHS) {
   if (first.cardBg === 'rgb(255, 217, 160)') problems.push(`面板底色被宿主 .card 规则改掉：${first.cardBg}`);
   if (first.btnBorder !== '1px') problems.push(`面板按钮被宿主 button 规则改成 ${first.btnBorder} 边框`);
 
-  await page.click('[data-apply]');
+  await openPanel(page); await page.click('[data-apply]');
   // 默认采集方式是「预滚动」：先等字体图片、再把懒加载滚出来，才轮到第一笔施工。
   // 不能拿固定 900ms 当「跑起来了」，要等第一件重建元素真的落进 DOM。
   await page.waitForFunction(() => document.querySelectorAll('.sb-item').length > 0, null, { timeout: 20000 });
@@ -1710,7 +1722,7 @@ for (const width of WIDTHS) {
   if (afterReset.dirty < 1) problems.push('重置后没有把与当前这局不一致的项标出来');
 
   // 恢复原状必须能在跑的过程中用：停掉施工，把页面原样交还。
-  await page.click('[data-apply]');
+  await openPanel(page); await page.click('[data-apply]');
   await page.waitForTimeout(900);
   const beforeRestore = await panelUi(page);
   if (!beforeRestore.overlay) problems.push('应用后没有跑起来');
@@ -1780,7 +1792,7 @@ for (const width of WIDTHS) {
   const errors = [];
   page.on('console', (msg) => msg.type() === 'error' && errors.push(msg.text()));
   page.on('pageerror', (err) => errors.push(String(err)));
-  await page.goto(`${BASE}/demos/tall.html`, { waitUntil: 'load' });
+  await page.goto(`${BASE}/tests/fixtures/tall.html`, { waitUntil: 'load' });
 
   // 带边界由排程自己给：同一份蓝图、同样的 agentCount，队列里第 i 条就是第 i 个光标的带。
   // 键是 item id，正是 DOM 上 data-item 写的那个。
@@ -1788,7 +1800,7 @@ for (const width of WIDTHS) {
   // 重载——发生在主页面上就是把下面那一串 run() 打断（Execution context was destroyed），
   // 现象长得像引擎坏了，实际是测试撞上了开发服务器的一次冷启动。
   const mapPage = await ctx.newPage();
-  await mapPage.goto(`${BASE}/demos/tall.html`, { waitUntil: 'load' });
+  await mapPage.goto(`${BASE}/tests/fixtures/tall.html`, { waitUntil: 'load' });
   await mapPage.evaluate(() => Promise.all([...document.images].map((i) => i.decode().catch(() => null))));
   const readBands = () => mapPage.evaluate(async () => {
     const { snapshot } = await import('/src/core/snapshot.ts');
@@ -1803,13 +1815,13 @@ for (const width of WIDTHS) {
   });
   // 撞上一次重载就等它重载完再读一遍，第二次的 import 已经是热的了。
   const bandOf = await readBands().catch(async () => {
-    await mapPage.goto(`${BASE}/demos/tall.html`, { waitUntil: 'load' });
+    await mapPage.goto(`${BASE}/tests/fixtures/tall.html`, { waitUntil: 'load' });
     await mapPage.evaluate(() => Promise.all([...document.images].map((i) => i.decode().catch(() => null))));
     return readBands();
   });
   await mapPage.close();
   // 主页再走一次：整页重载是广播给所有连接的客户端的，让它落在这一步而不是某一局施工中。
-  await page.goto(`${BASE}/demos/tall.html`, { waitUntil: 'load' });
+  await page.goto(`${BASE}/tests/fixtures/tall.html`, { waitUntil: 'load' });
 
   const runOnce = (options) => page.evaluate((opts) => {
     document.querySelectorAll('.sb-overlay').forEach((el) => el.remove());
@@ -1857,7 +1869,7 @@ for (const width of WIDTHS) {
   // reload（这一页第一次 import /src 模块、或 dist 产物刚被重写），现象是 Execution context
   // was destroyed——像引擎坏了，实际是这一局的观测者连着页面一起没了。
   const run = async (options) => runOnce(options).catch(async () => {
-    await page.goto(`${BASE}/demos/tall.html`, { waitUntil: 'load' });
+    await page.goto(`${BASE}/tests/fixtures/tall.html`, { waitUntil: 'load' });
     return runOnce(options);
   });
 
@@ -2010,7 +2022,7 @@ for (const width of WIDTHS) {
   if (!wide.rowsDeps) problems.push('多栏页 rows 的队列里存在子元素排在它自己的父前面');
 
   // 单栏页：没有沟就必须退回按 y 切，画面不能被竖着劈开。
-  const tall = await dist(`${BASE}/demos/tall.html`, 400);
+  const tall = await dist(`${BASE}/tests/fixtures/tall.html`, 400);
   if (!tall.colsLikeRows) problems.push('长页面是单栏，竖列没有退回成自上而下');
   if (!tall.orders.cols.topContiguous) problems.push('长页面退回横带后，带与带之间在顶边上仍然重叠');
   if (!tall.rowsDeps) problems.push('长页面 rows 的队列里存在子元素排在它自己的父前面');
@@ -2090,7 +2102,7 @@ for (const width of WIDTHS) {
   const page = await ctx.newPage();
   const errors = [];
   page.on('pageerror', (err) => errors.push(String(err)));
-  await page.goto(`${BASE}/demos/tall.html?auto`, { waitUntil: 'load' });
+  await page.goto(`${BASE}/tests/fixtures/tall.html?auto`, { waitUntil: 'load' });
 
   const shape = await page.evaluate(() => ({
     docHeight: document.documentElement.scrollHeight,
@@ -2158,7 +2170,7 @@ for (const width of WIDTHS) {
 // 断点定在 760：验收矩阵的 @800 一档仍是桌面版，它锁的建成数不用跟着改。
 // ---------------------------------------------------------------------------
 {
-  const PHONE = ['home', 'simple', 'console', 'landing', 'dark-ui', 'tall', 'tune'];
+  const PHONE = ['home', 'simple', 'console', 'landing', 'dark-ui', 'tall', 'blender', 'tune'];
   const problems = [];
   const lines = [];
   const ctx = await browser.newContext({ viewport: { width: 390, height: 740 } });
@@ -2167,7 +2179,7 @@ for (const width of WIDTHS) {
     const page = await ctx.newPage();
     const errors = [];
     page.on('pageerror', (err) => errors.push(String(err)));
-    await page.goto(`${BASE}/demos/${name}.html`, { waitUntil: 'load' });
+    await page.goto(`${BASE}/${name === 'tall' ? 'tests/fixtures' : 'demos'}/${name}.html`, { waitUntil: 'load' });
     await page.waitForFunction(() => document.querySelector('[data-sb-chrome]') !== null, null, { timeout: 20000 });
     const shape = await page.evaluate(() => {
       const sr = document.querySelector('[data-sb-chrome]').shadowRoot;
@@ -2229,7 +2241,7 @@ for (const width of WIDTHS) {
     return {
       inner: window.innerWidth,
       doc: document.documentElement.scrollWidth,
-      tabs: { scroll: tabs.scrollWidth, client: tabs.clientWidth },
+      tabs: { scroll: tabs.scrollWidth, client: tabs.clientWidth, overflow: getComputedStyle(tabs).overflowX },
       activeRight: rect(active),
       gh: gh ? { href: gh.href, target: gh.target, rel: gh.rel, right: rect(gh) } : null,
       navRows: Math.round(document.querySelector('.nav').getBoundingClientRect().height),
@@ -2244,7 +2256,10 @@ for (const width of WIDTHS) {
     };
   });
   if (shell.doc > shell.inner + 1) problems.push(`壳在手机上撑出横向滚动：${shell.doc}px > ${shell.inner}px`);
-  if (!(shell.tabs.scroll > shell.tabs.client)) problems.push('标签条没有横向滚动起来，说明它把窗口撑宽了');
+  // 三个预设标签在窄屏上可能刚好放得下；放不下时必须是横滚，而不是把窗口撑宽。
+  if (shell.tabs.scroll > shell.tabs.client && shell.tabs.overflow !== 'auto' && shell.tabs.overflow !== 'scroll') {
+    problems.push(`标签条溢出却不能横滚（overflow-x=${shell.tabs.overflow}），它把窗口撑宽了`);
+  }
   if (shell.activeRight > shell.inner + 1) problems.push(`当前标签页伸出屏幕: ${shell.activeRight}px`);
   if (shell.navRows > 90) problems.push(`顶栏在手机上挤成了 ${shell.navRows}px 高`);
   if (!shell.gh) problems.push('壳的顶栏没有 GitHub 入口');
@@ -2258,6 +2273,9 @@ for (const width of WIDTHS) {
     }
   }
   // 施工中最容易出问题：光标箭头和名字标签贴着右边缘时会不会撑宽文档。
+  // 开场标识播满一圈才开跑，先等光标真的进场再取样，否则量的是遮罩那几秒。
+  await page.waitForFunction(() => (document.querySelector('[data-frame]').contentDocument
+    ?.querySelectorAll('.sb-cursor').length ?? 0) > 0, null, { timeout: 30000 });
   const during = [];
   for (let i = 0; i < 8; i++) {
     during.push(await page.evaluate(() => {
@@ -2355,11 +2373,11 @@ for (const width of WIDTHS) {
     const page = await ctx.newPage();
     const errors = [];
     page.on('pageerror', (err) => errors.push(String(err)));
-    await page.goto(`${BASE}/demos/${name}.html?lang=en`, { waitUntil: 'load' });
+    await page.goto(`${BASE}/${name === 'tall' ? 'tests/fixtures' : 'demos'}/${name}.html?lang=en`, { waitUntil: 'load' });
     await page.waitForFunction(() => document.querySelector('[data-sb-chrome]') !== null, null, { timeout: 20000 });
     // 跑完才判：状态行、「已继续」这类提示、完成后的丢弃计数都是运行过程中才写进面板的。
     await setField(page, 'speed', 8);
-    await page.click('[data-apply]');
+    await openPanel(page); await page.click('[data-apply]');
     await page.waitForFunction(
       () => document.querySelector('[data-sb-chrome]').shadowRoot
         .querySelector('[data-status]')?.textContent.startsWith('Done'),
@@ -2378,7 +2396,7 @@ for (const width of WIDTHS) {
 
   // 外壳同样要跟着走：标签名、地址栏、状态栏，还有 iframe 里那一页。
   const page = await ctx.newPage();
-  await page.goto(`${BASE}/demos/index.html?case=simple&lang=en`, { waitUntil: 'load' });
+  await page.goto(`${BASE}/demos/index.html?case=console&lang=en`, { waitUntil: 'load' });
   await page.waitForFunction(() => document.querySelector('[data-frame]')?.contentDocument
     ?.querySelector('[data-sb-chrome]') !== null, null, { timeout: 20000 });
   // 元信息行只在施工中存在（「N 个盒子在画」），跑完就清空了，所以趁在飞的时候取样；
@@ -2699,7 +2717,7 @@ ${'<div class="strip"><img loading="lazy" width="320" height="120" src="/img/x.p
   const page = await ctx.newPage();
   const errors = [];
   page.on('pageerror', (err) => errors.push(String(err)));
-  await page.goto(`${BASE}/demos/tall.html`, { waitUntil: 'load' });
+  await page.goto(`${BASE}/tests/fixtures/tall.html`, { waitUntil: 'load' });
   await page.waitForFunction(() => typeof window.SwarmBuilder === 'function', null, { timeout: 20000 });
   await page.evaluate(audioHook);
 
@@ -2727,7 +2745,7 @@ ${'<div class="strip"><img loading="lazy" width="320" height="120" src="/img/x.p
   const rctx = await browser.newContext({ viewport: { width: 1280, height: 900 }, reducedMotion: 'reduce' });
   const rpage = await rctx.newPage();
   rpage.on('pageerror', (err) => errors.push(String(err)));
-  await rpage.goto(`${BASE}/demos/tall.html`, { waitUntil: 'load' });
+  await rpage.goto(`${BASE}/tests/fixtures/tall.html`, { waitUntil: 'load' });
   await rpage.waitForFunction(() => typeof window.SwarmBuilder === 'function', null, { timeout: 20000 });
   await rpage.evaluate(audioHook);
   const skipped = await rpage.evaluate(MEASURE, { tour: true });
@@ -2813,6 +2831,12 @@ ${'<div class="strip"><img loading="lazy" width="320" height="120" src="/img/x.p
       () => document.querySelector('[data-frame]')?.contentDocument?.querySelector('[data-sb-chrome]')?.shadowRoot?.querySelector('[data-fields]'),
       null, { timeout: 20000 },
     );
+    // 面板默认收进悬浮球：先像读者一样点亮展开，再量铺开后的行数与分档。
+    await page.evaluate(() => {
+      const host = document.querySelector('[data-frame]').contentDocument.querySelector('[data-sb-chrome]');
+      if (host?.dataset.open !== 'true') host?.shadowRoot?.querySelector('.orb')?.click();
+    });
+    await page.waitForTimeout(150);
     const m = await page.evaluate(() => {
       const doc = document.querySelector('[data-frame]').contentDocument;
       const sr = doc.querySelector('[data-sb-chrome]').shadowRoot;
@@ -3037,7 +3061,7 @@ ${'<div class="strip"><img loading="lazy" width="320" height="120" src="/img/x.p
   const errors = [];
   page.on('pageerror', (e) => errors.push(String(e)));
   const on = async (demo, options) => {
-    await page.goto(`${BASE}/demos/${demo}.html`, { waitUntil: 'load' });
+    await page.goto(`${BASE}/${demo === 'tall' ? 'tests/fixtures' : 'demos'}/${demo}.html`, { waitUntil: 'load' });
     await page.waitForFunction(() => typeof window.SwarmBuilder === 'function', null, { timeout: 20000 });
     return page.evaluate(MEASURE, options);
   };
@@ -3058,7 +3082,8 @@ ${'<div class="strip"><img loading="lazy" width="320" height="120" src="/img/x.p
   }
   if (simple.opening > 3) problems.push(`simple（${simple.total} 项）开场 ${simple.opening} 只，小页应 ≤3`);
   if (simple.opening !== formula(simple.total)) problems.push(`simple 开场 ${simple.opening} ≠ 公式 ${formula(simple.total)}（${simple.total} 项）`);
-  if (home.total < 216) problems.push(`home 只采到 ${home.total} 项，不足以封顶 18（需 ≥216）`);
+  // 封顶的真实边界是 ceil(n/12) ≥ 18，也就是 n ≥ 205；说明页精简后仍在这条线之上。
+  if (home.total < 205) problems.push(`home 只采到 ${home.total} 项，不足以封顶 18（需 ≥205）`);
   if (home.opening !== 18) problems.push(`home（${home.total} 项）开场 ${home.opening} 只，大页应封顶 18`);
   if (tall.opening !== formula(tall.total)) problems.push(`tall 开场 ${tall.opening} ≠ 公式 ${formula(tall.total)}（${tall.total} 项）`);
   if (fixed.peak !== 6) problems.push(`agents:'fixed' 峰值 ${fixed.peak}，缩放不该动固定班组（应 6）`);
@@ -3156,7 +3181,7 @@ ${'<div class="strip"><img loading="lazy" width="320" height="120" src="/img/x.p
   const errors = [];
   page.on('pageerror', (e) => errors.push(String(e)));
   const on = async (options) => {
-    await page.goto(`${BASE}/demos/tall.html`, { waitUntil: 'load' });
+    await page.goto(`${BASE}/tests/fixtures/tall.html`, { waitUntil: 'load' });
     await page.waitForFunction(() => typeof window.SwarmBuilder === 'function', null, { timeout: 20000 });
     return page.evaluate(MEASURE, options);
   };
@@ -3276,7 +3301,7 @@ ${'<div class="strip"><img loading="lazy" width="320" height="120" src="/img/x.p
   const errors = [];
   page.on('pageerror', (e) => errors.push(String(e)));
   const on = async (options) => {
-    await page.goto(`${BASE}/demos/tall.html`, { waitUntil: 'load' });
+    await page.goto(`${BASE}/tests/fixtures/tall.html`, { waitUntil: 'load' });
     await page.waitForFunction(() => typeof window.SwarmBuilder === 'function', null, { timeout: 20000 });
     return page.evaluate(MEASURE, options);
   };
@@ -3577,7 +3602,7 @@ ${'<div class="strip"><img loading="lazy" width="320" height="120" src="/img/x.p
   page.on('pageerror', (e) => errors.push(String(e)));
   // page.evaluate 只收一个参数：成组喂进去，场景自己解构。
   const on = async (measure, args) => {
-    await page.goto(`${BASE}/demos/tall.html`, { waitUntil: 'load' });
+    await page.goto(`${BASE}/tests/fixtures/tall.html`, { waitUntil: 'load' });
     await page.waitForFunction(() => typeof window.SwarmBuilder === 'function', null, { timeout: 20000 });
     return page.evaluate(measure, args);
   };
@@ -3685,7 +3710,7 @@ ${'<div class="strip"><img loading="lazy" width="320" height="120" src="/img/x.p
     await page.goto(url, { waitUntil: 'load' });
     await page.waitForFunction(() => document.querySelector('[data-sb-chrome]') !== null, null, { timeout: 20000 });
     await setField(page, 'speed', 8);
-    await page.click('[data-apply]');
+    await openPanel(page); await page.click('[data-apply]');
   };
 
   const isCJK = (text) => [...String(text)].some((ch) => {
@@ -3694,12 +3719,12 @@ ${'<div class="strip"><img loading="lazy" width="320" height="120" src="/img/x.p
       || (c >= 0x4e00 && c <= 0x9fff) || (c >= 0xff01 && c <= 0xffef);
   });
 
-  await page.goto(`${BASE}/demos/tall.html`, { waitUntil: 'load' });
+  await page.goto(`${BASE}/tests/fixtures/tall.html`, { waitUntil: 'load' });
   await page.waitForFunction(() => document.querySelector('[data-sb-chrome]') !== null, null, { timeout: 20000 });
   const before = await state(page);
 
   await setField(page, 'speed', 8);
-  await page.click('[data-apply]');
+  await openPanel(page); await page.click('[data-apply]');
   await waitDone(page, 90000);
   const enabled = await page.waitForFunction(() => {
     const btn = document.querySelector('[data-sb-chrome]')?.shadowRoot?.querySelector('[data-card]');
@@ -3744,11 +3769,11 @@ ${'<div class="strip"><img loading="lazy" width="320" height="120" src="/img/x.p
   const restarted = await state(page);
 
   // 英文页：按钮、提示、图注都得跟着字典走。
-  await page.goto(`${BASE}/demos/tall.html?lang=en`, { waitUntil: 'load' });
+  await page.goto(`${BASE}/tests/fixtures/tall.html?lang=en`, { waitUntil: 'load' });
   await page.waitForFunction(() => document.querySelector('[data-sb-chrome]') !== null, null, { timeout: 20000 });
   const beforeEn = await state(page);
   await setField(page, 'speed', 8);
-  await page.click('[data-apply]');
+  await openPanel(page); await page.click('[data-apply]');
   await page.waitForFunction(() => {
     const st = document.querySelector('[data-sb-chrome]')?.shadowRoot?.querySelector('[data-status]')?.textContent ?? '';
     return st.startsWith('Done');
@@ -3856,7 +3881,7 @@ ${'<div class="strip"><img loading="lazy" width="320" height="120" src="/img/x.p
     await page.waitForFunction(() => document.querySelector('[data-sb-chrome]') !== null, null, { timeout: 20000 });
   };
   const on = async (options) => {
-    await page.goto(`${BASE}/demos/tall.html`, { waitUntil: 'load' });
+    await page.goto(`${BASE}/tests/fixtures/tall.html`, { waitUntil: 'load' });
     await page.waitForFunction(() => typeof window.SwarmBuilder === 'function', null, { timeout: 20000 });
     return page.evaluate(MEASURE, options);
   };
@@ -3878,10 +3903,10 @@ ${'<div class="strip"><img loading="lazy" width="320" height="120" src="/img/x.p
       || (c >= 0x4e00 && c <= 0x9fff) || (c >= 0xff01 && c <= 0xffef);
   });
 
-  await load(`${BASE}/demos/tall.html`);
+  await load(`${BASE}/tests/fixtures/tall.html`);
   const zh = await panel();
   // 「待生效」是相对上一局说的：先真的跑一局，再看改这一行有没有被标出来。
-  await page.click('[data-apply]');
+  await openPanel(page); await page.click('[data-apply]');
   const dirty = await setField(page, 'trailLife', 1.8);
   const zhDirty = await panel();
 
@@ -3892,7 +3917,7 @@ ${'<div class="strip"><img loading="lazy" width="320" height="120" src="/img/x.p
   await page.screenshot({ path: `${OUT}trail.png` });
   const long = await longRun;
 
-  await load(`${BASE}/demos/tall.html?lang=en`);
+  await load(`${BASE}/tests/fixtures/tall.html?lang=en`);
   const en = await panel();
 
   const problems = [];

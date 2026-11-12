@@ -1,5 +1,4 @@
-/**
- * 小工具外壳的容器适配层：标签条、历史栈、空白页、地址校验、创造者钮与 __browser
+/** * 小工具外壳的容器适配层：标签条、历史栈、空白页、地址校验、创造者钮与 __browser
  * 吊钩都在 demos/shell-core.ts（与母本 demos/browser.ts 共用骨架）。
  *
  * 与母本的差异都来自容器硬约束（见 minitool skill 的 device-capabilities）：
@@ -20,34 +19,19 @@ import type { SwarmBuilderOptions } from '../../src/types';
 import { tune, type SwarmTuner } from '../../src/tune/index';
 import { applyLang, getLang, setLang, tr, trf } from '../../demos/lang';
 import { createShellCore, need, say, normalize, tabTitle, type Case } from '../../demos/shell-core';
+import { createBootIntro, decorateOrb, mountLogo } from '../../demos/boot-intro';
+import { mountBlenderUi } from '../../demos/blender-ui';
 import caseCss from 'minitool:case-css';
 import panelCss from 'minitool:panel-css';
-import darkUiHtml from 'minitool:case-html:dark-ui';
 import homeHtml from 'minitool:case-html:home';
 import consoleHtml from 'minitool:case-html:console';
-import landingHtml from 'minitool:case-html:landing';
-import simpleHtml from 'minitool:case-html:simple';
-import tallHtml from 'minitool:case-html:tall';
-import tuneHtml from 'minitool:case-html:tune';
+import blenderHtml from 'minitool:case-html:blender';
 
 /** 构建期已剥 script/link/_blank 的案例 HTML，key 与 demos/<key>.html 一致。 */
 const CASE_HTML: Record<string, string> = {
   home: homeHtml,
-  simple: simpleHtml,
   console: consoleHtml,
-  landing: landingHtml,
-  'dark-ui': darkUiHtml,
-  tall: tallHtml,
-  tune: tuneHtml,
-};
-
-/**
- * 各案例的重建根与初始参数。母本 creator.ts 统一找 #app；tune 案例的内联脚本
- * 用 #site 且自带初始值（它的 body 没有 data-swarm，被构建期剥掉的脚本里写着）。
- */
-const ROOT_SEL: Record<string, string> = { tune: '#site' };
-const CASE_INIT: Record<string, SwarmBuilderOptions> = {
-  tune: { agentCount: 6, targetDuration: 8, sound: true, tour: true },
+  blender: blenderHtml,
 };
 
 /**
@@ -55,19 +39,21 @@ const CASE_INIT: Record<string, SwarmBuilderOptions> = {
  * 那个模块带 clipboard/execCommand，import 进包会被门禁拦；只取文本）。
  * 中文留在案例 HTML 里当源码，切 EN 时整段替换。
  */
-const PROMPT_EN = `Use swarm-builder to add a "swarm of cursors rebuilds this page" entrance animation to my project. It is a zero-dependency MIT library, shipped as ESM / CJS / IIFE.
+const PROMPT_EN = `Add a Swarm Builder entrance animation to my project. Perform these steps, not just describe them.
 
-1. Install: npm i swarm-builder. Before it is published, git clone https://github.com/yancongya/swarm-builder.git, run npm install && npm run build, then npm i the local path (or the tgz from npm pack) in your project. From a CDN, load dist/swarm-builder.iife.js — the global is SwarmBuilder. In a framework, start it after the container is mounted (useEffect / onMounted); deploying is just shipping those files, there is no server side.
-2. Point it at one container; leave the rest of the page alone:
+1. Clone and build the source. The package is not on npm yet and dist is not committed. Do not use npm i swarm-builder or npm i github:yancongya/swarm-builder:
+   git clone https://github.com/yancongya/swarm-builder.git
+   cd swarm-builder
+   npm install
+   npm run build
+2. Return to my project directory and install the locally built repository:
+   npm i ../swarm-builder
+   If the directories are not siblings, use the actual path to the swarm-builder repository. Alternatively, run npm pack in that repository and install the generated swarm-builder-0.1.0.tgz in my project.
+3. After my target container mounts, integrate it:
    import { mount } from 'swarm-builder';
-   mount({ root: document.querySelector('#app'), agentCount: 8, order: 'rows', tour: true, sound: true });
-3. Want to tune while watching? Use creator mode instead (floating ball in the corner; the 29 parameters are split into six purpose tabs - scale / order / cursors / capture / sound / look - with one tab open at a time and the current values in each tab's hover note; hit "Apply & rerun" after editing):
-   import { tune } from 'swarm-builder/tune';
-   tune({ root: '#app', initial: { order: 'depth', balance: true } });
-4. Everyday parameters: agentCount = 1-24 cursors; order = group / rows / cols / snake / depth / radial / random; balance splits the bands by estimated work instead of item count; speed is a 0.25-8 multiplier, targetDuration hands the multiplier to the estimator so the whole run fits a fixed number of seconds; seed makes a random order replayable (0 = drawn per run); maxItems caps the blueprint and anything over it is reported as dropped; ignore takes a selector and skips whole subtrees; duplicate / maxCopies control how repeated modules get stamped; guides / maxGuides control the alignment lines; grow steps a heading up to its real font size; flocking keeps cursors from clipping through each other; tour follows the construction frontier while scrolling; sound is synthesised, no audio files; theme picks the guide ink from the page it is drawn on; performanceMode trims effects automatically on dense pages.
-5. These eleven switches are on by default, matching the original; turn them off to fall back to the plainer mode: flight (live orbits while idle / idle stays where it landed), pointer (follow uses the mouse as the orbit centre / ignore / repel with a 48px ring - only does anything under live), agents (auto grows with scroll velocity and claimable backlog up to 48 / fixed), gather (open with the flock gathering before work / start immediately), pick (live prices every job each frame and the closest cursor takes it / queued sticks to pre-cut queues), trigger (scroll only opens what you have scrolled past / immediate opens the whole page on frame one), adaptiveSpeed (+45% per queued item, 4x at most), scan (pre-scroll runs the page end to end first so lazy content and images arrive - the one to use when rebuilding someone else's site / single walks it once), score (generative is the 104 BPM generative score / off is clicks only), reducedMotion (skip builds nothing and hands the real page straight back / run anyway), keys (Esc ends the run, M mutes, any key or tap unlocks audio / off leaves the host's keyboard alone).
-6. Do not: do not restructure my markup for the sake of the animation; this is an entrance animation, the rebuilt boxes are not interactive and the real DOM is handed back when it ends.
-7. Acceptance: no console errors, document width never exceeds the viewport, and after the animation the real page still works and is still interactive.`;
+   mount({ root: document.querySelector('#app'), agentCount: 8, order: 'rows', tour: true });
+   Replace #app with my real container. Use useEffect in React or onMounted in Vue.
+4. Preserve the page structure and business logic. This is an entrance animation; temporary construction boxes are not interactive and the real DOM must be returned at the end. Check mobile viewports for horizontal overflow and verify the original interactions still work.`;
 
 /**
  * flex gap 能力实测（Chrome 84+ 才有）。用布局探测而不是 CSS.supports：
@@ -90,6 +76,15 @@ function detectFlexGap(): boolean {
 }
 
 export function start(): void {
+  const intro = createBootIntro(
+    () => need<HTMLElement>('[data-viewport]').getBoundingClientRect(),
+    () => {
+      const orb = document.querySelector<HTMLElement>('[data-sb-chrome]')?.shadowRoot?.querySelector<HTMLElement>('.orb');
+      if (!orb) return null;
+      if (!orb.querySelector('.logo-motion')) decorateOrb(orb);
+      return { orb, rect: orb.getBoundingClientRect() };
+    },
+  );
   const tabsEl = need<HTMLElement>('[data-tabs]');
   const navEl = need<HTMLElement>('.nav');
   const langBtn = need<HTMLButtonElement>('[data-lang]');
@@ -101,7 +96,11 @@ export function start(): void {
   viewportEl.classList.toggle('supports-flex-gap', flexGapOk);
 
   let tuner: SwarmTuner | null = null;
+  let cleanBlenderUi: (() => void) | null = null;
   let shadow: ShadowRoot | null = null;
+  let activeCaseKey: string | null = null;
+  let activePanelHost: HTMLElement | null = null;
+  const cachedCases = new Map<string, { nodes: DocumentFragment; tuner: SwarmTuner; panelHost: HTMLElement | null }>();
 
   // 进场态：顶栏（tabs+nav）藏起、视口让到状态栏下沿，构建完成才落回（见 shell-extra.css）。
   document.documentElement.classList.add('pre-build');
@@ -114,21 +113,43 @@ export function start(): void {
 
   /**
    * 顶部出血：容器里系统状态栏浮在 webview 上方，fixed top:0 会被盖住。
-   * 官方 getWindowInfo().statusBarHeight（9.49+，异步，文档明令禁止硬编码状态栏高度）
-   * 写进 --sb-safe-top；浏览器直跑 / 旧客户端没有 window.xhs → 保持 0px 兜底
-   * （桌面本就没有状态栏）。pre-build 期间顶栏本来就藏着，接口返回前不会有顶栏露出。
+   * 官方 getWindowInfo()（9.49+，异步，文档明令禁止硬编码）写进 --sb-safe-top；
+   * 浏览器直跑 / 旧客户端没有 window.xhs → 保持 0px 兜底（桌面本就没有状态栏）。
+   * pre-build 期间顶栏本来就藏着，接口返回前不会有顶栏露出。
+   *
+   * 出血量取三者的最大值，而不是只看 statusBarHeight——真机上「盖住顶栏的」不止状态栏：
+   * - safeArea.top：安全区矩形含刘海/挖孔，全屏 webview 里通常 ≥ 状态栏高度；
+   * - menuButtons：容器原生的 back/me/share 按钮悬在标题栏那一带，可见时我们的
+   *   标签条正好落在同一条水平带上，必须让到按钮底边之下；
+   * - statusBarHeight：状态栏本身，作为前两者缺失时的兜底。
+   * 文档另要求窗口形态变化（分屏、折叠、转屏）后重新读取，resize 时再跑一次。
    */
   function readSafeTop(): void {
     const xhs = (
       window as unknown as {
-        xhs?: { miniTool?: { getWindowInfo?: () => Promise<{ statusBarHeight?: number }> } };
+        xhs?: {
+          miniTool?: {
+            getWindowInfo?: () => Promise<{
+              statusBarHeight?: number;
+              safeArea?: { top?: number } | null;
+              menuButtons?: { back?: { bottom?: number } | null; me?: { bottom?: number } | null; share?: { bottom?: number } | null } | null;
+            }>;
+          };
+        };
       }
     ).xhs;
     const get = xhs?.miniTool?.getWindowInfo;
     if (typeof get !== 'function') return;
     void get()
       .then((info) => {
-        const h = Number(info?.statusBarHeight);
+        const buttons = [info?.menuButtons?.back, info?.menuButtons?.me, info?.menuButtons?.share]
+          .filter((b): b is { bottom?: number } => b != null)
+          .map((b) => Number(b.bottom) || 0);
+        const h = Math.max(
+          Number(info?.statusBarHeight) || 0,
+          Number(info?.safeArea?.top) || 0,
+          ...buttons,
+        );
         if (Number.isFinite(h) && h > 0) {
           document.documentElement.style.setProperty('--sb-safe-top', `${h}px`);
         }
@@ -169,6 +190,8 @@ export function start(): void {
     const parsed = new DOMParser().parseFromString(html, 'text/html');
 
     tuner?.destroy();
+    cleanBlenderUi?.();
+    cleanBlenderUi = null;
     tuner = null;
     window.__tuner = undefined;
 
@@ -197,11 +220,12 @@ export function start(): void {
     shadow.append(document.createElement('slot'));
 
     if (getLang() === 'en') applyLang(shadow, c.key);
+    mountLogo(shadow.querySelector<HTMLElement>('.page-home .logo-motion'));
+    if (c.key === 'blender') cleanBlenderUi = mountBlenderUi(shadow);
 
-    const rootSel = ROOT_SEL[c.key] ?? '#app';
-    const root = shadow.querySelector<HTMLElement>(rootSel);
+    const root = shadow.querySelector<HTMLElement>('#app');
     if (!root) {
-      core.hintEl.textContent = trf('这一页没有装上创造者模式：找不到 {0}', rootSel);
+      core.hintEl.textContent = trf('这一页没有装上创造者模式：找不到 {0}', '#app');
       return;
     }
 
@@ -217,8 +241,8 @@ export function start(): void {
     // onComplete：首局构建完成 → 顶栏落回（pre-build 进场态，见 revealChrome）。
     const initial: SwarmBuilderOptions = {
       ...swarmAttr,
-      ...(CASE_INIT[c.key] ?? {}),
       scan: 'single',
+      onStatus: (status) => intro.phase(status.phase),
       onComplete: revealChrome,
     };
 
@@ -233,13 +257,22 @@ export function start(): void {
       styleRoot: shadow,
     });
     window.__tuner = tuner;
+    const panelHosts = document.querySelectorAll<HTMLElement>('[data-sb-chrome]');
+    activePanelHost = panelHosts[panelHosts.length - 1] ?? null;
     liftPanel();
     // 母本 loadPreset 每次挂载都显式开跑：面板只负责调参，不负责启动这一局。
-    tuner.apply();
-    if (core.params.has('auto')) tuner.apply();
+    // 开场标识播满一圈才放行：资源是打包进来的、秒回，不等这一圈就只闪一下 logo。
+    const mine = tuner;
+    void intro.played().then(() => {
+      // 这一圈里用户已经自己开过跑就别再补一发：Esc 中止后相位回 idle，
+      // 只看当前相位会把「再盖一遍 → 立刻 Esc」那一局从头打断，所以也认 runEverSeen。
+      if (!mine || tuner !== mine || runEverSeen || mine.runPhase !== 'idle') return;
+      mine.apply();
+      if (core.params.has('auto')) mine.apply();
+    });
 
     // 面板 host 挂在 body 上（shadow 同步创建）：注入 Chrome 61 基线 compat + gap 能力类。
-    const panelHost = document.querySelector<HTMLElement>('[data-sb-chrome]');
+    const panelHost = activePanelHost;
     if (panelHost) {
       panelHost.classList.toggle('supports-flex-gap', flexGapOk);
       const panelShadow = panelHost.shadowRoot;
@@ -256,8 +289,6 @@ export function start(): void {
 
   /** 案例内联 script 被构建期剥离后的功能代接：母本脚本逻辑按 key 在这里补回。 */
   function bootCase(key: string, sr: ShadowRoot): void {
-    // dark-ui：canvas 预览图（母本 paintGlView IIFE）。
-    if (key === 'dark-ui') paintGlView(sr);
 
     // home：「再盖一遍」= 面板的「应用并重跑」（母本 [data-replay] → __tuner.apply）。
     const replay = sr.querySelector<HTMLElement>('[data-replay]');
@@ -267,33 +298,6 @@ export function start(): void {
     const copyBtn = sr.querySelector<HTMLButtonElement>('[data-copy-prompt]');
     const promptBlock = sr.querySelector<HTMLElement>('[data-prompt]');
     if (copyBtn && promptBlock) setupPrompt(sr, copyBtn, promptBlock);
-  }
-
-  /** 母本 dark-ui 内联 script 的原样移植：给 .gl-view canvas 画预览底图。 */
-  function paintGlView(sr: ShadowRoot): void {
-    const c = sr.querySelector<HTMLCanvasElement>('.gl-view');
-    const g = c?.getContext('2d');
-    if (!c || !g) return;
-    g.fillStyle = '#2d3138';
-    g.fillRect(0, 0, c.width, c.height);
-    g.strokeStyle = '#5f6a7a';
-    g.lineWidth = 1;
-    for (let i = 1; i < 4; i++) {
-      g.beginPath();
-      g.moveTo(0, (c.height / 4) * i);
-      g.lineTo(c.width, (c.height / 4) * i);
-      g.stroke();
-    }
-    const grd = g.createLinearGradient(0, 0, c.width, c.height);
-    grd.addColorStop(0, '#c9793c');
-    grd.addColorStop(1, '#6d7a45');
-    g.fillStyle = grd;
-    g.beginPath();
-    g.arc(c.width * 0.5, c.height * 0.45, 34, 0, Math.PI * 2);
-    g.fill();
-    g.fillStyle = '#e6e9ef';
-    g.font = '11px sans-serif';
-    g.fillText('viewport GL', 8, c.height - 8);
   }
 
   /** 母本 prompt.ts 的移植：EN 整段替换 + 复制（容器里降级为「选中」）。 */
@@ -323,9 +327,53 @@ export function start(): void {
   }
 
   function load(): void {
-    core.beginLoad();
     const c = core.caseOf(core.current());
+    const switching = activeCaseKey !== null && activeCaseKey !== c.key;
+    if (switching && shadow && tuner?.runPhase === 'done') {
+      cleanBlenderUi?.();
+      cleanBlenderUi = null;
+      const nodes = document.createDocumentFragment();
+      while (shadow.firstChild) nodes.append(shadow.firstChild);
+      if (activePanelHost) activePanelHost.style.display = 'none';
+      cachedCases.set(activeCaseKey as string, { nodes, tuner, panelHost: activePanelHost });
+      tuner = null;
+      activePanelHost = null;
+    }
+    if (switching) {
+      const cached = cachedCases.get(c.key);
+      if (cached && shadow) {
+        tuner?.destroy();
+        cleanBlenderUi?.();
+        shadow.innerHTML = '';
+        shadow.append(cached.nodes);
+        tuner = cached.tuner;
+        activePanelHost = cached.panelHost;
+        if (activePanelHost) activePanelHost.style.display = '';
+        window.__tuner = tuner;
+        if (core.creatorOn) tuner.open();
+        else tuner.close();
+        if (c.key === 'blender') cleanBlenderUi = mountBlenderUi(shadow);
+        cachedCases.delete(c.key);
+        activeCaseKey = c.key;
+        intro.dismiss();
+        viewportEl.classList.remove('is-blank');
+        core.beginLoad();
+        core.addrEl.dataset.loading = 'false';
+        return;
+      }
+    }
+    activeCaseKey = c.key;
+    intro.show();
+    runEverSeen = false;
+    core.beginLoad();
     if (c.custom) {
+      tuner?.destroy();
+      tuner = null;
+      cleanBlenderUi?.();
+      cleanBlenderUi = null;
+      activePanelHost = null;
+      window.__tuner = undefined;
+      intro.dismiss();
       core.showBlank(c);
       return;
     }
@@ -426,9 +474,15 @@ export function start(): void {
 
   // 面板与外壳的状态互为镜像，像真浏览器反映页面状态那样。
   let overlayEverSeen = false;
+  let runEverSeen = false;
   setInterval(() => {
     if (!tuner) return;
+    const run = tuner.runPhase;
     core.barEl.dataset.phase = tuner.phase;
+    // 中途「恢复原状」/Esc 走 stop()，相位回 idle：onStatus 不再报 building，
+    // 还停在聚群那一步的进场遮罩得有人收。
+    if (run !== 'idle') runEverSeen = true;
+    else if (runEverSeen) intro.dismiss();
     // 粘住的反馈提示（离线等）未到期时不覆写。
     if (performance.now() > hintHoldUntil) {
       core.hintEl.textContent = `${tr(core.caseOf(core.current()).title)} · ${tuner.status}`;
@@ -454,7 +508,10 @@ export function start(): void {
     el.textContent = getLang() === 'en' ? el.dataset.sayEn ?? '' : el.dataset.sayZh ?? '';
   }
 
-  window.addEventListener('resize', measureChrome);
+  window.addEventListener('resize', () => {
+    measureChrome();
+    readSafeTop();
+  });
   measureChrome();
   readSafeTop();
 

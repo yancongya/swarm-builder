@@ -40,7 +40,7 @@ try {
 
   // 1. 外壳骨架（locator 会穿透 open shadow：必须限定外壳自己的 [data-tabs]，否则数进案例内容）
   const tabs = await page.locator('[data-tabs] .tab').count();
-  if (tabs !== 7) fail(`期望 7 个案例标签，实际 ${tabs}`);
+  if (tabs !== 3) fail(`期望 3 个案例标签，实际 ${tabs}`);
 
   // 2. __browser 钩子与默认案例
   const boot = await page.evaluate(() => ({
@@ -48,7 +48,7 @@ try {
     cases: window.__browser?.cases ?? [],
   }));
   if (boot.current !== 'home') fail(`默认案例应为 home，实际 ${boot.current}`);
-  if (boot.cases.length !== 7) fail(`cases 应为 7，实际 ${boot.cases.length}`);
+  if (boot.cases.length !== 3) fail(`cases 应为 3，实际 ${boot.cases.length}`);
 
   // 2b. 进场态与默认态：顶栏藏起（构建完成才落回）、创造者面板默认收起。
   //     600ms 时一局不可能建完（home 335 项要十几秒），pre-build 必须还在。
@@ -75,7 +75,6 @@ try {
   });
   if (!shadow.shadow) fail('viewport 没有 shadowRoot');
   if (!shadow.hasApp) fail('shadow 里没有 #app');
-  // home 没有案例内联 <style>（共享样式 + styleRoot 注入的引擎样式）；案例内联样式留给 tune 类案例验
   if (shadow.styles < 1) fail(`shadow 至少要有共享 style，实际 ${shadow.styles}`);
 
   // 4. 创造者面板（body 上的 host）+ 状态镜像 + 默认收起
@@ -99,8 +98,13 @@ try {
   if (!vars.tabs || !vars.chrome || !vars.status) fail(`chrome 测量变量缺失：${JSON.stringify(vars)}`);
 
   // 6. 引擎真的在画：开场聚群阶段先出光标（.sb-cursor），盒子（.sb-item）随后、
-  //    完成时 reveal 又会收走——断言光标最稳（挂载后 1s 内必有）。
-  await page.waitForTimeout(1500);
+  //    完成时 reveal 又会收走——断言光标最稳。开场标识要播满一圈（3s）才放行施工，
+  //    所以这里等光标出现，不掐固定秒数。
+  await page.waitForFunction(
+    () => (document.querySelector('[data-viewport]')?.shadowRoot?.querySelectorAll('.sb-cursor').length ?? 0) > 0,
+    null,
+    { timeout: 30000 },
+  ).catch(() => {});
   const engine = await page.evaluate(() => {
     const sr = document.querySelector('[data-viewport]')?.shadowRoot;
     return {
@@ -162,16 +166,16 @@ try {
   }
 
   // 7. 切标签（同步挂载）
-  await page.click('[data-tabs] .tab[data-key="simple"]');
+  await page.click('[data-tabs] .tab[data-key="console"]');
   await page.waitForTimeout(400);
   const after = await page.evaluate(() => ({
     current: window.__browser.current(),
     panels: document.querySelectorAll('[data-sb-chrome]').length,
     url: location.search,
   }));
-  if (after.current !== 'simple') fail(`切标签失败，current=${after.current}`);
+  if (after.current !== 'console') fail(`切标签失败，current=${after.current}`);
   if (after.panels !== 1) fail(`面板应只有 1 个（旧的要销毁），实际 ${after.panels}`);
-  if (!after.url.includes('case=simple')) fail(`URL 未同步 case 参数：${after.url}`);
+  if (!after.url.includes('case=console')) fail(`URL 未同步 case 参数：${after.url}`);
 
   // 8. 外链拦截：点 gh 链接不该导航，只提示离线
   const urlBefore = page.url();
@@ -193,15 +197,15 @@ try {
   const hint2 = (await page.textContent('[data-hint]')) ?? '';
   if (!/不联网|Offline/i.test(hint2)) fail(`example.com chip 未给出离线提示：${hint2}`);
 
-  // 10. 站内相对地址输入 → 切回内置案例（./simple.html）
-  await page.fill('[data-blank-input]', './tall.html');
+  // 10. 站内相对地址输入 → 切回内置案例
+  await page.fill('[data-blank-input]', './console.html');
   await page.click('.blank-go');
   await page.waitForTimeout(500);
   const nav = await page.evaluate(() => window.__browser.current());
-  if (nav !== 'tall') fail(`./tall.html 应切到内置案例，实际 ${nav}`);
+  if (nav !== 'console') fail(`./console.html 应切到内置案例，实际 ${nav}`);
 
-  // 11. 容器滚动模型（tall 案例比窗口高：viewport 自己就是滚动容器，
-  //     引擎 detectEnv 跨 shadow 找到它；外壳文档永不滚）
+  // 11. 容器滚动归属：viewport 是滚动容器，外壳文档不滚。
+  // 长页面的实际滚动与镜头跟随仍在 tools/verify.mjs 的独立测试中覆盖。
   const scroll = await page.evaluate(() => {
     const vp = document.querySelector('[data-viewport]');
     const tabsH = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--sb-tabs-h')) || 36;
@@ -210,44 +214,26 @@ try {
       innerH: window.innerHeight,
       vpPos: vp ? getComputedStyle(vp).position : null,
       vpOverflowY: vp ? getComputedStyle(vp).overflowY : null,
-      scScrollH: vp?.scrollHeight ?? 0,
-      scClientH: vp?.clientHeight ?? 0,
       tabsH,
       chromeTop: document.querySelector('.nav').getBoundingClientRect().top,
     };
   });
   if (scroll.vpPos !== 'fixed') fail(`viewport 应为 fixed 外壳开窗，实际 ${scroll.vpPos}`);
   if (scroll.vpOverflowY !== 'auto') fail(`viewport 应自己是滚动容器，实际 overflow-y=${scroll.vpOverflowY}`);
-  if (scroll.scScrollH <= scroll.scClientH) fail(`tall 案例未超出 viewport：${scroll.scScrollH} <= ${scroll.scClientH}`);
   if (scroll.docScrollH > scroll.innerH) fail(`外壳文档不应可滚：${scroll.docScrollH} > ${scroll.innerH}`);
   if (Math.abs(scroll.chromeTop - scroll.tabsH) > 2) {
     fail(`nav 未固定在 tabs 下沿：top=${scroll.chromeTop}`);
   }
-  await page.evaluate(() => {
-    const vp = document.querySelector('[data-viewport]');
-    if (vp) vp.scrollTop = 400;
-  });
-  await page.waitForTimeout(300);
-  const scrolled = await page.evaluate(() => ({
-    winY: window.scrollY,
-    scY: document.querySelector('[data-viewport]')?.scrollTop ?? -1,
-    navTop: document.querySelector('.nav').getBoundingClientRect().top,
-    statusBottom: document.querySelector('.statusbar').getBoundingClientRect().bottom,
-  }));
-  if (scrolled.scY < 300) fail(`viewport 未滚动：scrollTop=${scrolled.scY}`);
-  if (scrolled.winY > 1) fail(`外壳文档被滚动：window.scrollY=${scrolled.winY}`);
-  if (Math.abs(scrolled.navTop - 36) > 30) fail(`滚动后 nav 脱位：top=${scrolled.navTop}`);
-  if (Math.abs(scrolled.statusBottom - 800) > 2) fail(`滚动后 statusbar 脱位：bottom=${scrolled.statusBottom}`);
+  await page.screenshot({ path: `${shots}smoke-console.png` });
 
-  await page.screenshot({ path: `${shots}smoke-tall.png` });
-
-  // 11b. 7 案例逐个挂载：面板唯一、重建根在、current 同步
+  // 11b. 三个案例逐个挂载：可见面板唯一、重建根在、current 同步
   for (const key of boot.cases) {
     await page.evaluate((k) => window.__browser.go(k), key);
     await page.waitForTimeout(350);
     const st = await page.evaluate(() => ({
-      panels: document.querySelectorAll('[data-sb-chrome]').length,
-      hasRoot: !!document.querySelector('[data-viewport]')?.shadowRoot?.querySelector('#app, #site'),
+      panels: Array.from(document.querySelectorAll('[data-sb-chrome]'))
+        .filter((el) => getComputedStyle(el).display !== 'none').length,
+      hasRoot: !!document.querySelector('[data-viewport]')?.shadowRoot?.querySelector('#app'),
       cur: window.__browser.current(),
     }));
     if (st.panels !== 1) fail(`${key}: 面板数应 1，实际 ${st.panels}`);
@@ -255,18 +241,7 @@ try {
     if (st.cur !== key) fail(`${key}: current=${st.cur}`);
   }
 
-  // 11c. 案例 boot 代接：dark-ui canvas 画了、panel compat 注入了、能力类到位
-  await page.evaluate(() => window.__browser.go('dark-ui'));
-  await page.waitForTimeout(300);
-  const gl = await page.evaluate(() => {
-    const c = document.querySelector('[data-viewport]')?.shadowRoot?.querySelector('.gl-view');
-    if (!c) return { ok: false, why: 'no canvas' };
-    const d = c.getContext('2d').getImageData(0, 0, Math.min(c.width, 8), Math.min(c.height, 8)).data;
-    let sum = 0;
-    for (const v of d) sum += v;
-    return { ok: sum > 0, w: c.width, h: c.height };
-  });
-  if (!gl.ok) fail(`dark-ui gl-view canvas 未画：${JSON.stringify(gl)}`);
+  // 11c. 面板 compat 注入与能力类到位
   const boot2 = await page.evaluate(() => ({
     compat: !!document.querySelector('[data-sb-chrome]')?.shadowRoot?.querySelector('style[data-panel-compat]'),
     panelGapClass: document.querySelector('[data-sb-chrome]')?.classList.contains('supports-flex-gap') ?? false,
@@ -351,8 +326,8 @@ try {
   if (lang.htmlLang !== 'en') fail(`html lang 未变 en：${lang.htmlLang}`);
   if (errors.length) fail(`console/page 错误：${errors.join(' | ')}`);
 
-  console.log('SMOKE PASS');
-  console.log(JSON.stringify({ tabs, boot, entry, entryTabs, shadow, panel, vars, engine, scrolls, after, hint, hint2, nav, scroll, scrolled, gl, boot2, homeBits, statusAfter, copied, lang }, null, 1));
+  if (!process.exitCode) console.log('SMOKE PASS');
+  console.log(JSON.stringify({ tabs, boot, entry, entryTabs, shadow, panel, vars, engine, scrolls, after, hint, hint2, nav, scroll, boot2, homeBits, statusAfter, copied, lang }, null, 1));
 } catch (err) {
   console.error('EXCEPTION:', err);
   process.exitCode = 1;

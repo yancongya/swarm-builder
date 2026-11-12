@@ -1,10 +1,12 @@
 <!doctype html>
-<html lang="zh">
+<html lang="zh" class="web-shell pre-build">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Swarm Builder · 为你的网页开始创造模式，集群构建前端！</title>
+  <link rel="icon" type="image/png" href="./favicon.png" />
   <link rel="stylesheet" href="./browser.css" />
+  <link rel="stylesheet" href="./boot-intro.css" />
 </head>
 <body>
   <main class="win">
@@ -21,7 +23,7 @@
         <svg class="lock" viewBox="0 0 12 12" aria-hidden="true"><path d="M3.5 5.2V4a2.5 2.5 0 0 1 5 0v1.2M2.6 5.2h6.8v4.6H2.6z" fill="none" stroke="currentColor" stroke-width="1.1" stroke-linejoin="round"/></svg>
         <span data-url></span>
       </div>
-      <button class="creator" type="button" data-creator aria-pressed="true"
+      <button class="creator" type="button" data-creator aria-pressed="false"
               title="创造者模式：所有参数都在这一个面板里改，改完点「应用并重跑」">创造者模式</button>
       <button class="icon lang" type="button" data-lang title="界面语言：中文 / English" aria-label="切换界面语言">中/EN</button>
       <a class="gh" data-github href="https://github.com/yancongya/swarm-builder"
@@ -63,6 +65,16 @@
       <span data-meta></span>
     </div>
   </main>
+
+  <div class="boot-intro" data-boot-intro hidden aria-live="polite">
+    <div class="boot-intro-inner">
+      <div class="boot-intro-stage" aria-hidden="true">
+        <span class="logo-motion"></span>
+      </div>
+      <p class="boot-intro-title" data-intro-title>创造模式准备中</p>
+      <p class="boot-intro-note" data-intro-note>正在准备页面资源…</p>
+    </div>
+  </div>
 
   <script type="module" src="./lang.ts"></script>
   <script type="module" src="./browser.ts"></script>

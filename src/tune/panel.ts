@@ -265,7 +265,7 @@ button{font:inherit;color:inherit;cursor:pointer}
   background:radial-gradient(circle at 34% 26%,#3d3a32,var(--card) 60%);
   box-shadow:0 10px 26px rgba(0,0,0,.34),inset 0 1px 0 rgba(236,234,223,.08)}
 .orb:hover{border-color:var(--accent)}
-.orb svg{width:29px;height:29px;display:block}
+.orb svg{width:40px;height:40px;display:block}
 .orb .ring{stroke:var(--accent);stroke-opacity:.6;transform-box:view-box;transform-origin:14px 14px}
 .orb .arrow{fill:var(--ink)}
 .orb .lead{fill:var(--accent)}
@@ -512,7 +512,7 @@ export class Panel {
   private statusTimer = 0;
   private crewKey = '';
   private shown: string;
-  private draggedAt = 0;
+  private draggedAt = -Infinity;
 
   constructor(config: SwarmConfig, handlers: PanelHandlers, position: Corner, expanded: boolean, lang: Lang = 'zh') {
     this.lang = lang;

@@ -14,7 +14,7 @@
  *   2. 外壳 CSS —— browser.css 走 fixCss('shell') 三段式改写；
  *   3. 库内嵌 CSS / 剪贴板调用 —— renderChunk 精确替换（带计数日志）。
  */
-import { readFileSync } from 'node:fs';
+import { copyFileSync, mkdirSync, readFileSync, readdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { defineConfig, type Plugin } from 'vite';
@@ -26,7 +26,7 @@ const DEMO_DIR = join(HERE, '..', 'demos');
 const DIST_DIR = join(HERE, 'dist');
 
 /** 案例清单：demos/<key>.html → 虚拟模块 minitool:case-html:<key>。 */
-const CASE_KEYS = ['home', 'simple', 'console', 'landing', 'dark-ui', 'tall', 'tune'] as const;
+const CASE_KEYS = ['home', 'console', 'blender'] as const;
 
 /** JSON.stringify 后补转义 U+2028/2029：ES2017 里它们是字符串字面量的语法错误（ES2019 才合法）。 */
 const jsString = (value: string): string =>
@@ -201,10 +201,26 @@ function artifactGate(): Plugin {
   };
 }
 
+/** 案例 HTML 在 JS 字符串中挂载，Vite 不会自动追踪其中的相对图片路径。 */
+function copyCaseAssets(): Plugin {
+  return {
+    name: 'minitool:case-assets',
+    closeBundle() {
+      const source = join(DEMO_DIR, 'assets', 'blender');
+      const target = join(DIST_DIR, 'assets', 'blender');
+      mkdirSync(target, { recursive: true });
+      for (const file of readdirSync(source)) {
+        if (!/\.(?:svg|webp|png|jpe?g)$/i.test(file)) continue;
+        copyFileSync(join(source, file), join(target, file));
+      }
+    },
+  };
+}
+
 export default defineConfig({
   root: HERE,
   publicDir: 'public',
-  plugins: [shellCss(), caseModules(), chunkFixes(), artifactGate()],
+  plugins: [shellCss(), caseModules(), chunkFixes(), copyCaseAssets(), artifactGate()],
   build: {
     target: ['es2017', 'chrome61'],
     minify: false, // 产物要能被 grep 审计，不压缩
