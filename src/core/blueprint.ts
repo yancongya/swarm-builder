@@ -38,6 +38,8 @@ export interface TextStyle {
   lineHeight: string;
   letterSpacing: string;
   color: string;
+  whiteSpace: string;
+  overflowWrap: string;
 }
 
 export interface Box {
@@ -92,6 +94,8 @@ export interface BlueprintItem {
   rectStyle?: RectStyle;
   text?: string;
   textStyle?: TextStyle;
+  /** Text inside a scrollport is captured only through its visible edge. */
+  clipText?: boolean;
   media?: MediaPayload;
   /** Set on the first item of a copy; the rest of its group is `consumed`. */
   dup?: DupPayload;

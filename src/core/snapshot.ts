@@ -221,10 +221,14 @@ function walk(
 
   for (const node of Array.from(el.childNodes)) {
     if (node.nodeType !== Node.TEXT_NODE) continue;
-    const text = (node.textContent ?? '').replace(/\s+/g, ' ').trim();
+    const raw = node.textContent ?? '';
+    const clipText = computed.overflowY !== 'visible' && el.scrollHeight > el.clientHeight + 2;
+    const end = clipText ? visibleTextEnd(node as Text, rect.bottom - (parseFloat(computed.paddingBottom) || 0)) : raw.length;
+    const source = raw.slice(0, end);
+    const text = computed.whiteSpace.startsWith('pre') ? source.trimEnd() : source.replace(/\s+/g, ' ').trim();
     if (text.length === 0) continue;
 
-    const measured = measureText(node as Text);
+    const measured = measureText(node as Text, end);
     if (!measured) continue;
 
     const id = nextId(state);
@@ -236,10 +240,11 @@ function walk(
       blockers: [...ancestorIds, ...created].slice(-1),
       x: round(measured.left - rootRect.left),
       y: round(measured.top - rootRect.top),
-      width: round(measured.right - measured.left),
-      height: round(measured.bottom - measured.top),
+      width: round(clipText ? Math.min(measured.right - measured.left, rect.width - (parseFloat(computed.paddingLeft) || 0) - (parseFloat(computed.paddingRight) || 0)) : measured.right - measured.left),
+      height: round(clipText ? Math.min(measured.bottom - measured.top, rect.bottom - measured.top) : measured.bottom - measured.top),
       text,
       textStyle: textStyleOf(computed),
+      ...(clipText ? { clipText: true } : {}),
       grow: shouldGrow(computed, round(measured.bottom - measured.top)),
       ...(fixed ? { fixed: true } : {}),
     }, topHere, positioned);
@@ -356,9 +361,10 @@ function pushItem(state: WalkState, item: Omit<BlueprintItem, 'order'>, top: num
 }
 
 /** Union of the text node's line boxes, or null when it renders nothing. */
-function measureText(node: Text): { left: number; top: number; right: number; bottom: number } | null {
+function measureText(node: Text, end = node.length): { left: number; top: number; right: number; bottom: number } | null {
   const range = document.createRange();
-  range.selectNodeContents(node);
+  range.setStart(node, 0);
+  range.setEnd(node, end);
   const rects = Array.from(range.getClientRects());
   if (rects.length === 0) return null;
 
@@ -375,6 +381,23 @@ function measureText(node: Text): { left: number; top: number; right: number; bo
   }
   if (!Number.isFinite(left) || right - left < 1) return null;
   return { left, top, right, bottom };
+}
+
+/** The Range of a scrollable text node includes lines the reader cannot see. */
+function visibleTextEnd(node: Text, bottom: number): number {
+  let low = 0;
+  let high = node.length;
+  const range = document.createRange();
+  range.setStart(node, 0);
+  while (low < high) {
+    const mid = Math.ceil((low + high) / 2);
+    range.setEnd(node, mid);
+    const rects = Array.from(range.getClientRects()).filter((rect) => rect.width > 0);
+    const last = rects[rects.length - 1];
+    if (!last || last.bottom <= bottom + 0.5) low = mid;
+    else high = mid - 1;
+  }
+  return low;
 }
 
 function isVisible(el: Element, strict: boolean): boolean {
@@ -460,6 +483,8 @@ function textStyleOf(style: CSSStyleDeclaration): TextStyle {
     lineHeight: style.lineHeight,
     letterSpacing: style.letterSpacing,
     color: style.color,
+    whiteSpace: style.whiteSpace,
+    overflowWrap: style.overflowWrap,
   };
 }
 

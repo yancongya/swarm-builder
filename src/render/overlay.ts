@@ -180,6 +180,10 @@ export class Overlay {
     el.style.top = `${item.y}px`;
     el.style.width = `${item.width}px`;
     el.style.minHeight = `${item.height}px`;
+    if (item.clipText) {
+      el.style.height = `${item.height}px`;
+      el.style.overflow = 'hidden';
+    }
     if (style) {
       el.style.fontFamily = style.fontFamily;
       el.style.fontSize = style.fontSize;
@@ -188,6 +192,8 @@ export class Overlay {
       el.style.lineHeight = style.lineHeight;
       el.style.letterSpacing = style.letterSpacing;
       el.style.color = style.color;
+      el.style.whiteSpace = style.whiteSpace;
+      el.style.overflowWrap = style.overflowWrap;
     }
     this.append(el, item);
     return this.tag(el, item);
