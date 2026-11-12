@@ -107,6 +107,9 @@ export function start(): void {
   let chromeShown = false;
   function revealChrome(): void {
     if (chromeShown) return;
+    // tour 用 smooth scroll 跟随施工，最后一段滚动可能还没停。
+    // 在顶栏改变视口高度前取消滚动并回到首屏，避免交还真实页面时标题被截掉。
+    viewportEl.scrollTop = 0;
     chromeShown = true;
     document.documentElement.classList.remove('pre-build');
   }
