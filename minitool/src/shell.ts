@@ -328,6 +328,7 @@ export function start(): void {
 
   function load(): void {
     const c = core.caseOf(core.current());
+    viewportEl.dataset.case = c.key;
     const switching = activeCaseKey !== null && activeCaseKey !== c.key;
     if (switching && shadow && tuner?.runPhase === 'done') {
       cleanBlenderUi?.();

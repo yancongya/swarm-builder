@@ -46,6 +46,9 @@ body { height: 100vh; min-height: 0; overflow: hidden; }
   position: fixed;
   left: 0;
   right: 0;
+  /* The case does not always fill the scrollport (or a touch overscroll). Match
+     its canvas so the underlying viewport never flashes white at the bottom. */
+  background: #18191e;
   /* 让开状态栏与顶栏 chrome；进场态顶栏藏起时回到 safe-top（见下）。 */
   top: calc(var(--sb-safe-top, 0px) + var(--sb-chrome-h, 78px));
   bottom: var(--sb-status-h, 25px);
@@ -55,6 +58,9 @@ body { height: 100vh; min-height: 0; overflow: hidden; }
   overflow-y: auto;
   transition: top 0.4s ease;
 }
+.viewport[data-case="console"] { background: #f4f6fa; }
+.viewport[data-case="blender"] { background: #1d1d1d; }
+.viewport.is-blank { background: var(--chrome-2); }
 html.pre-build .viewport { top: var(--sb-safe-top, 0px); }
 .statusbar {
   position: fixed;
