@@ -57,7 +57,7 @@ export function decorateOrb(orb: HTMLElement): void {
 }
 
 /** The shell draws only the logo; the cursors belong to SwarmBuilder's real gather phase. */
-export function createBootIntro(center: () => DOMRect, target: () => OrbTarget) {
+export function createBootIntro(center: () => DOMRect, target: () => OrbTarget, onLanding?: () => void) {
   const el = document.querySelector<HTMLElement>('[data-boot-intro]');
   const inner = el?.querySelector<HTMLElement>('.boot-intro-inner');
   const title = el?.querySelector<HTMLElement>('[data-intro-title]');
@@ -98,6 +98,7 @@ export function createBootIntro(center: () => DOMRect, target: () => OrbTarget) 
       clear();
       el.hidden = true;
       active = false;
+      onLanding?.();
       return;
     }
     const mine = generation;
@@ -124,6 +125,7 @@ export function createBootIntro(center: () => DOMRect, target: () => OrbTarget) 
         orbSvg.setCurrentTime(flySvg.getCurrentTime());
       }
       if (hiddenOrb) hiddenOrb.style.visibility = '';
+      onLanding?.();
       if (entry && !reduceMotion() && typeof entry.animate === 'function') {
         entry.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 280, easing: 'ease-out' });
       }

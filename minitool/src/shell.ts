@@ -86,6 +86,7 @@ export function start(): void {
       const rect = orb.getBoundingClientRect();
       return rect.width > 0 && rect.height > 0 ? { orb, rect } : null;
     },
+    () => { if (activePanelHost) activePanelHost.style.visibility = ''; },
   );
   const tabsEl = need<HTMLElement>('[data-tabs]');
   const navEl = need<HTMLElement>('.nav');
@@ -266,6 +267,11 @@ export function start(): void {
     activePanelHost = panelHosts[panelHosts.length - 1] ?? null;
     const orb = activePanelHost?.shadowRoot?.querySelector<HTMLElement>('.orb');
     if (orb) decorateOrb(orb);
+    // 小工具面板与飞行层同属顶层文档，面板 z-index 更高。先藏整块面板
+    // （包括旧名字牌），等中央 logo 真正飞到球位后再交接显示。
+    if (activePanelHost && !matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      activePanelHost.style.visibility = 'hidden';
+    }
     liftPanel();
     // 母本 loadPreset 每次挂载都显式开跑：面板只负责调参，不负责启动这一局。
     // 开场标识播满一圈才放行：资源是打包进来的、秒回，不等这一圈就只闪一下 logo。
